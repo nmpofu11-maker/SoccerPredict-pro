@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#020617"/>
+      <stop offset="50%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fde047"/>
+      <stop offset="100%" stop-color="#eab308"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Background rounded rect -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="none" stroke="#334155" stroke-width="4" stroke-opacity="0.6"/>
+
+  <!-- Pitch lines -->
+  <circle cx="256" cy="256" r="140" fill="none" stroke="#38bdf8" stroke-width="6" stroke-opacity="0.4"/>
+  <line x1="64" y1="256" x2="448" y2="256" stroke="#38bdf8" stroke-width="6" stroke-opacity="0.4"/>
+  <circle cx="256" cy="256" r="16" fill="#38bdf8" fill-opacity="0.8"/>
+
+  <!-- Center Ball / Prediction Shield -->
+  <polygon points="256,150 330,195 330,285 256,330 182,285 182,195" fill="#0f172a" stroke="#fde047" stroke-width="8" filter="url(#glow)"/>
+  
+  <!-- Star symbol inside -->
+  <path d="M256 195 L268 230 L305 230 L275 252 L286 287 L256 265 L226 287 L237 252 L207 230 L244 230 Z" fill="url(#gold)"/>
+
+  <!-- Tactical Nodes -->
+  <circle cx="160" cy="140" r="14" fill="#10b981" filter="url(#glow)"/>
+  <circle cx="352" cy="140" r="14" fill="#10b981" filter="url(#glow)"/>
+  <circle cx="160" cy="372" r="14" fill="#f43f5e" filter="url(#glow)"/>
+  <circle cx="352" cy="372" r="14" fill="#f43f5e" filter="url(#glow)"/>
+
+  <!-- Connecting trajectory lines -->
+  <path d="M160 140 Q 256 120 352 140" fill="none" stroke="#10b981" stroke-width="4" stroke-dasharray="8 6"/>
+  <path d="M160 372 Q 256 392 352 372" fill="none" stroke="#f43f5e" stroke-width="4" stroke-dasharray="8 6"/>
+  <path d="M256 150 L 256 80" fill="none" stroke="#38bdf8" stroke-width="5" stroke-dasharray="6 4"/>
+</svg>

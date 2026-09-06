@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Soccer Prediction Engine Dashboard</title>
+    <meta name="description" content="Production-ready soccer prediction engine covering all Hollywoodbets SA leagues (South African PSL, Motsepe Championship, CAF Champions League, Premier League, UEFA) evaluated through 9 mathematical rules with draw equilibrium calibration." />
+    <meta property="og:title" content="Soccer Prediction Engine Dashboard" />
+    <meta property="og:description" content="Production-ready soccer prediction engine covering all Hollywoodbets SA leagues (South African PSL, Motsepe Championship, CAF Champions League, Premier League, UEFA) evaluated through 9 mathematical rules with draw equilibrium calibration." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#020617" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+    <script>
+      // Register Service Worker safely for PWA and standalone APK installation
+      try {
+        if ('serviceWorker' in navigator && window.location.protocol.startsWith('http') && window.self === window.top) {
+          window.addEventListener('load', function() {
+            navigator.serviceWorker.register('/sw.js').catch(function() {
+              // Silently ignore registration failures in restricted sandbox
+            });
+          });
+        }
+      } catch (e) {
+        // Silently ignore in sandboxed environments
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

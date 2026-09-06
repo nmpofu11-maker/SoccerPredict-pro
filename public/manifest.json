@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "Soccer Prediction Engine Dashboard",
+  "short_name": "Predictor",
+  "description": "Production-grade soccer prediction engine and self-learning telemetry covering 46 Hollywoodbets leagues through 8 mathematical rules.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "categories": ["sports", "analytics", "utilities"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

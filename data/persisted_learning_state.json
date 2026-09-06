@@ -1,0 +1,103 @@
+{
+  "weights": {
+    "stakesMotivationBoost": 2.492,
+    "deadRubberPenalty": 0.212,
+    "rankPointsMultiplier": 0.412,
+    "formWinPoints": 1.212,
+    "formDrawPoints": 0.409,
+    "homeAdvantageBaseline": 10.048,
+    "awayAdvantageBaseline": 8.448,
+    "homeDominanceBonus": 0.171,
+    "awayFormBonus": 1.52,
+    "tacticalPossessionWeight": 0.162,
+    "tacticalShotsWeight": 0.465,
+    "h2hMultiplier": 6.07,
+    "fatiguePenaltyRate": 0.165,
+    "volatilityDrawBoost": 0.695,
+    "favouriteWinFloor": 55.18,
+    "drawEquilibriumMargin": null,
+    "drawEquilibriumBoost": null
+  },
+  "baselineWeights": {
+    "stakesMotivationBoost": 2.5,
+    "deadRubberPenalty": 0.2,
+    "rankPointsMultiplier": 0.4,
+    "formWinPoints": 1.2,
+    "formDrawPoints": 0.4,
+    "homeAdvantageBaseline": 10,
+    "awayAdvantageBaseline": 8.5,
+    "homeDominanceBonus": 0.15,
+    "awayFormBonus": 1.5,
+    "tacticalPossessionWeight": 0.15,
+    "tacticalShotsWeight": 0.45,
+    "h2hMultiplier": 6,
+    "fatiguePenaltyRate": 0.15,
+    "volatilityDrawBoost": 0.68,
+    "favouriteWinFloor": 55
+  },
+  "totalEpochsTrained": 393,
+  "accuracyPct": 70,
+  "baselineAccuracyPct": 62.5,
+  "brierLoss": 0.244,
+  "baselineBrierLoss": 0.252,
+  "lastTrainedAt": "2026-09-06T09:36:42.701Z",
+  "isAutoLearningEnabled": true,
+  "recentLossHistory": [
+    0.245,
+    0.245,
+    0.245,
+    0.245,
+    0.245,
+    0.245,
+    0.245,
+    0.245,
+    0.244,
+    0.244,
+    0.244,
+    0.244,
+    0.244,
+    0.244,
+    0.244
+  ],
+  "aiTacticalSynthesis": {
+    "summary": "Engine calibrated against 16 comprehensive historical match outcomes across 7 competitive leagues.",
+    "recommendations": [
+      "Tactical shot differential is the highest predictor of victory in open matches.",
+      "High-volatility leagues benefit from variance compression to dampen overconfident away predictions.",
+      "Midweek continental travel fatigue penalty accurately predicts weekend road fatigue."
+    ],
+    "ruleEfficiency": [
+      {
+        "rule": "Rule 1: Motivation Stakes",
+        "impact": "+2.5 pts boost",
+        "status": "optimal"
+      },
+      {
+        "rule": "Rule 3: Home Dominance",
+        "impact": "+15% home multiplier",
+        "status": "optimal"
+      },
+      {
+        "rule": "Rule 5: Shot/Possession",
+        "impact": "+3.5 pts modifier",
+        "status": "optimal"
+      },
+      {
+        "rule": "Rule 6: 72h Fatigue",
+        "impact": "-15% road fatigue",
+        "status": "optimal"
+      },
+      {
+        "rule": "Rule 7: Volatility Cap",
+        "impact": "0.68 compression",
+        "status": "optimal"
+      },
+      {
+        "rule": "Rule 8: Favourite Floor",
+        "impact": "55% win floor",
+        "status": "optimal"
+      }
+    ],
+    "timestamp": "2026-09-04T21:50:03.731Z"
+  }
+}

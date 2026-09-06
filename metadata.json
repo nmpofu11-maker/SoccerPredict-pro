@@ -1,0 +1,6 @@
+{
+  "name": "Soccer Prediction Engine Dashboard",
+  "description": "Production-ready soccer prediction engine covering all Hollywoodbets SA leagues (South African PSL, Motsepe Championship, CAF Champions League, Premier League, UEFA) evaluated through 9 mathematical rules with draw equilibrium calibration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
