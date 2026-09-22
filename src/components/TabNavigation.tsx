@@ -22,6 +22,7 @@ import {
   CalendarCheck,
   Target,
   CheckCircle2,
+  Sparkles,
 } from 'lucide-react';
 import { LEAGUE_CATEGORIES, LeagueCategoryId, getLeagueMeta } from '../constants/leagues';
 import { isHighVolatilityLeague } from '../constants/favourites';
@@ -34,14 +35,21 @@ import {
 } from '../utils/dateFilterUtils';
 
 interface TabNavigationProps {
-  activeTab: 'timeline' | 'favourites' | 'learning';
-  onTabChange: (tab: 'timeline' | 'favourites' | 'learning') => void;
+  activeTab: 'timeline' | 'favourites' | 'learning' | 'yesterday' | 'groups' | 'todaysMatches' | 'smartCoach';
+  onTabChange: (tab: any) => void;
   totalMatchesCount: number;
   favouritesMatchesCount: number;
   displayedMatchesCount?: number;
   learningAccuracyPct?: number;
   correctPredictionsCount?: number;
   totalPredictionsCount?: number;
+  yesterdayStats?: {
+    total: number;
+    correct: number;
+    wrong: number;
+    accuracyPct: number;
+    date: string;
+  };
   searchQuery: string;
   onSearchChange: (query: string) => void;
   selectedLeague: string;
@@ -79,6 +87,7 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
   learningAccuracyPct = 81.3,
   correctPredictionsCount = 35,
   totalPredictionsCount = 43,
+  yesterdayStats,
   searchQuery,
   onSearchChange,
   selectedLeague,
@@ -189,247 +198,307 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
     <div className="w-full space-y-3 pb-3" id="tab-navigation-container">
       {/* Technical Dashboard Tab Navigation Bar */}
       <nav
-        className="flex items-center justify-between border-b border-slate-800 bg-[#0f172a]/80 rounded-t-lg overflow-x-auto"
+        className="flex items-center justify-between border-b border-slate-800 bg-slate-900/90 rounded-t-xl overflow-x-auto"
         role="tablist"
       >
         <div className="flex items-center">
-          {/* Tab 1: 📅 ALL MATCHES TIMELINE */}
+          {/* Tab 1: ALL MATCHES TIMELINE */}
           <button
             type="button"
             role="tab"
             aria-selected={activeTab === 'timeline'}
             onClick={() => onTabChange('timeline')}
-            className={`px-4 sm:px-6 py-3.5 text-xs sm:text-sm font-bold border-b-2 transition-all duration-150 flex items-center gap-2 whitespace-nowrap ${
+            className={`px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold border-b-2 transition-all duration-150 flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'timeline'
-                ? 'border-sky-500 bg-slate-900/60 text-sky-400'
-                : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-900/30'
+                ? 'border-sky-500 bg-slate-800/60 text-sky-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
             }`}
             id="tab-all-matches"
           >
             <Calendar className="w-4 h-4" />
-            <span>📅 MATCHES TIMELINE</span>
-            <span className="ml-1 px-2 py-0.5 bg-slate-800 text-sky-300 rounded font-mono text-[11px]">
+            <span>MATCHES TIMELINE</span>
+            <span className="ml-0.5 px-2 py-0.5 bg-slate-800 text-sky-300 rounded-full font-mono text-[11px]">
               {displayedMatchesCount !== undefined && isDateFilterActive
-                ? `${displayedMatchesCount} / ${totalMatchesCount}`
+                ? `${displayedMatchesCount}/${totalMatchesCount}`
                 : totalMatchesCount}
             </span>
           </button>
 
-          {/* Tab 2: ⭐ FAVOURITES TAB */}
+          {/* Tab 2: FAVOURITES TAB */}
           <button
             type="button"
             role="tab"
             aria-selected={activeTab === 'favourites'}
             onClick={() => onTabChange('favourites')}
-            className={`px-4 sm:px-6 py-3.5 text-xs sm:text-sm font-bold border-b-2 transition-all duration-150 flex items-center gap-2 whitespace-nowrap ${
+            className={`px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold border-b-2 transition-all duration-150 flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'favourites'
-                ? 'border-amber-400 bg-slate-900/60 text-amber-400'
-                : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-900/30'
+                ? 'border-amber-400 bg-slate-800/60 text-amber-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
             }`}
             id="tab-favourites"
           >
             <Star className="w-4 h-4 fill-current" />
-            <span>⭐ 80 FAVOURITES</span>
-            <span className="ml-1 px-2 py-0.5 bg-slate-800 text-amber-300 rounded font-mono text-[11px]">
+            <span>80 FAVOURITES</span>
+            <span className="ml-0.5 px-2 py-0.5 bg-slate-800 text-amber-300 rounded-full font-mono text-[11px]">
               {favouritesMatchesCount}
             </span>
           </button>
 
-          {/* Tab 3: 🧠 AI SELF-LEARNING */}
+          {/* Tab 3: AI SELF-LEARNING */}
           <button
             type="button"
             role="tab"
             aria-selected={activeTab === 'learning'}
             onClick={() => onTabChange('learning')}
-            className={`px-4 sm:px-6 py-3.5 text-xs sm:text-sm font-bold border-b-2 transition-all duration-150 flex items-center gap-2 whitespace-nowrap ${
+            className={`px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold border-b-2 transition-all duration-150 flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'learning'
-                ? 'border-purple-500 bg-purple-950/30 text-purple-300'
-                : 'border-transparent text-slate-500 hover:text-purple-300 hover:bg-slate-900/30'
+                ? 'border-purple-500 bg-purple-950/40 text-purple-300'
+                : 'border-transparent text-slate-400 hover:text-purple-300 hover:bg-slate-800/30'
             }`}
             id="tab-self-learning"
           >
-            <Brain className="w-4 h-4 text-purple-400 animate-pulse" />
-            <span>🧠 AI SELF-LEARNING</span>
-            <span className="ml-1 px-2 py-0.5 bg-purple-900/60 border border-purple-500/40 text-purple-200 rounded font-mono text-[11px] flex items-center gap-1">
-              <span className="text-emerald-400 font-bold">{learningAccuracyPct.toFixed(1)}%</span>
-              <span className="hidden sm:inline">Success</span>
+            <Brain className="w-4 h-4 text-purple-400" />
+            <span>AI CALIBRATION</span>
+            <span className="ml-0.5 px-2 py-0.5 bg-purple-950/80 border border-purple-800/60 text-emerald-400 rounded-full font-mono text-[11px] font-bold">
+              {learningAccuracyPct.toFixed(1)}%
             </span>
           </button>
-        </div>
 
-        {/* Right Status Controls: Cumulative Prediction Success Rate & Timeline Sort */}
-        <div className="flex items-center gap-2.5 px-3 py-1.5">
-          {/* Cumulative Success Rate % Pill Indicator */}
+          {/* Tab 4: YESTERDAY'S PERFORMANCE */}
           <button
             type="button"
-            onClick={() => onTabChange('learning')}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/40 text-xs font-mono transition-colors shadow-sm group"
-            id="tab-nav-cumulative-success"
-            title="Cumulative Prediction Success Rate (click to inspect AI Self-Learning)"
+            role="tab"
+            aria-selected={activeTab === 'yesterday'}
+            onClick={() => onTabChange('yesterday')}
+            className={`px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold border-b-2 transition-all duration-150 flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'yesterday'
+                ? 'border-emerald-400 bg-emerald-950/30 text-emerald-300'
+                : 'border-transparent text-slate-400 hover:text-emerald-300 hover:bg-slate-800/30'
+            }`}
+            id="tab-yesterday-performance"
           >
-            <Target className="w-3.5 h-3.5 text-emerald-400 group-hover:rotate-45 transition-transform" />
-            <span className="text-[10px] uppercase text-slate-400 font-bold hidden xs:inline">Success:</span>
-            <span className="font-extrabold text-emerald-400 text-xs">{learningAccuracyPct.toFixed(1)}%</span>
-            {totalPredictionsCount !== undefined && (
-              <span className="text-emerald-300/70 text-[10px] hidden lg:inline">({correctPredictionsCount}/{totalPredictionsCount})</span>
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <span>YESTERDAY&apos;S RESULTS</span>
+            {yesterdayStats && (
+              <span className="ml-0.5 px-2 py-0.5 bg-emerald-950/80 border border-emerald-700/60 text-emerald-300 rounded-full font-mono text-[11px] font-bold">
+                {yesterdayStats.correct} Correct / {yesterdayStats.wrong} Wrong
+              </span>
             )}
           </button>
 
-          {/* Strict Timeline Sort Indicator */}
-          <div className="hidden md:flex items-center gap-1.5 text-slate-400 text-xs font-mono px-2 py-1">
-            <Clock className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
-            <span className="text-[11px]">Timeline Sort: Earliest kickoff at top</span>
-          </div>
+          {/* Tab: TODAY'S MATCHES */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'todaysMatches'}
+            onClick={() => onTabChange('todaysMatches')}
+            className={`px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold border-b-2 transition-all duration-150 flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'todaysMatches'
+                ? 'border-amber-400 bg-amber-950/40 text-amber-300'
+                : 'border-transparent text-slate-400 hover:text-amber-300 hover:bg-slate-800/30'
+            }`}
+            id="tab-todays-matches"
+          >
+            <Sun className="w-4 h-4 text-amber-400" />
+            <span>TODAY&apos;S MATCHES</span>
+            <span className="ml-0.5 px-2 py-0.5 bg-amber-950/80 border border-amber-800/60 text-amber-300 rounded-full font-mono text-[11px] font-bold">
+              Live
+            </span>
+          </button>
+
+          {/* Tab 5: SMART ACCUMULATOR & COACH (Includes Quad Groups & Strategy Hub) */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'smartCoach'}
+            onClick={() => onTabChange('smartCoach')}
+            className={`px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold border-b-2 transition-all duration-150 flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'smartCoach'
+                ? 'border-indigo-400 bg-indigo-950/50 text-indigo-300'
+                : 'border-transparent text-slate-400 hover:text-indigo-300 hover:bg-slate-800/30'
+            }`}
+            id="tab-smart-accumulator-coach"
+          >
+            <Sparkles className="w-4 h-4 text-indigo-400 animate-pulse" />
+            <span>AI STRATEGY & COACH</span>
+            <span className="ml-0.5 px-2 py-0.5 bg-indigo-950/80 border border-indigo-700/60 text-indigo-300 rounded-full font-mono text-[11px] font-bold">
+              Hub
+            </span>
+          </button>
+        </div>
+
+        {/* Right Info: Match count / Earliest sort */}
+        <div className="hidden md:flex items-center gap-2 px-4 py-2 text-xs font-mono text-slate-400">
+          <Clock className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+          <span>Chronological Kickoff</span>
         </div>
       </nav>
 
-      {/* Quick League Categories Strip */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-mono no-scrollbar">
-        <span className="text-[10px] text-slate-500 uppercase font-bold mr-1 flex-shrink-0">
-          LEAGUES:
-        </span>
-        {LEAGUE_CATEGORIES.map((cat) => {
-          const isSelected = selectedCategory === cat.id && selectedLeague === 'all';
-          const count = categoryCounts[cat.id];
-          const hasCount = typeof count === 'number';
-          return (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => {
-                onCategoryChange?.(cat.id);
-                onLeagueChange('all');
-              }}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] whitespace-nowrap transition-all border ${
-                isSelected
-                  ? 'bg-sky-950/80 border-sky-600 text-sky-200 font-bold shadow-sm'
-                  : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
-              }`}
-            >
-              {getCategoryIcon(cat.icon)}
-              <span>{cat.label}</span>
-              {hasCount && (
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-semibold ${
-                    count === 0
-                      ? 'bg-slate-800/50 text-slate-600'
-                      : isSelected
-                      ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
-                      : 'bg-slate-800 text-slate-400'
-                  }`}
-                >
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {/* Unified Filter Toolbar (only active for upcoming fixture feeds) */}
+      {(activeTab === 'timeline' || activeTab === 'favourites') && (
+        <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3 space-y-2.5">
+          {/* Row 1: Search + League Select + Date Range Selector */}
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+          {/* Search Box (6 cols) */}
+          <div className="sm:col-span-5 relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder="Search teams (Arsenal, Chiefs), leagues..."
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-8 py-2 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
+              id="input-search-fixtures"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => onSearchChange('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                title="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
 
-      {/* Upcoming Dates & Date Range Selector Strip */}
-      <div className="flex flex-col gap-2 pt-1 border-t border-slate-800/60" id="date-range-filter-panel">
-        <div className="flex items-center justify-between gap-2">
-          {/* Presets Horizontal Strip */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-mono no-scrollbar flex-1">
-            <span className="text-[10px] text-sky-400 uppercase font-bold mr-1 flex-shrink-0 flex items-center gap-1">
-              <CalendarDays className="w-3.5 h-3.5 text-sky-400" />
-              DATES:
-            </span>
-            {DATE_PRESETS.map((preset) => {
-              const isSelected = dateRange.presetId === preset.id;
-              const count = datePresetCounts[preset.id];
+          {/* League Dropdown (4 cols) */}
+          <div className="sm:col-span-4 relative">
+            <Filter className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <select
+              value={selectedLeague}
+              onChange={(e) => {
+                onLeagueChange(e.target.value);
+                if (e.target.value !== 'all') {
+                  onCategoryChange?.('all');
+                }
+              }}
+              className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-lg pl-8 pr-7 py-2 appearance-none focus:outline-none focus:border-sky-500 font-mono"
+              id="select-league-filter"
+            >
+              <option value="all">All Leagues ({availableLeagues.length})</option>
+              {availableLeagues.map((league) => {
+                const meta = getLeagueMeta(league);
+                const count = leagueCounts[league] ?? 1;
+                const isVolatile = isHighVolatilityLeague(league);
+                return (
+                  <option key={league} value={league}>
+                    {meta.flagEmoji} {meta.country} / {league} ({count}) {isVolatile ? '⚡' : ''}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {/* Date Range Dropdown (3 cols) */}
+          <div className="sm:col-span-3 relative">
+            <CalendarDays className="w-3.5 h-3.5 text-sky-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <select
+              value={dateRange.presetId}
+              onChange={(e) => handlePresetClick(e.target.value as DatePresetId)}
+              className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-lg pl-8 pr-7 py-2 appearance-none focus:outline-none focus:border-sky-500 font-mono"
+              id="select-date-preset"
+            >
+              {DATE_PRESETS.map((preset) => {
+                const count = datePresetCounts[preset.id];
+                return (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.label} {typeof count === 'number' ? `(${count})` : ''}
+                  </option>
+                );
+              })}
+              <option value="custom">Custom Date Range...</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Row 2: League Region Chips + Quick Filter Indicators */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800/60 text-xs font-mono">
+          {/* Category Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+            {LEAGUE_CATEGORIES.map((cat) => {
+              const isSelected = selectedCategory === cat.id && selectedLeague === 'all';
+              const count = categoryCounts[cat.id];
               return (
                 <button
-                  key={preset.id}
+                  key={cat.id}
                   type="button"
-                  onClick={() => handlePresetClick(preset.id)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] whitespace-nowrap transition-all border ${
+                  onClick={() => {
+                    onCategoryChange?.(cat.id);
+                    onLeagueChange('all');
+                  }}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] whitespace-nowrap transition-all border ${
                     isSelected
-                      ? 'bg-sky-950/90 border-sky-500 text-sky-200 font-bold shadow-sm'
-                      : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      ? 'bg-sky-950/80 border-sky-500 text-sky-200 font-bold'
+                      : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200'
                   }`}
-                  id={`btn-date-preset-${preset.id}`}
                 >
-                  <span>{preset.label}</span>
-                  {typeof count === 'number' && (
-                    <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-semibold ${
-                        count === 0
-                          ? 'bg-slate-800/50 text-slate-600'
-                          : isSelected
-                          ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
-                          : 'bg-slate-800 text-slate-400'
-                      }`}
-                    >
-                      {count}
-                    </span>
+                  {getCategoryIcon(cat.icon)}
+                  <span>{cat.label}</span>
+                  {typeof count === 'number' && count > 0 && (
+                    <span className="text-[10px] text-slate-500 ml-0.5">({count})</span>
                   )}
                 </button>
               );
             })}
-
-            {/* Custom Range Toggle Button */}
-            <button
-              type="button"
-              onClick={() => setIsCustomOpen((prev) => !prev)}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] whitespace-nowrap transition-all border ${
-                dateRange.presetId === 'custom' || isCustomOpen
-                  ? 'bg-sky-950/90 border-sky-400 text-sky-200 font-bold shadow-sm'
-                  : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
-              }`}
-              id="btn-date-custom-toggle"
-              title="Filter by specific custom kickoff date range"
-            >
-              <CalendarRange className="w-3 h-3 text-sky-400" />
-              <span>Custom Range</span>
-              <ChevronDown
-                className={`w-3 h-3 transition-transform duration-150 ${
-                  isCustomOpen ? 'rotate-180 text-sky-300' : 'text-slate-500'
-                }`}
-              />
-            </button>
           </div>
 
-          {/* Quick Clear Date Shortcut Button if filter is active */}
-          {isDateFilterActive && (
-            <button
-              type="button"
-              onClick={handleResetDateFilter}
-              className="flex items-center gap-1 px-2 py-1 rounded bg-slate-800/90 hover:bg-slate-800 text-slate-300 hover:text-white text-[11px] font-mono border border-slate-700 transition-colors whitespace-nowrap flex-shrink-0"
-              title="Reset date filter to All Dates"
-              id="btn-reset-date-filter"
-            >
-              <X className="w-3 h-3 text-rose-400" />
-              <span className="hidden xs:inline">All Dates</span>
-            </button>
-          )}
+          {/* Filter Status & Reset Actions */}
+          <div className="flex items-center gap-2">
+            {(searchQuery || selectedLeague !== 'all' || isDateFilterActive || selectedCategory !== 'all') && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSearchChange('');
+                  onLeagueChange('all');
+                  onCategoryChange?.('all');
+                  handleResetDateFilter();
+                }}
+                className="flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-mono transition-colors"
+                title="Reset all active search, league, and date filters"
+              >
+                <X className="w-3 h-3 text-rose-400" />
+                <span>Reset Filters</span>
+              </button>
+            )}
+
+            {overridesCount > 0 && (
+              <button
+                type="button"
+                onClick={onResetAllOverrides}
+                className="flex items-center gap-1 px-2 py-1 bg-purple-950/60 hover:bg-purple-900/80 text-purple-300 border border-purple-800/60 rounded text-[11px] font-mono transition-colors"
+                id="btn-reset-all-overrides"
+                title="Reset manual overrides"
+              >
+                <RotateCcw className="w-3 h-3 text-purple-400" />
+                <span>Reset {overridesCount} Overrides</span>
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Collapsible Custom Date Range Picker */}
+        {/* Custom Date Range Picker Dropdown (Only when custom is active) */}
         {isCustomOpen && (
           <div
-            className="p-3 rounded-lg bg-[#0a1226] border border-sky-500/40 shadow-xl text-xs font-mono space-y-2.5 animate-in fade-in duration-150"
+            className="p-3 rounded-lg bg-slate-950 border border-sky-500/40 text-xs font-mono space-y-2.5 mt-2"
             id="custom-date-range-picker"
           >
-            <div className="flex items-center justify-between text-slate-300 pb-1.5 border-b border-slate-800/80">
-              <div className="flex items-center gap-2">
-                <CalendarCheck className="w-4 h-4 text-sky-400" />
-                <span className="font-bold text-sky-200 text-xs">
-                  Filter Fixtures by Specific Kickoff Dates
-                </span>
-              </div>
+            <div className="flex items-center justify-between text-slate-300 pb-1 border-b border-slate-800">
+              <span className="font-bold text-sky-300 text-xs flex items-center gap-1.5">
+                <CalendarCheck className="w-3.5 h-3.5 text-sky-400" />
+                <span>Custom Kickoff Date Range</span>
+              </span>
               {dateBounds && (
-                <span className="text-[10px] text-slate-400 hidden sm:inline">
-                  Dataset Range: {formatFriendlyDate(dateBounds.minDate)} –{' '}
-                  {formatFriendlyDate(dateBounds.maxDate, true)}
+                <span className="text-[10px] text-slate-400">
+                  {formatFriendlyDate(dateBounds.minDate)} – {formatFriendlyDate(dateBounds.maxDate, true)}
                 </span>
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 items-end">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end">
               <div>
                 <label className="block text-[10px] text-slate-400 uppercase font-bold mb-1">
-                  From Date (Kickoff Start):
+                  Start Date:
                 </label>
                 <input
                   type="date"
@@ -444,7 +513,7 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
 
               <div>
                 <label className="block text-[10px] text-slate-400 uppercase font-bold mb-1">
-                  To Date (Kickoff End):
+                  End Date:
                 </label>
                 <input
                   type="date"
@@ -462,128 +531,25 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
                   type="button"
                   onClick={handleApplyCustom}
                   disabled={!customStart && !customEnd}
-                  className="flex-1 py-1.5 px-3 rounded bg-sky-600 hover:bg-sky-500 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-bold text-xs font-mono transition-colors shadow-sm flex items-center justify-center gap-1.5"
+                  className="flex-1 py-1.5 px-3 rounded bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-slate-950 font-bold text-xs font-mono transition-colors flex items-center justify-center gap-1"
                   id="btn-apply-custom-date"
                 >
                   <Check className="w-3.5 h-3.5" />
-                  <span>Apply Date Range</span>
+                  <span>Apply Range</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleResetDateFilter}
-                  className="py-1.5 px-3 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono border border-slate-700 transition-colors"
-                  id="btn-clear-custom-date"
+                  className="py-1.5 px-2.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono transition-colors"
                 >
                   Reset
                 </button>
               </div>
             </div>
-
-            {customStart && customEnd && customStart > customEnd && (
-              <div className="text-[11px] text-amber-400 flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0" />
-                <span>Notice: Start date is after End date. Dates will be ordered automatically on apply.</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Active Date Filter Summary Banner */}
-        {isDateFilterActive && (
-          <div
-            className="flex items-center justify-between px-3 py-1.5 bg-sky-950/40 border border-sky-500/30 rounded-md text-xs font-mono text-sky-200"
-            id="active-date-filter-banner"
-          >
-            <div className="flex items-center gap-2 overflow-hidden">
-              <CalendarRange className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
-              <span className="truncate">
-                <strong>DATE FILTER ACTIVE:</strong> {activeDateLabel}
-                {displayedMatchesCount !== undefined && (
-                  <span className="text-sky-400 ml-1">({displayedMatchesCount} matches found)</span>
-                )}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={handleResetDateFilter}
-              className="flex items-center gap-1 text-[11px] text-sky-400 hover:text-white font-bold ml-2 underline underline-offset-2 whitespace-nowrap"
-              id="btn-banner-clear-date"
-            >
-              <span>Clear Date Filter</span>
-              <X className="w-3 h-3 text-rose-400" />
-            </button>
           </div>
         )}
       </div>
-
-      {/* Filter & Search Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-        {/* Search Input */}
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Filter teams (e.g. Bolivar, Dinamo, Real Madrid), leagues, venues..."
-            className="w-full bg-[#0f172a] border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 font-mono"
-            id="input-search-fixtures"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => onSearchChange('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-white font-mono"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-
-        {/* League Selector Dropdown */}
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 sm:flex-initial">
-            <Filter className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <select
-              value={selectedLeague}
-              onChange={(e) => {
-                onLeagueChange(e.target.value);
-                if (e.target.value !== 'all') {
-                  onCategoryChange?.('all');
-                }
-              }}
-              className="bg-[#0f172a] border border-slate-700 text-slate-200 text-xs rounded-lg pl-8 pr-7 py-2 appearance-none focus:outline-none focus:border-sky-500 font-mono w-full sm:w-auto"
-              id="select-league-filter"
-            >
-              <option value="all">🌐 All Leagues ({availableLeagues.length})</option>
-              {availableLeagues.map((league) => {
-                const meta = getLeagueMeta(league);
-                const count = leagueCounts[league] ?? 1;
-                const isVolatile = isHighVolatilityLeague(league);
-                return (
-                  <option key={league} value={league}>
-                    {meta.flagEmoji} {league} ({count}) {isVolatile ? '⚡[R7]' : ''}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-
-          {/* Reset All Overrides if any exist */}
-          {overridesCount > 0 && (
-            <button
-              type="button"
-              onClick={onResetAllOverrides}
-              className="flex items-center gap-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-rose-300 border border-rose-900/50 rounded-lg text-xs font-mono whitespace-nowrap transition-colors"
-              id="btn-reset-all-overrides"
-              title="Reset all manual overrides in localStorage to automatic mathematical mode"
-            >
-              <RotateCcw className="w-3 h-3 text-rose-400" />
-              <span>Reset Overrides ({overridesCount})</span>
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+    )}
+  </div>
+);
 };

@@ -1,12 +1,13 @@
 import { MatchFixture, ManualOverrideType, IngestionMetadata, DateRangeFilter } from '../types/soccer';
 import initialFixtures from '../data/upcoming_fixtures.json';
 import { isFavouriteTeam } from '../constants/favourites';
+import { verifyAndSanitizeFixtures } from './dataIntegrityValidator';
 
 const STORAGE_KEYS = {
   OVERRIDES: 'soccer_engine_manual_overrides_v1',
-  SETTINGS: 'soccer_engine_user_settings_v2',
-  CUSTOM_FIXTURES: 'soccer_engine_live_fixtures_v7_real_active',
-  LAST_INGESTION: 'soccer_engine_ingestion_metadata_v2',
+  SETTINGS: 'soccer_engine_user_settings_v3',
+  CUSTOM_FIXTURES: 'soccer_engine_live_fixtures_v10_hollywoodbets_18sept2026_noghost',
+  LAST_INGESTION: 'soccer_engine_ingestion_metadata_v3',
 };
 
 export function getRealDefaultFixtures(): MatchFixture[] {
@@ -14,7 +15,7 @@ export function getRealDefaultFixtures(): MatchFixture[] {
 }
 
 export interface UserSettings {
-  activeTab: 'timeline' | 'favourites' | 'learning';
+  activeTab: 'timeline' | 'favourites' | 'learning' | 'yesterday' | 'groups' | 'todaysMatches';
   searchQuery: string;
   selectedLeague: string;
   minConfidence: number;
@@ -118,14 +119,17 @@ export function saveUserSettings(settings: Partial<UserSettings>): UserSettings 
 export function loadFixturesDataset(): MatchFixture[] {
   try {
     if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
-      // Proactively clear legacy mock versions from browser cache
+      // Proactively clear legacy versions from browser cache
       [
         'soccer_engine_custom_fixtures_v1',
         'soccer_engine_custom_fixtures_v2',
         'soccer_engine_custom_fixtures_v3',
         'soccer_engine_custom_fixtures_v4_real',
         'soccer_engine_custom_fixtures_v5_live_real',
-        'soccer_engine_custom_fixtures_v6_real_march2025'
+        'soccer_engine_custom_fixtures_v6_real_march2025',
+        'soccer_engine_live_fixtures_v7_real_active',
+        'soccer_engine_live_fixtures_v8_sept2026_active',
+        'soccer_engine_live_fixtures_v9_hollywoodbets_18sept2026'
       ].forEach((legacyKey) => {
         localStorage.removeItem(legacyKey);
       });
@@ -134,7 +138,14 @@ export function loadFixturesDataset(): MatchFixture[] {
       if (custom) {
         const parsed = JSON.parse(custom);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return sortFixturesByKickoff(parsed);
+          // Drop any legacy ghost matches before today (2026-09-18)
+          const nonGhost = parsed.filter(f => f && f.kickoffTime && f.kickoffTime >= '2026-09-18T00:00:00Z');
+          if (nonGhost.length > 0) {
+            const { fixtures: validated } = verifyAndSanitizeFixtures(nonGhost);
+            return sortFixturesByKickoff(validated);
+          } else {
+            localStorage.removeItem(STORAGE_KEYS.CUSTOM_FIXTURES);
+          }
         }
       }
     }
@@ -143,14 +154,14 @@ export function loadFixturesDataset(): MatchFixture[] {
   }
 
   // Fallback to verified real fixtures dataset
-  return sortFixturesByKickoff(initialFixtures as MatchFixture[]);
+  const { fixtures: validatedDefaults } = verifyAndSanitizeFixtures(initialFixtures as MatchFixture[]);
+  return sortFixturesByKickoff(validatedDefaults);
 }
 
 /**
  * Strict Timeline Sorting:
  * Every list, card view, and tab display inside the entire app MUST be sorted
  * sequentially according to the match starting kickoff time string.
- * The game starting earliest must always remain at the top of the feed.
  */
 export function sortFixturesByKickoff(fixtures: MatchFixture[]): MatchFixture[] {
   return [...fixtures].sort((a, b) => {
@@ -161,16 +172,26 @@ export function sortFixturesByKickoff(fixtures: MatchFixture[]): MatchFixture[] 
 }
 
 /**
- * Save custom or freshly imported scraped JSON
+ * Save custom or freshly imported scraped JSON with automatic integrity sanitization
+ * and robust QuotaExceededError handling.
  */
 export function saveCustomFixtures(fixtures: MatchFixture[]): boolean {
   try {
-    const sorted = sortFixturesByKickoff(fixtures);
-    localStorage.setItem(STORAGE_KEYS.CUSTOM_FIXTURES, JSON.stringify(sorted));
+    const { fixtures: sanitized } = verifyAndSanitizeFixtures(fixtures);
+    const sorted = sortFixturesByKickoff(sanitized);
+    try {
+      localStorage.setItem(STORAGE_KEYS.CUSTOM_FIXTURES, JSON.stringify(sorted));
+    } catch (quotaErr) {
+      // If quota exceeded, clear non-essential caches and retry once
+      console.warn('localStorage quota exceeded, purging old caches and retrying...', quotaErr);
+      localStorage.removeItem('soccer_engine_batch_fixtures_cache_v1');
+      localStorage.removeItem(STORAGE_KEYS.LAST_INGESTION);
+      localStorage.setItem(STORAGE_KEYS.CUSTOM_FIXTURES, JSON.stringify(sorted));
+    }
     updateIngestionMetadata(sorted);
     return true;
   } catch (err) {
-    console.error('Failed to save custom fixtures to localStorage', err);
+    console.warn('Failed to save custom fixtures to localStorage due to storage limits', err);
     return false;
   }
 }
@@ -193,8 +214,9 @@ export function restoreDefaultFixtures(): MatchFixture[] {
  * Ingestion metadata helper
  */
 export function getIngestionMetadata(fixtures: MatchFixture[]): IngestionMetadata {
-  const favCount = fixtures.filter(f =>
-    isFavouriteTeam(f.homeTeam.name) || isFavouriteTeam(f.awayTeam.name)
+  const valid = (fixtures || []).filter((f) => Boolean(f && f.homeTeam && f.awayTeam));
+  const favCount = valid.filter(f =>
+    isFavouriteTeam(f.homeTeam?.name) || isFavouriteTeam(f.awayTeam?.name)
   ).length;
 
   return {

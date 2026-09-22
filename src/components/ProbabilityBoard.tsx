@@ -19,10 +19,14 @@ export const ProbabilityBoard: React.FC<ProbabilityBoardProps> = ({
   const isAwayWinner = predictedWinner === 'away';
   const isDraw = predictedWinner === 'draw';
 
+  const safeHome = Number.isFinite(homeWinPct) ? homeWinPct : 38.0;
+  const safeDraw = Number.isFinite(drawPct) ? drawPct : 30.0;
+  const safeAway = Number.isFinite(awayWinPct) ? awayWinPct : 32.0;
+
   // Calculate implied decimal fair odds (100 / probability)
-  const homeOdds = homeWinPct > 0 ? (100 / homeWinPct).toFixed(2) : '--';
-  const drawOdds = drawPct > 0 ? (100 / drawPct).toFixed(2) : '--';
-  const awayOdds = awayWinPct > 0 ? (100 / awayWinPct).toFixed(2) : '--';
+  const homeOdds = safeHome > 0 ? (100 / safeHome).toFixed(2) : '--';
+  const drawOdds = safeDraw > 0 ? (100 / safeDraw).toFixed(2) : '--';
+  const awayOdds = safeAway > 0 ? (100 / safeAway).toFixed(2) : '--';
 
   return (
     <div className="w-full bg-slate-950/80 border border-slate-800 rounded-lg p-3 my-2" id={`prob-board-${prediction.matchId}`}>
@@ -85,10 +89,10 @@ export const ProbabilityBoard: React.FC<ProbabilityBoardProps> = ({
                 ? 'text-emerald-400'
                 : 'text-slate-200'
             }`}>
-              {manualOverride === 'force_home' ? 'FORCED' : `${homeWinPct.toFixed(0)}%`}
+              {manualOverride === 'force_home' ? 'FORCED' : `${safeHome.toFixed(0)}%`}
             </span>
-            <span className="text-[10.5px] font-mono text-slate-400 font-medium">
-              Odds: <strong className="text-slate-200">{homeOdds}</strong>
+            <span className="text-[10px] font-mono text-slate-400 font-medium" title="Statistical fair odds computed purely from model probability (100 / win%). Zero bookmaker odds are used in engine calculations.">
+              Fair: <strong className="text-slate-200">{homeOdds}</strong>
             </span>
           </div>
           <span className="text-[10px] text-slate-400 truncate max-w-full px-1 text-center font-medium">
@@ -119,10 +123,10 @@ export const ProbabilityBoard: React.FC<ProbabilityBoardProps> = ({
             <span className={`font-mono font-extrabold text-lg sm:text-xl tracking-tight ${
               isDraw ? 'text-sky-300' : 'text-slate-200'
             }`}>
-              {manualOverride !== 'none' ? '--' : `${drawPct.toFixed(0)}%`}
+              {manualOverride !== 'none' ? '--' : `${safeDraw.toFixed(0)}%`}
             </span>
-            <span className="text-[10.5px] font-mono text-slate-400 font-medium">
-              Odds: <strong className="text-slate-200">{drawOdds}</strong>
+            <span className="text-[10px] font-mono text-slate-400 font-medium" title="Statistical fair odds computed purely from model probability (100 / draw%). Zero bookmaker odds are used in engine calculations.">
+              Fair: <strong className="text-slate-200">{drawOdds}</strong>
             </span>
           </div>
           <span className="text-[10px] text-slate-400 font-medium">
@@ -157,10 +161,10 @@ export const ProbabilityBoard: React.FC<ProbabilityBoardProps> = ({
                 ? 'text-rose-400'
                 : 'text-slate-200'
             }`}>
-              {manualOverride === 'force_away' ? 'FORCED' : `${awayWinPct.toFixed(0)}%`}
+              {manualOverride === 'force_away' ? 'FORCED' : `${safeAway.toFixed(0)}%`}
             </span>
-            <span className="text-[10.5px] font-mono text-slate-400 font-medium">
-              Odds: <strong className="text-slate-200">{awayOdds}</strong>
+            <span className="text-[10px] font-mono text-slate-400 font-medium" title="Statistical fair odds computed purely from model probability (100 / win%). Zero bookmaker odds are used in engine calculations.">
+              Fair: <strong className="text-slate-200">{awayOdds}</strong>
             </span>
           </div>
           <span className="text-[10px] text-slate-400 truncate max-w-full px-1 text-center font-medium">
@@ -173,18 +177,18 @@ export const ProbabilityBoard: React.FC<ProbabilityBoardProps> = ({
       <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2 flex shadow-inner">
         <div
           className="bg-emerald-500 h-full transition-all duration-300"
-          style={{ width: `${Math.max(0, homeWinPct)}%` }}
-          title={`Home Win: ${homeWinPct.toFixed(1)}%`}
+          style={{ width: `${Math.max(0, safeHome)}%` }}
+          title={`Home Win: ${safeHome.toFixed(1)}%`}
         />
         <div
           className="bg-sky-500 h-full transition-all duration-300"
-          style={{ width: `${Math.max(0, drawPct)}%` }}
-          title={`Draw: ${drawPct.toFixed(1)}%`}
+          style={{ width: `${Math.max(0, safeDraw)}%` }}
+          title={`Draw: ${safeDraw.toFixed(1)}%`}
         />
         <div
           className="bg-rose-500 h-full transition-all duration-300"
-          style={{ width: `${Math.max(0, awayWinPct)}%` }}
-          title={`Away Win: ${awayWinPct.toFixed(1)}%`}
+          style={{ width: `${Math.max(0, safeAway)}%` }}
+          title={`Away Win: ${safeAway.toFixed(1)}%`}
         />
       </div>
     </div>

@@ -1,22 +1,25 @@
 {
   "weights": {
     "stakesMotivationBoost": 2.492,
-    "deadRubberPenalty": 0.212,
-    "rankPointsMultiplier": 0.412,
-    "formWinPoints": 1.212,
-    "formDrawPoints": 0.409,
-    "homeAdvantageBaseline": 10.048,
-    "awayAdvantageBaseline": 8.448,
-    "homeDominanceBonus": 0.171,
-    "awayFormBonus": 1.52,
-    "tacticalPossessionWeight": 0.162,
-    "tacticalShotsWeight": 0.465,
-    "h2hMultiplier": 6.07,
-    "fatiguePenaltyRate": 0.165,
-    "volatilityDrawBoost": 0.695,
-    "favouriteWinFloor": 55.18,
-    "drawEquilibriumMargin": null,
-    "drawEquilibriumBoost": null
+    "deadRubberPenalty": 0.218,
+    "rankPointsMultiplier": 0.424,
+    "formWinPoints": 1.216,
+    "formDrawPoints": 0.412,
+    "homeAdvantageBaseline": 9.984,
+    "awayAdvantageBaseline": 8.487,
+    "homeDominanceBonus": 0.198,
+    "awayFormBonus": 1.54,
+    "tacticalPossessionWeight": 0.174,
+    "tacticalShotsWeight": 0.48,
+    "h2hMultiplier": 6.14,
+    "fatiguePenaltyRate": 0.18,
+    "volatilityDrawBoost": 0.704,
+    "favouriteWinFloor": 55.36,
+    "drawEquilibriumMargin": 2.07,
+    "drawEquilibriumBoost": 30.152,
+    "lastSeasonStandingWeight": 0.312,
+    "squadValueWeight": 0.409,
+    "matchRatingWeight": 4.564
   },
   "baselineWeights": {
     "stakesMotivationBoost": 2.5,
@@ -33,71 +36,66 @@
     "h2hMultiplier": 6,
     "fatiguePenaltyRate": 0.15,
     "volatilityDrawBoost": 0.68,
-    "favouriteWinFloor": 55
+    "favouriteWinFloor": 55,
+    "drawEquilibriumMargin": 4,
+    "drawEquilibriumBoost": 38,
+    "lastSeasonStandingWeight": 0.3,
+    "squadValueWeight": 0.4,
+    "matchRatingWeight": 4.5
   },
-  "totalEpochsTrained": 393,
-  "accuracyPct": 70,
-  "baselineAccuracyPct": 62.5,
-  "brierLoss": 0.244,
-  "baselineBrierLoss": 0.252,
-  "lastTrainedAt": "2026-09-06T09:36:42.701Z",
+  "totalEpochsTrained": 2702,
+  "accuracyPct": 68.3,
+  "baselineAccuracyPct": 69.5,
+  "brierLoss": 0.239,
+  "baselineBrierLoss": 0.238,
+  "lastTrainedAt": "2026-09-18T18:45:36.022Z",
   "isAutoLearningEnabled": true,
   "recentLossHistory": [
-    0.245,
-    0.245,
-    0.245,
-    0.245,
-    0.245,
-    0.245,
-    0.245,
-    0.245,
-    0.244,
-    0.244,
-    0.244,
-    0.244,
-    0.244,
-    0.244,
-    0.244
+    0.239,
+    0.239,
+    0.239,
+    0.239,
+    0.239,
+    0.239,
+    0.239,
+    0.239,
+    0.239,
+    0.239,
+    0.239,
+    0.239,
+    0.239,
+    0.239,
+    0.239
   ],
   "aiTacticalSynthesis": {
-    "summary": "Engine calibrated against 16 comprehensive historical match outcomes across 7 competitive leagues.",
+    "summary": "Online learning calibration evaluated against historical outcomes. High accuracy on domestic title contenders.",
     "recommendations": [
-      "Tactical shot differential is the highest predictor of victory in open matches.",
-      "High-volatility leagues benefit from variance compression to dampen overconfident away predictions.",
-      "Midweek continental travel fatigue penalty accurately predicts weekend road fatigue."
+      "Maintain shot-on-target differential above 0.40.",
+      "Dampen volatility spikes in secondary leagues.",
+      "Keep 55% win floor for Tier 1 elite favourites."
     ],
     "ruleEfficiency": [
       {
-        "rule": "Rule 1: Motivation Stakes",
-        "impact": "+2.5 pts boost",
+        "rule": "Rule 1: Stakes & Motivation",
+        "impact": "Optimized",
         "status": "optimal"
       },
       {
-        "rule": "Rule 3: Home Dominance",
-        "impact": "+15% home multiplier",
+        "rule": "Rule 3: Home Fortress",
+        "impact": "High conviction",
         "status": "optimal"
       },
       {
-        "rule": "Rule 5: Shot/Possession",
-        "impact": "+3.5 pts modifier",
-        "status": "optimal"
-      },
-      {
-        "rule": "Rule 6: 72h Fatigue",
-        "impact": "-15% road fatigue",
-        "status": "optimal"
-      },
-      {
-        "rule": "Rule 7: Volatility Cap",
-        "impact": "0.68 compression",
+        "rule": "Rule 5: Shot Dominance",
+        "impact": "Primary decider",
         "status": "optimal"
       },
       {
         "rule": "Rule 8: Favourite Floor",
-        "impact": "55% win floor",
+        "impact": "Active 55%",
         "status": "optimal"
       }
     ],
-    "timestamp": "2026-09-04T21:50:03.731Z"
+    "timestamp": "2026-09-13T05:47:08.619Z"
   }
 }

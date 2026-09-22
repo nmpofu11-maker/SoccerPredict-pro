@@ -93,11 +93,16 @@ export function calculatePresetDates(
  * Filter check: returns true if fixture kickoff falls within the date range
  */
 export function isFixtureInDateRange(fixture: MatchFixture, range: DateRangeFilter): boolean {
+  const fixtureDate = fixture.kickoffTime.slice(0, 10);
+
+  if (range.presetId === 'today') {
+    const todayStr = range.startDate || getTodayDateString();
+    return fixtureDate === todayStr;
+  }
+
   if (!range.startDate && !range.endDate) {
     return true;
   }
-
-  const fixtureDate = fixture.kickoffTime.slice(0, 10);
 
   if (range.startDate && range.endDate) {
     return fixtureDate >= range.startDate && fixtureDate <= range.endDate;

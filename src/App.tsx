@@ -6,6 +6,8 @@ import {
   AutoScrapeConfig,
   ScrapeLogItem,
   LearningModelState,
+  DataIntegrityAuditReport,
+  PredictionResult,
 } from './types/soccer';
 import {
   loadFixturesDataset,
@@ -46,6 +48,7 @@ import {
   countMatchesForPreset,
   getDatasetDateBounds,
   getDateRangeSummaryLabel,
+  calculatePresetDates,
 } from './utils/dateFilterUtils';
 
 import { Navbar } from './components/Navbar';
@@ -58,17 +61,25 @@ import { RulesReferenceModal } from './components/RulesReferenceModal';
 import { ScraperIngestionModal } from './components/ScraperIngestionModal';
 import { SelfLearningDashboard } from './components/SelfLearningDashboard';
 import { ApkAndPerformanceModal } from './components/ApkAndPerformanceModal';
+import { YesterdayPerformanceView } from './components/YesterdayPerformanceView';
+import { StatisticalAnalysisModal } from './components/StatisticalAnalysisModal';
+import { SmartAccumulatorCoachTab } from './components/SmartAccumulatorCoachTab';
+import { ApiQuotaWidget } from './components/ApiQuotaWidget';
+import { BetSlipDrawer } from './components/BetSlipDrawer';
+import { PredictionShareModal } from './components/PredictionShareModal';
+import { BetSlipItem } from './types/soccer';
+import { calculateEnginePerformance } from './services/performanceService';
 
-import { Star, Calendar, CalendarRange, RefreshCw, AlertCircle, CheckCircle2, Zap, Brain, X, Filter, Search, Smartphone } from 'lucide-react';
+import { Star, Calendar, CalendarRange, RefreshCw, AlertCircle, CheckCircle2, Zap, Brain, X, Filter, Search, Smartphone, Sun } from 'lucide-react';
 
 export default function App() {
   // Local-first persistent state initialized synchronously
   const [fixtures, setFixtures] = useState<MatchFixture[]>(() => loadFixturesDataset());
   const [overrides, setOverrides] = useState<Record<string, ManualOverrideType>>(() => loadManualOverrides());
   const [learningState, setLearningState] = useState<LearningModelState>(() => loadLearningState());
-  const [activeTab, setActiveTab] = useState<'timeline' | 'favourites' | 'learning'>(() => {
+  const [activeTab, setActiveTab] = useState<'timeline' | 'favourites' | 'learning' | 'yesterday' | 'groups' | 'todaysMatches' | 'smartCoach'>(() => {
     const s = loadUserSettings();
-    return (s.activeTab as 'timeline' | 'favourites' | 'learning') || 'timeline';
+    return (s.activeTab as 'timeline' | 'favourites' | 'learning' | 'yesterday' | 'groups' | 'todaysMatches' | 'smartCoach') || 'timeline';
   });
   const [searchQuery, setSearchQuery] = useState<string>(() => {
     const s = loadUserSettings();
@@ -81,7 +92,18 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<LeagueCategoryId>('all');
   const [dateRange, setDateRange] = useState<DateRangeFilter>(() => {
     const s = loadUserSettings();
-    return s.dateRange || DEFAULT_DATE_RANGE;
+    const range = s.dateRange || DEFAULT_DATE_RANGE;
+    // If the active tab is today's matches, always force a fresh today's date bounds
+    if (s.activeTab === 'todaysMatches') {
+      const { startDate, endDate } = calculatePresetDates('today');
+      return { startDate, endDate, presetId: 'today' };
+    }
+    // If we have a saved dynamic preset, re-evaluate it against actual current client time
+    if (range.presetId && range.presetId !== 'all' && range.presetId !== 'custom') {
+      const { startDate, endDate } = calculatePresetDates(range.presetId);
+      return { startDate, endDate, presetId: range.presetId };
+    }
+    return range;
   });
 
   // Auto-Scraper Automated Ingestion State
@@ -95,7 +117,46 @@ export default function App() {
   const [isFavMatrixOpen, setIsFavMatrixOpen] = useState(false);
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
   const [isIngestionModalOpen, setIsIngestionModalOpen] = useState(false);
+  const [ingestionModalTab, setIngestionModalTab] = useState<'verification' | 'coverage' | 'autoscrape' | 'payload'>('verification');
+  const [auditReport, setAuditReport] = useState<DataIntegrityAuditReport | null>(null);
   const [isApkModalOpen, setIsApkModalOpen] = useState(false);
+  const [isStatisticalModalOpen, setIsStatisticalModalOpen] = useState(false);
+
+  // New interactive feature states
+  const [betSlipItems, setBetSlipItems] = useState<BetSlipItem[]>([]);
+  const [isBetSlipOpen, setIsBetSlipOpen] = useState(false);
+  const [isLiveSimulationActive, setIsLiveSimulationActive] = useState(false);
+  const [shareFixture, setShareFixture] = useState<MatchFixture | null>(null);
+  const [sharePrediction, setSharePrediction] = useState<PredictionResult | null>(null);
+
+  const handleAddToBetSlip = (item: BetSlipItem) => {
+    setBetSlipItems((prev) => {
+      const exists = prev.some((p) => p.matchId === item.matchId);
+      if (exists) {
+        return prev.map((p) => (p.matchId === item.matchId ? item : p));
+      }
+      return [...prev, item];
+    });
+    setIsBetSlipOpen(true);
+  };
+
+  const handleRemoveBetSlipItem = (id: string) => {
+    setBetSlipItems((prev) => prev.filter((i) => i.id !== id));
+  };
+
+  const handleClearBetSlip = () => {
+    setBetSlipItems([]);
+  };
+
+  const handleShareMatch = (fixture: MatchFixture, prediction: PredictionResult) => {
+    setShareFixture(fixture);
+    setSharePrediction(prediction);
+  };
+
+  const handleOpenIngestionModal = (tab: 'verification' | 'coverage' | 'autoscrape' | 'payload' = 'autoscrape') => {
+    setIngestionModalTab(tab);
+    setIsIngestionModalOpen(true);
+  };
 
   // Initialize and guard from local-first storage on mount
   useEffect(() => {
@@ -130,13 +191,14 @@ export default function App() {
       }
     }
 
-    // Automatically perform live API sync to retrieve real-world match fixtures
+    // Automatically perform live API sync to retrieve and verify real-world match fixtures
     performLiveApiSync(loadedFixtures)
-      .then(({ updatedFixtures, log }) => {
+      .then(({ updatedFixtures, log, auditReport: report }) => {
         if (updatedFixtures.length > 0) {
           setFixtures(updatedFixtures);
           saveCustomFixtures(updatedFixtures);
           setScrapeLogs(prev => [log, ...prev].slice(0, 50));
+          if (report) setAuditReport(report);
         }
       })
       .catch((err) => {
@@ -145,8 +207,12 @@ export default function App() {
   }, []);
 
   // Sync settings changes to localStorage
-  const handleTabChange = (tab: 'timeline' | 'favourites' | 'learning') => {
+  const handleTabChange = (tab: 'timeline' | 'favourites' | 'learning' | 'yesterday' | 'groups' | 'todaysMatches') => {
     setActiveTab(tab);
+    if (tab === 'todaysMatches') {
+      const { startDate, endDate } = calculatePresetDates('today');
+      setDateRange({ startDate, endDate, presetId: 'today' });
+    }
     saveUserSettings({ activeTab: tab });
   };
 
@@ -201,7 +267,8 @@ export default function App() {
 
     // Tab Filter
     if (activeTab === 'favourites') {
-      list = list.filter((f) => {
+      list = (list || []).filter((f) => {
+        if (!f || !f.homeTeam || !f.awayTeam) return false;
         const homeFav = isFavouriteTeam(f.homeTeam.name);
         const awayFav = isFavouriteTeam(f.awayTeam.name);
         return homeFav || awayFav;
@@ -223,18 +290,51 @@ export default function App() {
       list = list.filter((f) => f.league === selectedLeague);
     }
 
-    // Search Filter (Team names, league, venue)
+    // Search Filter (Team names, matchups e.g. "LIBERTAS vs SC FAETANO", league, venue)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      list = list.filter(
-        (f) =>
-          f.homeTeam.name.toLowerCase().includes(q) ||
-          f.awayTeam.name.toLowerCase().includes(q) ||
-          f.homeTeam.shortName.toLowerCase().includes(q) ||
-          f.awayTeam.shortName.toLowerCase().includes(q) ||
-          f.league.toLowerCase().includes(q) ||
-          f.venue.toLowerCase().includes(q)
-      );
+      list = list.filter((f) => {
+        const home = (f.homeTeam?.name || '').toLowerCase();
+        const away = (f.awayTeam?.name || '').toLowerCase();
+        const homeShort = (f.homeTeam?.shortName || '').toLowerCase();
+        const awayShort = (f.awayTeam?.shortName || '').toLowerCase();
+        const league = (f.league || '').toLowerCase();
+        const venue = (f.venue || '').toLowerCase();
+        const matchup1 = `${home} vs ${away}`;
+        const matchup2 = `${home} v ${away}`;
+        const matchup3 = `${home} - ${away}`;
+
+        if (
+          home.includes(q) ||
+          away.includes(q) ||
+          homeShort.includes(q) ||
+          awayShort.includes(q) ||
+          league.includes(q) ||
+          venue.includes(q) ||
+          matchup1.includes(q) ||
+          matchup2.includes(q) ||
+          matchup3.includes(q)
+        ) {
+          return true;
+        }
+
+        // Split on vs, v, hyphen, or spaces to check if multiple terms match both teams
+        const terms = q.split(/\s+(?:vs|v|-)\s+|\s+/).filter(Boolean);
+        if (terms.length > 1) {
+          const allTermsMatch = terms.every(
+            (t) =>
+              home.includes(t) ||
+              away.includes(t) ||
+              homeShort.includes(t) ||
+              awayShort.includes(t) ||
+              league.includes(t) ||
+              venue.includes(t)
+          );
+          if (allTermsMatch) return true;
+        }
+
+        return false;
+      });
     }
 
     // Strict Timeline Sorting: earliest kickoff time at top
@@ -242,10 +342,10 @@ export default function App() {
   }, [fixtures, activeTab, dateRange, selectedLeague, selectedCategory, searchQuery]);
 
   // Total counts
-  const totalMatchesCount = fixtures.length;
+  const totalMatchesCount = (fixtures || []).length;
   const favouritesMatchesCount = useMemo(() => {
-    return fixtures.filter(
-      (f) => isFavouriteTeam(f.homeTeam.name) || isFavouriteTeam(f.awayTeam.name)
+    return (fixtures || []).filter(
+      (f) => isFavouriteTeam(f?.homeTeam?.name || '') || isFavouriteTeam(f?.awayTeam?.name || '')
     ).length;
   }, [fixtures]);
 
@@ -253,14 +353,14 @@ export default function App() {
   const categoryCounts = useMemo(() => {
     const base =
       activeTab === 'favourites'
-        ? fixtures.filter((f) => isFavouriteTeam(f.homeTeam.name) || isFavouriteTeam(f.awayTeam.name))
-        : fixtures;
+        ? (fixtures || []).filter((f) => isFavouriteTeam(f?.homeTeam?.name || '') || isFavouriteTeam(f?.awayTeam?.name || ''))
+        : (fixtures || []);
     const counts: Record<string, number> = {
       all: base.length,
     };
     LEAGUE_CATEGORIES.forEach((cat) => {
       if (cat.id !== 'all') {
-        counts[cat.id] = base.filter((f) => matchesLeagueCategory(f.league, cat.id)).length;
+        counts[cat.id] = base.filter((f) => matchesLeagueCategory(f?.league || '', cat.id)).length;
       }
     });
     return counts;
@@ -268,15 +368,15 @@ export default function App() {
 
   // Earliest and latest date bounds across the fixtures dataset
   const dateBounds = useMemo(() => {
-    return getDatasetDateBounds(fixtures);
+    return getDatasetDateBounds(fixtures || []);
   }, [fixtures]);
 
   // Fixture counts for each date preset (relative to current active tab)
   const datePresetCounts = useMemo(() => {
     const baseList =
       activeTab === 'favourites'
-        ? fixtures.filter((f) => isFavouriteTeam(f.homeTeam.name) || isFavouriteTeam(f.awayTeam.name))
-        : fixtures;
+        ? (fixtures || []).filter((f) => isFavouriteTeam(f?.homeTeam?.name || '') || isFavouriteTeam(f?.awayTeam?.name || ''))
+        : (fixtures || []);
 
     const presets: DatePresetId[] = ['all', 'today', 'tomorrow', 'weekend', '7days', '14days', 'month'];
     const counts: Record<DatePresetId, number> = {} as Record<DatePresetId, number>;
@@ -286,14 +386,14 @@ export default function App() {
     return counts;
   }, [fixtures, activeTab]);
 
-  // Compute live empirical cumulative prediction success rate from historical backtest & calibrated weights
-  const backtestEval = useMemo(() => {
-    return evaluateHistoricalBacktest(HISTORICAL_MATCH_RESULTS, learningState.weights);
+  // Compute live empirical cumulative prediction success rate & yesterday metrics
+  const performanceData = useMemo(() => {
+    return calculateEnginePerformance(HISTORICAL_MATCH_RESULTS, learningState.weights);
   }, [learningState.weights]);
 
-  const cumulativeSuccessRate = backtestEval.accuracyPct;
-  const correctPredictionsCount = backtestEval.correctCount;
-  const totalPredictionsEvaluated = backtestEval.totalCount;
+  const cumulativeSuccessRate = performanceData.summary.allTimeAccuracyPct;
+  const correctPredictionsCount = performanceData.summary.allTimeCorrect;
+  const totalPredictionsEvaluated = performanceData.summary.allTimeTotal;
 
   const activeOverridesCount = Object.keys(overrides).length;
 
@@ -313,9 +413,12 @@ export default function App() {
   const triggerScrapeCycle = useCallback(() => {
     setIsScrapingNow(true);
     performLiveApiSync(fixtures)
-      .then(({ updatedFixtures, log }) => {
+      .then(({ updatedFixtures, log, auditReport: report }) => {
         setFixtures(updatedFixtures);
         saveCustomFixtures(updatedFixtures);
+        if (report) {
+          setAuditReport(report);
+        }
         const newLogs = saveScrapeLog(log);
         setScrapeLogs(newLogs);
 
@@ -422,11 +525,14 @@ export default function App() {
 
       {/* Primary Sticky Navbar */}
       <Navbar
-        onOpenIngestion={() => setIsIngestionModalOpen(true)}
+        onOpenIngestion={() => handleOpenIngestionModal('autoscrape')}
+        onOpenVerification={() => handleOpenIngestionModal('verification')}
+        authenticityScore={auditReport?.overallAuthenticityScore ?? 100}
         onOpenRules={() => setIsRulesModalOpen(true)}
         onOpenFavouritesList={() => setIsFavMatrixOpen(true)}
         onOpenLearning={() => handleTabChange('learning')}
         onOpenApkModal={() => setIsApkModalOpen(true)}
+        onOpenStatisticalAnalysis={() => setIsStatisticalModalOpen(true)}
         overridesCount={activeOverridesCount}
         autoScrapeEnabled={autoScrapeConfig.enabled}
         onToggleAutoScrape={handleToggleAutoScrape}
@@ -444,9 +550,21 @@ export default function App() {
         <TechnicalSidebar
           onOpenRules={() => setIsRulesModalOpen(true)}
           onOpenFavourites={() => setIsFavMatrixOpen(true)}
+          onOpenVerification={() => handleOpenIngestionModal('verification')}
+          onOpenCoverage={() => handleOpenIngestionModal('coverage')}
+          authenticityScore={auditReport?.overallAuthenticityScore ?? 100}
           onNavigateToLearning={() => handleTabChange('learning')}
+          onNavigateToYesterday={() => handleTabChange('yesterday')}
           learningAccuracyPct={cumulativeSuccessRate}
+          yesterdayStats={{
+            total: performanceData.summary.yesterdayTotal,
+            correct: performanceData.summary.yesterdayCorrect,
+            wrong: performanceData.summary.yesterdayWrong,
+            accuracyPct: performanceData.summary.yesterdayAccuracyPct,
+          }}
           favouritesCount={80}
+          totalFixturesCount={fixtures.length}
+          totalLeaguesCount={auditReport?.leaguesAudited?.length || availableLeagues.length}
           autoScrapeEnabled={autoScrapeConfig.enabled}
           secondsUntilNextScrape={secondsUntilNextScrape}
           intervalSeconds={autoScrapeConfig.intervalSeconds}
@@ -458,6 +576,30 @@ export default function App() {
         {/* Main Content Workspace */}
         <div className="flex-1 flex flex-col bg-[#020617] overflow-y-auto px-4 sm:px-6 py-4">
           <div className="max-w-7xl w-full mx-auto space-y-3">
+            {/* Verified API Quota Guard */}
+            <ApiQuotaWidget onFixturesSynced={(syncedFixtures) => setFixtures(syncedFixtures)} />
+
+            {/* Live Simulation Mode Bar */}
+            <div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5">
+              <div className="flex items-center gap-2">
+                <span className={`w-2.5 h-2.5 rounded-full ${isLiveSimulationActive ? 'bg-rose-500 animate-ping' : 'bg-slate-500'}`} />
+                <span className="text-xs font-mono font-bold text-slate-200">
+                  Live Match Simulation Ticker: {isLiveSimulationActive ? 'Active (Minute-by-Minute Live Tickers Enabled)' : 'Paused'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsLiveSimulationActive(!isLiveSimulationActive)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-extrabold transition-colors flex items-center gap-1.5 ${
+                  isLiveSimulationActive
+                    ? 'bg-rose-500 text-slate-950 hover:bg-rose-400'
+                    : 'bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700'
+                }`}
+              >
+                <span>{isLiveSimulationActive ? 'Disable Live Simulation' : 'Enable Live Simulation'}</span>
+              </button>
+            </div>
+
             {/* Top Summary Stats Bar */}
             <StatsOverview
               fixtures={fixtures}
@@ -466,8 +608,15 @@ export default function App() {
               cumulativeSuccessRate={cumulativeSuccessRate}
               correctPredictionsCount={correctPredictionsCount}
               totalPredictionsCount={totalPredictionsEvaluated}
-              brierLoss={backtestEval.brierLoss}
+              brierLoss={performanceData.summary.brierLoss}
+              yesterdayStats={{
+                total: performanceData.summary.yesterdayTotal,
+                correct: performanceData.summary.yesterdayCorrect,
+                wrong: performanceData.summary.yesterdayWrong,
+                accuracyPct: performanceData.summary.yesterdayAccuracyPct,
+              }}
               onOpenLearning={() => handleTabChange('learning')}
+              onOpenYesterday={() => handleTabChange('yesterday')}
             />
 
             {/* Primary Interactive Tab Navigation & Search Controls */}
@@ -480,6 +629,13 @@ export default function App() {
               learningAccuracyPct={cumulativeSuccessRate}
               correctPredictionsCount={correctPredictionsCount}
               totalPredictionsCount={totalPredictionsEvaluated}
+              yesterdayStats={{
+                total: performanceData.summary.yesterdayTotal,
+                correct: performanceData.summary.yesterdayCorrect,
+                wrong: performanceData.summary.yesterdayWrong,
+                accuracyPct: performanceData.summary.yesterdayAccuracyPct,
+                date: performanceData.summary.yesterdayDate,
+              }}
               searchQuery={searchQuery}
               onSearchChange={handleSearchChange}
               selectedLeague={selectedLeague}
@@ -497,7 +653,7 @@ export default function App() {
               dateBounds={dateBounds}
             />
 
-            {/* AI Self-Learning View */}
+            {/* AI Self-Learning View or Yesterday's Results View or Quad Groups View or Timeline Feed */}
             {activeTab === 'learning' ? (
               <SelfLearningDashboard
                 learningState={learningState}
@@ -506,9 +662,48 @@ export default function App() {
                   saveLearningState(newState);
                 }}
                 onOpenApkModal={() => setIsApkModalOpen(true)}
+                onOpenStatisticalModal={() => setIsStatisticalModalOpen(true)}
+              />
+            ) : activeTab === 'yesterday' ? (
+              <YesterdayPerformanceView
+                performanceSummary={performanceData.summary}
+                yesterdayEvaluations={performanceData.yesterdayEvaluations}
+                allEvaluations={performanceData.allEvaluations}
+                onOpenLearning={() => handleTabChange('learning')}
+              />
+            ) : activeTab === 'smartCoach' ? (
+              <SmartAccumulatorCoachTab
+                fixtures={fixtures}
+                predictions={predictions}
+                overrides={overrides}
+                engineWeights={learningState.weights}
+                onAddToBetSlip={handleAddToBetSlip}
               />
             ) : (
               <>
+                {/* Context Banner if on Today's Matches Tab */}
+                {activeTab === 'todaysMatches' && (
+                  <div className="p-3.5 rounded-xl bg-amber-950/30 border border-amber-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-200 font-mono mb-4">
+                    <div className="flex items-center gap-2.5">
+                      <Sun className="w-5 h-5 text-amber-400 flex-shrink-0 animate-pulse" />
+                      <div>
+                        <strong className="text-white font-bold block sm:inline">TODAY&apos;S ACTIVE MATCHES FEED:</strong>{' '}
+                        Displaying all verified match fixtures scheduled for today across all leagues.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const { startDate, endDate } = calculatePresetDates('today');
+                        setDateRange({ startDate, endDate, presetId: 'today' });
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold hover:bg-amber-500/30 transition-colors whitespace-nowrap"
+                    >
+                      Filter Today&apos;s Date Preset
+                    </button>
+                  </div>
+                )}
+
                 {/* Context Banner if on Favourites Tab */}
                 {activeTab === 'favourites' && (
                   <div className="p-3 rounded-lg bg-amber-950/20 border border-amber-500/30 flex items-center justify-between text-xs text-amber-200 font-mono">
@@ -529,32 +724,37 @@ export default function App() {
                 )}
 
                 {/* Fixtures Timeline Feed */}
-                {displayedFixtures.length > 0 ? (
+                {displayedFixtures.filter(f => Boolean(f && f.id && f.homeTeam && f.awayTeam)).length > 0 ? (
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 pb-8" id="fixtures-timeline-grid">
-                    {displayedFixtures.map((fixture) => {
-                      const prediction = predictions[fixture.id] || {
-                        matchId: fixture.id,
-                        homeWinPct: 33.3,
-                        drawPct: 33.4,
-                        awayWinPct: 33.3,
-                        predictedWinner: 'draw',
-                        confidenceScore: 50,
-                        appliedRules: [],
-                        rawPoints: { home: 10, away: 8.5, draw: 6.8 },
-                        finalPoints: { home: 10, away: 8.5, draw: 6.8 },
-                        isFavouriteMatch: false,
-                        favouriteTeams: [],
-                        manualOverride: 'none',
-                        isVolatilityCompressed: false,
-                      };
+                    {displayedFixtures
+                      .filter(f => Boolean(f && f.id && f.homeTeam && f.awayTeam))
+                      .map((fixture, index) => {
+                        const prediction = predictions[fixture.id] || {
+                          matchId: fixture.id,
+                          homeWinPct: 33.3,
+                          drawPct: 33.4,
+                          awayWinPct: 33.3,
+                          predictedWinner: 'draw',
+                          confidenceScore: 50,
+                          appliedRules: [],
+                          rawPoints: { home: 10, away: 8.5, draw: 6.8 },
+                          finalPoints: { home: 10, away: 8.5, draw: 6.8 },
+                          isFavouriteMatch: false,
+                          favouriteTeams: [],
+                          manualOverride: 'none',
+                          isVolatilityCompressed: false,
+                        };
 
                       return (
                         <MatchCard
-                          key={fixture.id}
+                          key={`${fixture.id}-${index}`}
                           fixture={fixture}
                           prediction={prediction}
                           onOverrideChange={handleOverrideChange}
                           historicalResults={HISTORICAL_MATCH_RESULTS}
+                          onAddToBetSlip={handleAddToBetSlip}
+                          onShareMatch={handleShareMatch}
+                          isLiveSimulationActive={isLiveSimulationActive}
                         />
                       );
                     })}
@@ -630,20 +830,24 @@ export default function App() {
                           </div>
                         )}
 
-                        {selectedLeague !== 'all' && (
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-950/60 border border-emerald-800/60 text-emerald-300 text-xs">
-                            <Filter className="w-3 h-3" />
-                            <span>League: {selectedLeague}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleLeagueChange('all')}
-                              className="ml-1 text-emerald-400 hover:text-white p-0.5"
-                              title="Reset league to all"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        )}
+                        {selectedLeague !== 'all' && (() => {
+                          const meta = getLeagueMeta(selectedLeague);
+                          return (
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-950/60 border border-emerald-800/60 text-emerald-300 text-xs">
+                              <span className="text-sm leading-none shrink-0" role="img" aria-label={meta.country}>{meta.flagEmoji}</span>
+                              <span className="text-emerald-400/80 font-medium">{meta.country} /</span>
+                              <span className="font-semibold text-emerald-200">{selectedLeague}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleLeagueChange('all')}
+                                className="ml-1 text-emerald-400 hover:text-white p-0.5"
+                                title="Reset league to all"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          );
+                        })()}
 
                         {(dateRange.presetId !== 'all' || dateRange.startDate || dateRange.endDate) && (
                           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-sky-950/60 border border-sky-800/60 text-sky-300 text-xs">
@@ -749,6 +953,14 @@ export default function App() {
       <RulesReferenceModal
         isOpen={isRulesModalOpen}
         onClose={() => setIsRulesModalOpen(false)}
+        onOpenStatisticalAnalysis={() => setIsStatisticalModalOpen(true)}
+      />
+
+      <StatisticalAnalysisModal
+        isOpen={isStatisticalModalOpen}
+        onClose={() => setIsStatisticalModalOpen(false)}
+        weights={learningState.weights}
+        onOpenRulesReference={() => setIsRulesModalOpen(true)}
       />
 
       <ScraperIngestionModal
@@ -764,6 +976,13 @@ export default function App() {
         isScrapingNow={isScrapingNow}
         onTriggerScrapeNow={triggerScrapeCycle}
         scrapeLogs={scrapeLogs}
+        auditReport={auditReport}
+        onAuditUpdated={(report) => setAuditReport(report)}
+        onFixturesRecalibrated={(recalibrated) => {
+          setFixtures(recalibrated);
+          saveCustomFixtures(recalibrated);
+        }}
+        initialTab={ingestionModalTab}
       />
 
       {/* APK Packaging & Zero Data Loss Modal */}
@@ -805,6 +1024,26 @@ export default function App() {
           <span className="text-emerald-400 font-semibold">DUAL-LAYER PERSISTENCE ACTIVE</span>
         </div>
       </footer>
+
+      {/* Accumulator Bet Slip Drawer */}
+      <BetSlipDrawer
+        items={betSlipItems}
+        onRemoveItem={handleRemoveBetSlipItem}
+        onClearSlip={handleClearBetSlip}
+        isOpen={isBetSlipOpen}
+        onToggleOpen={() => setIsBetSlipOpen(!isBetSlipOpen)}
+      />
+
+      {/* Prediction Share & Export Modal */}
+      <PredictionShareModal
+        fixture={shareFixture}
+        prediction={sharePrediction}
+        isOpen={Boolean(shareFixture && sharePrediction)}
+        onClose={() => {
+          setShareFixture(null);
+          setSharePrediction(null);
+        }}
+      />
     </div>
   );
 }

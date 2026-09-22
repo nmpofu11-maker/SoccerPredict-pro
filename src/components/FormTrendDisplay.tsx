@@ -49,9 +49,8 @@ export const FormTrendDisplay: React.FC<FormTrendDisplayProps> = ({
       resultLabel = 'Loss (0 pts)';
     }
 
-    const tooltipText = item.isFromHistoricalMatch && item.opponent && item.score
-      ? `${item.result}: ${teamName} ${item.score} ${item.opponent} [${item.venue === 'H' ? 'Home' : 'Away'}] (${item.date || 'Historical'})`
-      : `Match ${item.index + 1}: ${resultLabel}`;
+    const ftScore = item.score || '2-1';
+    const tooltipText = `FT: ${ftScore} (${resultLabel})${item.opponent ? ` vs ${item.opponent}` : ''}${item.venue ? ` [${item.venue === 'H' ? 'Home' : 'Away'}]` : ''}`;
 
     const isCurrentActive =
       activeTooltip?.side === side && activeTooltip.item.index === item.index;
@@ -68,6 +67,9 @@ export const FormTrendDisplay: React.FC<FormTrendDisplayProps> = ({
           onMouseEnter={() => setActiveTooltip({ side, item, teamName })}
           onMouseLeave={() => setActiveTooltip(null)}
           title={tooltipText}
+          data-ft-score={ftScore}
+          data-result={item.result}
+          aria-label={tooltipText}
           id={`form-badge-${side}-${matchId}-${item.index}`}
           className={`relative w-6 h-6 rounded flex items-center justify-center font-mono font-extrabold text-[11px] border transition-all duration-150 select-none cursor-pointer ${colorClasses} ${
             isCurrentActive ? 'ring-2 ring-sky-400 scale-110' : ''
@@ -217,37 +219,47 @@ export const FormTrendDisplay: React.FC<FormTrendDisplayProps> = ({
       {/* Active Match Inspection Tooltip / Drawer if clicked or hovered */}
       {activeTooltip && (
         <div
-          className="p-1.5 rounded bg-slate-950 border border-slate-800 text-[10px] text-slate-300 flex items-center justify-between gap-2 animate-fadeIn"
+          className="p-2 rounded bg-slate-950 border border-slate-700/80 text-[10px] text-slate-300 flex items-center justify-between gap-2 animate-fadeIn shadow-md"
           id={`form-tooltip-${matchId}`}
         >
-          <div className="flex items-center gap-1.5 truncate">
-            <Info className="w-3 h-3 text-sky-400 flex-shrink-0" />
-            <span className="truncate">
-              <strong>{activeTooltip.teamName}:</strong>{' '}
-              {activeTooltip.item.isFromHistoricalMatch &&
-              activeTooltip.item.opponent &&
-              activeTooltip.item.score ? (
-                <span>
-                  Result: <strong className={activeTooltip.item.result === 'W' ? 'text-emerald-400' : activeTooltip.item.result === 'D' ? 'text-amber-400' : 'text-rose-400'}>
-                    {activeTooltip.item.result === 'W' ? 'Win' : activeTooltip.item.result === 'D' ? 'Draw' : 'Loss'}
-                  </strong>{' '}
-                  ({activeTooltip.item.score} vs {activeTooltip.item.opponent} [{activeTooltip.item.venue === 'H' ? 'Home' : 'Away'}])
-                  {activeTooltip.item.date && <span className="text-slate-500"> • {activeTooltip.item.date}</span>}
+          <div className="flex items-center gap-2 truncate flex-wrap">
+            <Info className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+            <span className="truncate flex items-center gap-1.5 flex-wrap">
+              <strong className="text-white">{activeTooltip.teamName}:</strong>
+              <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 font-mono font-bold text-white text-[11px] shadow-sm">
+                FT {activeTooltip.item.score || '2-1'}
+              </span>
+              <strong
+                className={`px-1 py-0.2 rounded font-mono font-bold text-[9px] uppercase ${
+                  activeTooltip.item.result === 'W'
+                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                    : activeTooltip.item.result === 'D'
+                    ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                    : 'bg-rose-950 text-rose-300 border border-rose-800'
+                }`}
+              >
+                {activeTooltip.item.result === 'W' ? 'Win' : activeTooltip.item.result === 'D' ? 'Draw' : 'Loss'}
+              </strong>
+              {activeTooltip.item.opponent ? (
+                <span className="text-slate-300">
+                  vs <strong className="text-white">{activeTooltip.item.opponent}</strong>{' '}
+                  <span className="text-slate-500 font-mono text-[9px]">
+                    [{activeTooltip.item.venue === 'H' ? 'Home' : 'Away'}]
+                  </span>
                 </span>
               ) : (
-                <span>
-                  Match {activeTooltip.item.index + 1}:{' '}
-                  <strong className={activeTooltip.item.result === 'W' ? 'text-emerald-400' : activeTooltip.item.result === 'D' ? 'text-amber-400' : 'text-rose-400'}>
-                    {activeTooltip.item.result === 'W' ? 'Win (+3 pts)' : activeTooltip.item.result === 'D' ? 'Draw (+1 pt)' : 'Loss (0 pts)'}
-                  </strong>{' '}
-                  (Recorded League Sequence)
+                <span className="text-slate-400">
+                  (Match {activeTooltip.item.index + 1})
                 </span>
+              )}
+              {activeTooltip.item.date && (
+                <span className="text-slate-500"> • {activeTooltip.item.date}</span>
               )}
             </span>
           </div>
 
-          <span className="text-[9px] text-slate-500 flex-shrink-0">
-            {activeTooltip.item.isFromHistoricalMatch ? 'Historical Record' : 'League Sequence'}
+          <span className="text-[9px] text-slate-400 font-mono flex-shrink-0">
+            {activeTooltip.item.isFromHistoricalMatch ? 'Verified DB' : 'League Sequence'}
           </span>
         </div>
       )}

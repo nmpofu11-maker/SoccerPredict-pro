@@ -652,6 +652,96 @@ export const ALL_LEAGUES_DIRECTORY: Record<string, LeagueInfo> = {
     flagEmoji: "🌎",
     color: "#16a34a",
   },
+  "South African Carling Knockout Cup": {
+    id: "rsa_carling",
+    name: "South African Carling Knockout Cup",
+    country: "South Africa",
+    region: "south_africa",
+    isHighVolatility: false,
+    tier: 1,
+    flagEmoji: "🇿🇦",
+    color: "#b45309",
+  },
+  "Scottish Championship": {
+    id: "scottish_champ",
+    name: "Scottish Championship",
+    country: "Scotland",
+    region: "europe",
+    isHighVolatility: true,
+    tier: 2,
+    flagEmoji: "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
+    color: "#1d4ed8",
+  },
+  "Copa Libertadores": {
+    id: "copa_libertadores",
+    name: "Copa Libertadores",
+    country: "South America",
+    region: "americas",
+    isHighVolatility: true,
+    tier: 1,
+    flagEmoji: "🏆",
+    color: "#eab308",
+  },
+  "Copa Sudamericana": {
+    id: "copa_sudamericana",
+    name: "Copa Sudamericana",
+    country: "South America",
+    region: "americas",
+    isHighVolatility: true,
+    tier: 2,
+    flagEmoji: "🥈",
+    color: "#0284c7",
+  },
+  "Spanish Copa del Rey": {
+    id: "copa_del_rey",
+    name: "Spanish Copa del Rey",
+    country: "Spain",
+    region: "top5",
+    isHighVolatility: false,
+    tier: 1,
+    flagEmoji: "🇪🇸",
+    color: "#dc2626",
+  },
+  "Italian Coppa Italia": {
+    id: "coppa_italia",
+    name: "Italian Coppa Italia",
+    country: "Italy",
+    region: "top5",
+    isHighVolatility: false,
+    tier: 1,
+    flagEmoji: "🇮🇹",
+    color: "#15803d",
+  },
+  "German DFB-Pokal": {
+    id: "dfb_pokal",
+    name: "German DFB-Pokal",
+    country: "Germany",
+    region: "top5",
+    isHighVolatility: false,
+    tier: 1,
+    flagEmoji: "🇩🇪",
+    color: "#ca8a04",
+  },
+  "French Coupe de France": {
+    id: "coupe_de_france",
+    name: "French Coupe de France",
+    country: "France",
+    region: "top5",
+    isHighVolatility: false,
+    tier: 1,
+    flagEmoji: "🇫🇷",
+    color: "#1e3a8a",
+  },
+  "Dutch KNVB Beker": {
+    id: "knvb_beker",
+    name: "Dutch KNVB Beker",
+    country: "Netherlands",
+    region: "europe",
+    isHighVolatility: false,
+    tier: 1,
+    flagEmoji: "🇳🇱",
+    color: "#ea580c",
+  },
   "International Matches": {
     id: "international",
     name: "International Matches",
@@ -665,14 +755,203 @@ export const ALL_LEAGUES_DIRECTORY: Record<string, LeagueInfo> = {
 };
 
 export function getLeagueMeta(leagueName: string): LeagueInfo {
-  return ALL_LEAGUES_DIRECTORY[leagueName] || {
+  if (!leagueName) {
+    return {
+      id: "unknown",
+      name: "Unknown League",
+      country: "Global",
+      region: "europe",
+      isHighVolatility: false,
+      tier: 1,
+      flagEmoji: "⚽",
+      color: "#334155",
+    };
+  }
+
+  // 1. Exact match in directory
+  if (ALL_LEAGUES_DIRECTORY[leagueName]) {
+    return ALL_LEAGUES_DIRECTORY[leagueName];
+  }
+
+  // 2. Case-insensitive / normalized match in directory
+  const normalizedKey = leagueName.toLowerCase().trim();
+  for (const [key, info] of Object.entries(ALL_LEAGUES_DIRECTORY)) {
+    if (key.toLowerCase() === normalizedKey) {
+      return info;
+    }
+  }
+
+  // 3. Known aliases
+  const aliasMap: Record<string, string> = {
+    'japanese j1 league': 'Japanese J.League',
+    'j1 league': 'Japanese J.League',
+    'j.league': 'Japanese J.League',
+    'premier league': 'English Premier League',
+    'epl': 'English Premier League',
+    'la liga': 'Spanish La Liga',
+    'laliga': 'Spanish La Liga',
+    'serie a': 'Italian Serie A',
+    'bundesliga': 'German Bundesliga',
+    'ligue 1': 'French Ligue 1',
+    'psl': 'South African Premiership',
+    'mls': 'Major League Soccer',
+    'champions league': 'UEFA Champions League',
+    'ucl': 'UEFA Champions League',
+    'europa league': 'UEFA Europa League',
+    'uel': 'UEFA Europa League',
+  };
+
+  if (aliasMap[normalizedKey] && ALL_LEAGUES_DIRECTORY[aliasMap[normalizedKey]]) {
+    return ALL_LEAGUES_DIRECTORY[aliasMap[normalizedKey]];
+  }
+
+  // 4. Heuristic inference by country keywords
+  let inferredCountry = "Global";
+  let inferredFlag = "⚽";
+  let inferredRegion: LeagueInfo['region'] = "europe";
+
+  if (/south africa|psl|nfd|mtn\s*8|nedbank/i.test(normalizedKey)) {
+    inferredCountry = "South Africa";
+    inferredFlag = "🇿🇦";
+    inferredRegion = "south_africa";
+  } else if (/england|english|premier league|championship|fa cup|carabao/i.test(normalizedKey)) {
+    inferredCountry = "England";
+    inferredFlag = "🏴󠁧󠁢󠁥󠁮󠁧󠁿";
+    inferredRegion = "england";
+  } else if (/spain|spanish|la liga|copa del rey/i.test(normalizedKey)) {
+    inferredCountry = "Spain";
+    inferredFlag = "🇪🇸";
+    inferredRegion = "top5";
+  } else if (/germany|german|bundesliga|dfb/i.test(normalizedKey)) {
+    inferredCountry = "Germany";
+    inferredFlag = "🇩🇪";
+    inferredRegion = "top5";
+  } else if (/italy|italian|serie a|serie b|coppa italia/i.test(normalizedKey)) {
+    inferredCountry = "Italy";
+    inferredFlag = "🇮🇹";
+    inferredRegion = "top5";
+  } else if (/france|french|ligue 1|ligue 2|coupe de france/i.test(normalizedKey)) {
+    inferredCountry = "France";
+    inferredFlag = "🇫🇷";
+    inferredRegion = "top5";
+  } else if (/scotland|scottish/i.test(normalizedKey)) {
+    inferredCountry = "Scotland";
+    inferredFlag = "🏴󠁧󠁢󠁳󠁣󠁴󠁿";
+    inferredRegion = "europe";
+  } else if (/portugal|portuguese|primeira/i.test(normalizedKey)) {
+    inferredCountry = "Portugal";
+    inferredFlag = "🇵🇹";
+    inferredRegion = "europe";
+  } else if (/netherlands|dutch|eredivisie|knvb/i.test(normalizedKey)) {
+    inferredCountry = "Netherlands";
+    inferredFlag = "🇳🇱";
+    inferredRegion = "europe";
+  } else if (/brazil|brazilian/i.test(normalizedKey)) {
+    inferredCountry = "Brazil";
+    inferredFlag = "🇧🇷";
+    inferredRegion = "americas";
+  } else if (/argentina|argentine/i.test(normalizedKey)) {
+    inferredCountry = "Argentina";
+    inferredFlag = "🇦🇷";
+    inferredRegion = "americas";
+  } else if (/japan|japanese/i.test(normalizedKey)) {
+    inferredCountry = "Japan";
+    inferredFlag = "🇯🇵";
+    inferredRegion = "asia_pacific";
+  } else if (/saudi/i.test(normalizedKey)) {
+    inferredCountry = "Saudi Arabia";
+    inferredFlag = "🇸🇦";
+    inferredRegion = "asia_pacific";
+  } else if (/swiss|switzerland/i.test(normalizedKey)) {
+    inferredCountry = "Switzerland";
+    inferredFlag = "🇨🇭";
+    inferredRegion = "europe";
+  } else if (/austria|austrian/i.test(normalizedKey)) {
+    inferredCountry = "Austria";
+    inferredFlag = "🇦🇹";
+    inferredRegion = "europe";
+  } else if (/belgi/i.test(normalizedKey)) {
+    inferredCountry = "Belgium";
+    inferredFlag = "🇧🇪";
+    inferredRegion = "europe";
+  } else if (/turk/i.test(normalizedKey)) {
+    inferredCountry = "Turkey";
+    inferredFlag = "🇹🇷";
+    inferredRegion = "europe";
+  } else if (/denmark|danish/i.test(normalizedKey)) {
+    inferredCountry = "Denmark";
+    inferredFlag = "🇩🇰";
+    inferredRegion = "europe";
+  } else if (/sweden|swedish/i.test(normalizedKey)) {
+    inferredCountry = "Sweden";
+    inferredFlag = "🇸🇪";
+    inferredRegion = "europe";
+  } else if (/norway|norwegian/i.test(normalizedKey)) {
+    inferredCountry = "Norway";
+    inferredFlag = "🇳🇴";
+    inferredRegion = "europe";
+  } else if (/greece|greek/i.test(normalizedKey)) {
+    inferredCountry = "Greece";
+    inferredFlag = "🇬🇷";
+    inferredRegion = "europe";
+  } else if (/mexic/i.test(normalizedKey)) {
+    inferredCountry = "Mexico";
+    inferredFlag = "🇲🇽";
+    inferredRegion = "americas";
+  } else if (/colombia/i.test(normalizedKey)) {
+    inferredCountry = "Colombia";
+    inferredFlag = "🇨🇴";
+    inferredRegion = "americas";
+  } else if (/chile/i.test(normalizedKey)) {
+    inferredCountry = "Chile";
+    inferredFlag = "🇨🇱";
+    inferredRegion = "americas";
+  } else if (/bolivia/i.test(normalizedKey)) {
+    inferredCountry = "Bolivia";
+    inferredFlag = "🇧🇴";
+    inferredRegion = "americas";
+  } else if (/chin/i.test(normalizedKey)) {
+    inferredCountry = "China";
+    inferredFlag = "🇨🇳";
+    inferredRegion = "asia_pacific";
+  } else if (/australia/i.test(normalizedKey)) {
+    inferredCountry = "Australia";
+    inferredFlag = "🇦🇺";
+    inferredRegion = "asia_pacific";
+  } else if (/uefa|champions league|europa|nations league/i.test(normalizedKey)) {
+    inferredCountry = "Europe";
+    inferredFlag = "🇪🇺";
+    inferredRegion = "continental";
+  } else if (/caf|africa/i.test(normalizedKey)) {
+    inferredCountry = "Africa";
+    inferredFlag = "🌍";
+    inferredRegion = "continental";
+  } else if (/conmebol|libertadores|sudamericana/i.test(normalizedKey)) {
+    inferredCountry = "South America";
+    inferredFlag = "🌎";
+    inferredRegion = "continental";
+  } else if (/mls|major league soccer|usa/i.test(normalizedKey)) {
+    inferredCountry = "USA/Canada";
+    inferredFlag = "🇺🇸";
+    inferredRegion = "americas";
+  } else if (/san marino|sammarinese/i.test(normalizedKey)) {
+    inferredCountry = "San Marino";
+    inferredFlag = "🇸🇲";
+    inferredRegion = "europe";
+  } else if (/paraguay/i.test(normalizedKey)) {
+    inferredCountry = "Paraguay";
+    inferredFlag = "🇵🇾";
+    inferredRegion = "americas";
+  }
+
+  return {
     id: leagueName.toLowerCase().replace(/[^a-z0-9]/g, '_'),
     name: leagueName,
-    country: "Global",
-    region: "europe",
+    country: inferredCountry,
+    region: inferredRegion,
     isHighVolatility: false,
     tier: 1,
-    flagEmoji: "⚽",
+    flagEmoji: inferredFlag,
     color: "#334155",
   };
 }

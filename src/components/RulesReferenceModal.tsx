@@ -1,15 +1,17 @@
 import React from 'react';
-import { BookOpen, X, CheckCircle2, AlertTriangle, ShieldCheck, Zap } from 'lucide-react';
+import { BookOpen, X, CheckCircle2, AlertTriangle, ShieldCheck, Zap, BarChart3 } from 'lucide-react';
 import { HIGH_VOLATILITY_LEAGUES } from '../constants/favourites';
 
 interface RulesReferenceModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenStatisticalAnalysis?: () => void;
 }
 
 export const RulesReferenceModal: React.FC<RulesReferenceModalProps> = ({
   isOpen,
   onClose,
+  onOpenStatisticalAnalysis,
 }) => {
   if (!isOpen) return null;
 
@@ -24,18 +26,18 @@ export const RulesReferenceModal: React.FC<RulesReferenceModalProps> = ({
     },
     {
       num: 2,
-      name: 'The 8-Place Position Gap Rule',
-      math: 'Rank difference ≥ 8 places: higher-ranked team receives automatic +4.0 baseline points',
+      name: 'Competition Standings Gap (Current Table & Previous Season Pedigree)',
+      math: 'Current rank diff ≥ 3 places (+0.40 pts/place) + Previous season standing gap ≥ 3 places in same competition (+0.30 pts/place, capped at +3.5 pts). Extra bonus for reigning champions vs promoted sides.',
       rationale:
-        'A significant gap of 8+ table positions reflects structural squad depth, wage-bill disparities, and baseline point-accumulation velocity.',
+        'A multi-season view captures true squad quality. Current form is grounded by last season’s final standing in the same competition, ensuring newly promoted sides or one-season wonders are accurately contrasted with proven pedigree.',
       badgeColor: 'text-sky-400 border-sky-500/40 bg-sky-950/40',
     },
     {
       num: 3,
-      name: 'Home Dominance Bias',
-      math: 'Home dominant flag: +15% performance multiplier. Neutralized IF away team has top-tier road form.',
+      name: 'Home Fortress & Elite Road Form Bias',
+      math: 'Home dominant: +15% performance multiplier. Away elite road form: +1.5 points bonus and neutralizes home fortress multiplier.',
       rationale:
-        'Home advantage is amplified for fortress teams (crowd acoustic bias, travel exhaustion on opponents), unless neutralized by elite away form.',
+        'Home advantage is recognized for fortress venues, but verified top-tier away form awards direct road points and neutralizes home venue bias.',
       badgeColor: 'text-emerald-400 border-emerald-500/40 bg-emerald-950/40',
     },
     {
@@ -48,10 +50,10 @@ export const RulesReferenceModal: React.FC<RulesReferenceModalProps> = ({
     },
     {
       num: 5,
-      name: 'Possession & Shot Dominance Ratio',
-      math: '>55% average ball possession AND ≥3 more shots on target (SOT) per game: +3.5 point modifier',
+      name: 'Tactical Dominance, Squad Market Valuation & Match Rating Quality',
+      math: 'Effective SOT diff ≥ 2.5 & possession > 53% (+calibrated shot pts) + Squad Market Value ratio ≥ 1.4x (+log2 ratio × 0.40 pts, up to +3.2 pts) + Avg Match Rating diff ≥ 0.12 (+diff × 4.50 pts, up to +2.8 pts)',
       rationale:
-        'Possession without penetration is ineffective. Combining sustained field tilt (>55%) with concrete goal-mouth threat (differential ≥3 SOT) indicates true dominance.',
+        'Combines on-pitch execution with roster quality. Schedule-adjusted shot/possession dominance is paired with total squad market valuation (reflecting depth and game-changing talent) and season-long average match rating (reflecting consistent 90-minute individual execution). When anomalous results are quarantined, a warning icon (⚠️) highlights the filtered data.',
       badgeColor: 'text-teal-400 border-teal-500/40 bg-teal-950/40',
     },
     {
@@ -118,6 +120,32 @@ export const RulesReferenceModal: React.FC<RulesReferenceModalProps> = ({
 
         {/* Rules List */}
         <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-3.5">
+          {/* Statistical Validation Notice */}
+          {onOpenStatisticalAnalysis && (
+            <div className="bg-sky-950/40 border border-sky-500/40 rounded-xl p-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-sky-500/20 border border-sky-400/40 flex items-center justify-center text-sky-400 flex-shrink-0">
+                  <BarChart3 className="w-4 h-4" />
+                </div>
+                <div className="text-xs">
+                  <span className="text-white font-bold block">Need formal statistical validation?</span>
+                  <span className="text-slate-400">Evaluate these 9 rules with Ranked Probability Score (RPS), Brier Loss, and an individual rule ablation study.</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenStatisticalAnalysis();
+                }}
+                className="px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 flex-shrink-0 shadow transition-colors"
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span>Run Statistical Analysis</span>
+              </button>
+            </div>
+          )}
+
           {rules.map((r) => (
             <div
               key={r.num}

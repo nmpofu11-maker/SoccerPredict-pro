@@ -9,6 +9,14 @@ export interface TeamStats {
   leagueRank: number;
   points: number;
   form: ('W' | 'D' | 'L')[];
+  formScores?: string[]; // FT scores for last 5 matches e.g. ["2-1", "3-0", "1-1", "2-0", "1-0"]
+  formDetails?: {
+    result: 'W' | 'D' | 'L';
+    score: string;
+    opponent?: string;
+    venue?: 'H' | 'A';
+    date?: string;
+  }[];
   avgPossession: number; // e.g. 58.4 (%)
   avgShotsOnTarget: number; // e.g. 6.8
   isHomeDominant?: boolean; // For Home team: record at home is dominant
@@ -16,6 +24,16 @@ export interface TeamStats {
   hasMidweekFatigue72h?: boolean; // Played cup/continental match within 72h
   badgeColor?: string; // hex for visual avatar badge
   badgeSecondary?: string;
+  hasOutliersCleaned?: boolean; // Set when engine has automatically cleaned/ignored anomalous match results or clamped extreme outliers
+  outlierCleanedReason?: string; // Descriptive explanation of why anomalies were quarantined (e.g. 10-man collapse / freak blowout ignored)
+  anomalousMatchesIgnored?: number; // Count of outlier games quarantined from baseline
+  lastSeasonRank?: number; // Final standing in same competition last season (1 = Champion, 2 = 2nd, 21 = Promoted)
+  lastSeasonStanding?: string; // e.g. "1st (Champions)", "2nd", "14th", "Promoted"
+  lastSeasonPoints?: number; // Points tally from last season in the same competition
+  totalSquadValueEur?: number; // Total squad market value in millions of EUR (e.g. 1170 = €1.17B, 340 = €340M)
+  avgMatchRating?: number; // Squad average match rating across the season (6.40 - 7.35 scale)
+  expectedGoalsAvg?: number; // Average Expected Goals (xG) generated per match (e.g. 1.85)
+  keyPlayerAbsenceSeverity?: 'none' | 'minor' | 'critical'; // Lineup availability status
 }
 
 export interface H2HRecord {
@@ -37,6 +55,13 @@ export interface MatchFixture {
   homeTeam: TeamStats;
   awayTeam: TeamStats;
   h2h: H2HRecord;
+  odds?: {
+    home: number;
+    draw: number;
+    away: number;
+    provider?: string;
+  };
+  authenticity?: MatchAuthenticityStamp;
 }
 
 export interface RuleAppliedItem {
@@ -115,6 +140,14 @@ export interface EngineWeights {
   favouriteWinFloor: number; // default 55
   drawEquilibriumMargin: number; // default 5.0 (percentage margin difference between Home and Away)
   drawEquilibriumBoost: number; // default 38.0 (calibrated draw probability for close matchups)
+  lastSeasonStandingWeight: number; // default 0.30 (points per standing place difference from last season in same competition)
+  squadValueWeight: number; // default 0.40 (multiplier for squad market valuation disparity ratio)
+  matchRatingWeight: number; // default 4.50 (points multiplier for average match rating differential)
+  lowTotalDrawBoost: number; // default 1.25 (multiplier boost for low-scoring defensive synergy fixtures)
+  defensiveSynergyDrawWeight: number; // default 0.35 (points weight for combined low shot/concede draw equilibrium)
+  leagueClusterWeight: number; // default 0.40 (weight for league tactical archetype adjustments: draw-heavy vs high-scoring)
+  xgWeight: number; // default 0.50 (weight for expected goals differential)
+  absencePenaltyRate: number; // default 0.12 (penalty rate for critical player absences)
 }
 
 export interface HistoricalMatchResult {
@@ -178,5 +211,83 @@ export interface DateRangeFilter {
   startDate: string; // 'YYYY-MM-DD' or ''
   endDate: string; // 'YYYY-MM-DD' or ''
   presetId: DatePresetId;
+}
+
+export interface EnginePerformanceSummary {
+  yesterdayDate: string;
+  yesterdayTotal: number;
+  yesterdayCorrect: number;
+  yesterdayWrong: number;
+  yesterdayAccuracyPct: number;
+  allTimeTotal: number;
+  allTimeCorrect: number;
+  allTimeWrong: number;
+  allTimeAccuracyPct: number;
+  homeWinAccuracyPct: number;
+  awayWinAccuracyPct: number;
+  drawAccuracyPct: number;
+  brierLoss: number;
+}
+
+export type DataAuthenticityStatus =
+  | 'VERIFIED_AUTHENTIC'
+  | 'AUTO_REPAIRED'
+  | 'ANOMALIES_DETECTED'
+  | 'UNVERIFIED';
+
+export interface VerificationCheckResult {
+  checkName: string;
+  passed: boolean;
+  details: string;
+  severity: 'critical' | 'warning' | 'info';
+}
+
+export interface MatchAuthenticityStamp {
+  status: DataAuthenticityStatus;
+  authenticityScore: number; // 0 - 100
+  isAuthentic: boolean;
+  verifiedAt: string;
+  source: 'OFFICIAL_ESPN_STANDINGS' | 'CANONICAL_AUDITED_DATASET' | 'MATHEMATICAL_VALIDATOR';
+  checks: VerificationCheckResult[];
+  repairedFields?: string[];
+}
+
+export interface DataIntegrityAuditReport {
+  timestamp: string;
+  totalFixturesAudited: number;
+  fullyAuthenticCount: number;
+  autoRepairedCount: number;
+  anomalousCount: number;
+  overallAuthenticityScore: number; // 0 - 100
+  standingsCrossReferencedCount: number;
+  monotonicityPassRate: number; // 0 - 100
+  metricsSanityPassRate: number; // 0 - 100
+  leaguesAudited: {
+    league: string;
+    teamsCount: number;
+    isOfficialTableSynced: boolean;
+    status: 'VERIFIED' | 'CALIBRATED';
+  }[];
+  repairedAnomaliesLog: {
+    fixtureId: string;
+    matchTitle: string;
+    field: string;
+    originalValue: any;
+    repairedValue: any;
+    reason: string;
+  }[];
+}
+
+export interface BetSlipItem {
+  id: string;
+  matchId: string;
+  homeTeam: string;
+  awayTeam: string;
+  league: string;
+  kickoffTime: string;
+  selection: 'home' | 'draw' | 'away';
+  selectionName: string;
+  odds: number;
+  probability?: number; // AI-calculated selection probability (0 - 100)
 }
 

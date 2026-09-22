@@ -10,10 +10,12 @@ import {
   saveLearningState,
   getInitialLearningState,
   evaluateHistoricalBacktest,
+  autoRetrainOnCompletedMatches,
   BOUNDS_ENGINE_WEIGHTS,
 } from '../engine/selfLearningEngine';
 import { DEFAULT_ENGINE_WEIGHTS } from '../engine/rulesEngine';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
+import { getLeagueMeta } from '../constants/leagues';
 import { requestAITacticalSynthesis } from '../services/aiLearningService';
 import {
   Brain,
@@ -32,26 +34,59 @@ import {
   Clock,
   Smartphone,
   ShieldCheck,
+  BarChart3,
+  Scale,
+  GitCompare,
+  ArrowRightLeft,
+  RefreshCw,
+  Check,
 } from 'lucide-react';
+import { runStatisticalEvaluation } from '../utils/statisticalAnalysisTool';
 
 interface SelfLearningDashboardProps {
   learningState: LearningModelState;
   onUpdateLearningState: (newState: LearningModelState) => void;
   onOpenApkModal?: () => void;
+  onOpenStatisticalModal?: () => void;
 }
 
 export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
   learningState,
   onUpdateLearningState,
   onOpenApkModal,
+  onOpenStatisticalModal,
 }) => {
   const [isTraining, setIsTraining] = useState(false);
   const [isRequestingAI, setIsRequestingAI] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'weights' | 'backtest' | 'synthesis'>('weights');
+  const [activeSubTab, setActiveSubTab] = useState<'weights' | 'backtest' | 'synthesis' | 'statistical' | 'comparison'>('weights');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [comparisonModelB, setComparisonModelB] = useState<'baseline' | 'halfway'>('baseline');
+  const [autoRetrainFeedback, setAutoRetrainFeedback] = useState<{ gain: number; lossDelta: number; epochs: number } | null>(null);
 
   // Re-evaluate current evaluations
   const currentEval = evaluateHistoricalBacktest(HISTORICAL_MATCH_RESULTS, learningState.weights);
+
+  // Baseline evaluation for comparison
+  const baselineWeights = DEFAULT_ENGINE_WEIGHTS;
+  const baselineEval = evaluateHistoricalBacktest(HISTORICAL_MATCH_RESULTS, baselineWeights);
+
+  const handleAutoRetrain = () => {
+    setIsTraining(true);
+    setStatusMessage('Executing automated post-match retraining pipeline (5 epochs optimization)...');
+
+    setTimeout(() => {
+      const { updatedState, accuracyGain, lossDelta, epochsCompleted } = autoRetrainOnCompletedMatches(
+        learningState,
+        HISTORICAL_MATCH_RESULTS,
+        5
+      );
+      onUpdateLearningState(updatedState);
+      setIsTraining(false);
+      setAutoRetrainFeedback({ gain: accuracyGain, lossDelta, epochs: epochsCompleted });
+      setStatusMessage(`Auto-Retraining complete! Trained on ${HISTORICAL_MATCH_RESULTS.length} matches. Accuracy: ${updatedState.accuracyPct}% (${accuracyGain >= 0 ? '+' : ''}${accuracyGain}% gain)`);
+      setTimeout(() => setStatusMessage(null), 5000);
+    }, 600);
+  };
 
   const handleTrainOneEpoch = () => {
     setIsTraining(true);
@@ -241,6 +276,62 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
       description: 'Calibrated consensus draw probability assigned when teams are within equilibrium margin',
       unit: '%',
     },
+    {
+      key: 'lastSeasonStandingWeight',
+      ruleNumber: 2,
+      name: 'Last Season Standing Pedigree',
+      description: 'Point multiplier per standing position gap in the same competition last season',
+      unit: 'x',
+    },
+    {
+      key: 'squadValueWeight',
+      ruleNumber: 5,
+      name: 'Squad Market Value Disparity',
+      description: 'Weighting multiplier rewarding squad market valuation ratio and bench depth',
+      unit: 'x',
+    },
+    {
+      key: 'matchRatingWeight',
+      ruleNumber: 5,
+      name: 'Average Match Rating Superiority',
+      description: 'Point multiplier applied to season-long average match rating differential',
+      unit: 'x',
+    },
+    {
+      key: 'lowTotalDrawBoost',
+      ruleNumber: 9,
+      name: 'Low-Total Clean Sheet Draw Synergy',
+      description: 'Multiplier boost applied to stalemate probability when combined shots on target are low or league is defensive',
+      unit: 'x',
+    },
+    {
+      key: 'defensiveSynergyDrawWeight',
+      ruleNumber: 9,
+      name: 'Defensive Block Parity Weight',
+      description: 'Equilibrium weight rewarding compact defensive structures and low conceding rates',
+      unit: 'x',
+    },
+    {
+      key: 'leagueClusterWeight',
+      ruleNumber: 7,
+      name: 'League Archetype Cluster Weight',
+      description: 'Calibration factor adjusting baselines for domestic competition profiles (Serie A vs Bundesliga vs Premier League)',
+      unit: 'x',
+    },
+    {
+      key: 'xgWeight',
+      ruleNumber: 5,
+      name: 'Expected Goals (xG) Superiority',
+      description: 'Points multiplier rewarding rolling expected goals chance creation differential',
+      unit: 'x',
+    },
+    {
+      key: 'absencePenaltyRate',
+      ruleNumber: 5,
+      name: 'Key Star Absence Penalty Rate',
+      description: 'Efficiency discount applied when star playmaker, spine player, or primary scorer is absent',
+      unit: '%',
+    },
   ];
 
   const accuracyDelta = Math.round((learningState.accuracyPct - learningState.baselineAccuracyPct) * 10) / 10;
@@ -288,6 +379,17 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
                 <span>APK & Backups</span>
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={handleAutoRetrain}
+              disabled={isTraining}
+              className="px-3 py-2 rounded-lg bg-indigo-950/80 hover:bg-indigo-900/90 border border-indigo-500/60 text-xs font-mono font-bold text-indigo-300 flex items-center gap-1.5 shadow-md transition-all active:scale-95 disabled:opacity-50"
+              title="Run Automated Post-Match Retraining Pipeline across all historical fixtures"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-indigo-400 ${isTraining ? 'animate-spin' : ''}`} />
+              <span>Auto-Retrain ({HISTORICAL_MATCH_RESULTS.length} Matches)</span>
+            </button>
 
             <button
               type="button"
@@ -483,6 +585,32 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
           <Sparkles className="w-3.5 h-3.5" />
           <span>Gemini AI Tactical Synthesis</span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('statistical')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors ${
+            activeSubTab === 'statistical'
+              ? 'bg-emerald-600 text-white'
+              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+          }`}
+        >
+          <BarChart3 className="w-3.5 h-3.5" />
+          <span>Statistical Evaluation (RPS & Brier)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('comparison')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors ${
+            activeSubTab === 'comparison'
+              ? 'bg-amber-600 text-white'
+              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+          }`}
+        >
+          <GitCompare className="w-3.5 h-3.5" />
+          <span>Model Checkpoints & A/B Comparison</span>
+        </button>
       </div>
 
       {/* Sub-Tab 1: Calibrated Rule Weights Matrix */}
@@ -587,9 +715,9 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
           </div>
 
           <div className="space-y-2">
-            {currentEval.evaluations.map((evalItem) => (
+            {currentEval.evaluations.filter((e) => Boolean(e?.fixture?.homeTeam && e?.fixture?.awayTeam)).map((evalItem, index) => (
               <div
-                key={evalItem.matchId}
+                key={`${evalItem.matchId}-${index}`}
                 className={`p-3 rounded-xl border transition-all ${
                   evalItem.isCorrect
                     ? 'border-emerald-500/20 bg-slate-900/60'
@@ -617,10 +745,20 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
                           {evalItem.fixture.awayTeam.name}
                         </span>
                       </div>
-                      <div className="text-[11px] font-mono text-slate-400 mt-0.5 flex items-center gap-2">
-                        <span>{evalItem.fixture.league}</span>
+                      <div className="text-[11px] font-mono text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                        {(() => {
+                          const meta = getLeagueMeta(evalItem.fixture.league);
+                          return (
+                            <span className="inline-flex items-center gap-1.5 text-slate-300">
+                              <span className="text-xs leading-none" role="img" aria-label={meta.country}>{meta.flagEmoji}</span>
+                              <span className="text-slate-400">{meta.country}</span>
+                              <span className="text-slate-600 text-[10px]">/</span>
+                              <span className="text-slate-200 font-semibold">{evalItem.fixture.league}</span>
+                            </span>
+                          );
+                        })()}
                         <span>•</span>
-                        <span>Actual: <b className="text-slate-200 uppercase">{evalItem.actualOutcome}</b></span>
+                        <span>Actual: <b className="text-slate-200 uppercase">{evalItem?.actualOutcome || 'N/A'}</b></span>
                         <span>•</span>
                         <span>Model Picked: <b className={`uppercase ${evalItem.isCorrect ? 'text-emerald-400' : 'text-rose-400'}`}>{evalItem.predictedOutcome}</b></span>
                       </div>
@@ -743,6 +881,482 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
           </div>
         </div>
       )}
+
+      {/* Sub-Tab 4: Statistical Analysis & 9-Rule Ablation Suite */}
+      {activeSubTab === 'statistical' && (() => {
+        const stats = runStatisticalEvaluation(learningState.weights);
+        return (
+          <div className="space-y-5">
+            {/* Header / Launch Modal CTA */}
+            <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-950/40 via-slate-900 to-sky-950/40 border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                    <BarChart3 className="w-4 h-4" />
+                  </span>
+                  <h3 className="text-sm font-bold text-white">Statistical Analysis & Peer-Reviewed Scoring Suite</h3>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-700/60 font-bold">
+                    N = {stats.sampleSize} Verified Matches
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Evaluated using Ranked Probability Score (Constantinou & Fenton 2012), Brier Skill Score, and feature ablation across all 9 mathematical rules.
+                </p>
+              </div>
+
+              {onOpenStatisticalModal && (
+                <button
+                  type="button"
+                  onClick={onOpenStatisticalModal}
+                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-colors flex-shrink-0"
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  <span>Open Full Statistical Suite</span>
+                </button>
+              )}
+            </div>
+
+            {/* Scorecard Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono">
+              <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
+                <div className="text-[10px] text-slate-400 uppercase">Accuracy</div>
+                <div className="text-2xl font-bold text-emerald-400 mt-0.5">{stats.accuracy}%</div>
+                <div className="text-[10px] text-slate-400 font-sans mt-0.5">vs {stats.baselines.empiricalDistribution.accuracy}% Empirical Prior</div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800" title="Ranked Probability Score (Epstein / Constantinou & Fenton). Lower is superior.">
+                <div className="text-[10px] text-slate-400 uppercase flex justify-between">
+                  <span>Mean RPS</span>
+                  <span className="text-sky-400 text-[9px]">LOWER=BETTER</span>
+                </div>
+                <div className="text-2xl font-bold text-sky-400 mt-0.5">{stats.meanRPS}</div>
+                <div className="text-[10px] text-emerald-400 font-sans mt-0.5">+{stats.skillScores.rpsSkillScoreVsEmpirical}% Skill Edge</div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800" title="Multi-class Brier Loss. Lower is superior.">
+                <div className="text-[10px] text-slate-400 uppercase flex justify-between">
+                  <span>Brier Loss</span>
+                  <span className="text-purple-400 text-[9px]">LOWER=BETTER</span>
+                </div>
+                <div className="text-2xl font-bold text-purple-400 mt-0.5">{stats.meanBrierScore}</div>
+                <div className="text-[10px] text-emerald-400 font-sans mt-0.5">+{stats.skillScores.brierSkillScoreVsEmpirical}% BSS Edge</div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
+                <div className="text-[10px] text-slate-400 uppercase">Information Gain</div>
+                <div className="text-2xl font-bold text-amber-400 mt-0.5">+{stats.skillScores.informationGainBits} <span className="text-xs">bits</span></div>
+                <div className="text-[10px] text-slate-400 font-sans mt-0.5">ECE: {stats.calibration.expectedCalibrationError}%</div>
+              </div>
+            </div>
+
+            {/* Comparative Benchmarks */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-white uppercase font-mono tracking-wider flex items-center gap-1.5">
+                  <Scale className="w-4 h-4 text-emerald-400" />
+                  Comparative Benchmark Table (Standard Statistical Baselines)
+                </h4>
+                <span className="text-[10px] text-slate-400 font-mono">Sample: N={stats.sampleSize}</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left font-mono text-xs">
+                  <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 text-[10px] uppercase">
+                    <tr>
+                      <th className="p-2.5">Model / Baseline</th>
+                      <th className="p-2.5 text-center">Accuracy</th>
+                      <th className="p-2.5 text-center">Mean RPS (Lower=Better)</th>
+                      <th className="p-2.5 text-center">Brier Loss (Lower=Better)</th>
+                      <th className="p-2.5 text-center">Log-Loss</th>
+                      <th className="p-2.5">Methodology</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    <tr>
+                      <td className="p-2.5 font-bold text-slate-400">{stats.baselines.uniformRandom.name}</td>
+                      <td className="p-2.5 text-center text-slate-400">{stats.baselines.uniformRandom.accuracy}%</td>
+                      <td className="p-2.5 text-center text-slate-400">{stats.baselines.uniformRandom.meanRPS}</td>
+                      <td className="p-2.5 text-center text-slate-400">{stats.baselines.uniformRandom.meanBrierScore}</td>
+                      <td className="p-2.5 text-center text-slate-400">{stats.baselines.uniformRandom.meanLogLoss}</td>
+                      <td className="p-2.5 text-[11px] text-slate-500 font-sans">{stats.baselines.uniformRandom.description}</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 font-bold text-slate-300">{stats.baselines.empiricalDistribution.name}</td>
+                      <td className="p-2.5 text-center text-slate-300">{stats.baselines.empiricalDistribution.accuracy}%</td>
+                      <td className="p-2.5 text-center text-slate-300">{stats.baselines.empiricalDistribution.meanRPS}</td>
+                      <td className="p-2.5 text-center text-slate-300">{stats.baselines.empiricalDistribution.meanBrierScore}</td>
+                      <td className="p-2.5 text-center text-slate-300">{stats.baselines.empiricalDistribution.meanLogLoss}</td>
+                      <td className="p-2.5 text-[11px] text-slate-400 font-sans">{stats.baselines.empiricalDistribution.description}</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 font-bold text-slate-300">{stats.baselines.naiveStandings.name}</td>
+                      <td className="p-2.5 text-center text-slate-300">{stats.baselines.naiveStandings.accuracy}%</td>
+                      <td className="p-2.5 text-center text-slate-300">{stats.baselines.naiveStandings.meanRPS}</td>
+                      <td className="p-2.5 text-center text-slate-300">{stats.baselines.naiveStandings.meanBrierScore}</td>
+                      <td className="p-2.5 text-center text-slate-300">{stats.baselines.naiveStandings.meanLogLoss}</td>
+                      <td className="p-2.5 text-[11px] text-slate-400 font-sans">{stats.baselines.naiveStandings.description}</td>
+                    </tr>
+                    <tr className="bg-emerald-950/20">
+                      <td className="p-2.5 font-black text-emerald-300">9-Rule Engine (Current Weights)</td>
+                      <td className="p-2.5 text-center font-bold text-emerald-400">{stats.accuracy}%</td>
+                      <td className="p-2.5 text-center font-bold text-sky-400">{stats.meanRPS}</td>
+                      <td className="p-2.5 text-center font-bold text-purple-400">{stats.meanBrierScore}</td>
+                      <td className="p-2.5 text-center font-bold text-amber-400">{stats.meanLogLoss}</td>
+                      <td className="p-2.5 text-[11px] text-emerald-300 font-sans">Combines tactical shot metrics, roster value, motivation, venue, & draw equilibrium.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* 9-Rule Ablation Summary */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-white uppercase font-mono tracking-wider flex items-center gap-1.5">
+                  <Sliders className="w-4 h-4 text-sky-400" />
+                  9-Rule Significance Ranking (Feature Ablation Damage)
+                </h4>
+                <span className="text-[10px] text-slate-400 font-mono">Sorted by predictive damage when removed</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left font-mono text-xs">
+                  <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 text-[10px] uppercase">
+                    <tr>
+                      <th className="p-2.5">Rank</th>
+                      <th className="p-2.5">Rule</th>
+                      <th className="p-2.5 text-center">Acc (Δ)</th>
+                      <th className="p-2.5 text-center">RPS (Δ)</th>
+                      <th className="p-2.5 text-center">Brier (Δ)</th>
+                      <th className="p-2.5">Statistical Role</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {stats.ruleAblations.map((item) => (
+                      <tr key={item.ruleId} className="hover:bg-slate-800/40">
+                        <td className="p-2.5 font-bold text-center">#{item.significanceRank}</td>
+                        <td className="p-2.5 font-semibold text-slate-200">{item.ruleName}</td>
+                        <td className="p-2.5 text-center font-bold">
+                          {item.ablatedAccuracy}%
+                          <span className={`block text-[10px] ${item.deltaAccuracy < 0 ? 'text-rose-400' : 'text-slate-500'}`}>
+                            {item.deltaAccuracy > 0 ? '+' : ''}{item.deltaAccuracy}%
+                          </span>
+                        </td>
+                        <td className="p-2.5 text-center font-bold">
+                          {item.ablatedRPS}
+                          <span className={`block text-[10px] ${item.deltaRPS > 0 ? 'text-rose-400' : 'text-slate-500'}`}>
+                            {item.deltaRPS > 0 ? '+' : ''}{item.deltaRPS}
+                          </span>
+                        </td>
+                        <td className="p-2.5 text-center font-bold">
+                          {item.ablatedBrier}
+                          <span className={`block text-[10px] ${item.deltaBrier > 0 ? 'text-rose-400' : 'text-slate-500'}`}>
+                            {item.deltaBrier > 0 ? '+' : ''}{item.deltaBrier}
+                          </span>
+                        </td>
+                        <td className="p-2.5">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700">
+                            {item.statisticalRole}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Sub-Tab 5: Model Checkpoints & A/B Comparison */}
+      {activeSubTab === 'comparison' && (() => {
+        // Calculate category accuracies
+        const totalMatches = HISTORICAL_MATCH_RESULTS.length;
+        const actualHomes = (HISTORICAL_MATCH_RESULTS || []).filter(m => m?.actualOutcome === 'home');
+        const actualAways = (HISTORICAL_MATCH_RESULTS || []).filter(m => m?.actualOutcome === 'away');
+        const actualDraws = (HISTORICAL_MATCH_RESULTS || []).filter(m => m?.actualOutcome === 'draw');
+
+        const modelACorrectHome = (currentEval.evaluations || []).filter(e => e?.actualOutcome === 'home' && e?.isCorrect).length;
+        const modelBCorrectHome = (baselineEval.evaluations || []).filter(e => e?.actualOutcome === 'home' && e?.isCorrect).length;
+        const modelAHomePct = actualHomes.length ? Math.round((modelACorrectHome / actualHomes.length) * 1000) / 10 : 0;
+        const modelBHomePct = actualHomes.length ? Math.round((modelBCorrectHome / actualHomes.length) * 1000) / 10 : 0;
+
+        const modelACorrectAway = (currentEval.evaluations || []).filter(e => e?.actualOutcome === 'away' && e?.isCorrect).length;
+        const modelBCorrectAway = (baselineEval.evaluations || []).filter(e => e?.actualOutcome === 'away' && e?.isCorrect).length;
+        const modelAAwayPct = actualAways.length ? Math.round((modelACorrectAway / actualAways.length) * 1000) / 10 : 0;
+        const modelBAwayPct = actualAways.length ? Math.round((modelBCorrectAway / actualAways.length) * 1000) / 10 : 0;
+
+        const modelACorrectDraw = (currentEval.evaluations || []).filter(e => e?.actualOutcome === 'draw' && e?.isCorrect).length;
+        const modelBCorrectDraw = (baselineEval.evaluations || []).filter(e => e?.actualOutcome === 'draw' && e?.isCorrect).length;
+        const modelADrawPct = actualDraws.length ? Math.round((modelACorrectDraw / actualDraws.length) * 1000) / 10 : 0;
+        const modelBDrawPct = actualDraws.length ? Math.round((modelBCorrectDraw / actualDraws.length) * 1000) / 10 : 0;
+
+        // Divergent predictions
+        const divergentList = (currentEval.evaluations || [])
+          .filter((evalA) => Boolean(evalA && evalA.fixture && evalA.fixture.homeTeam && evalA.fixture.awayTeam))
+          .map((evalA, idx) => {
+            const evalB = (baselineEval.evaluations || [])[idx];
+            const fixture = evalA.fixture;
+            const actual = evalA.actualOutcome || 'draw';
+            const isDivergent = evalB ? evalA.predictedOutcome !== evalB.predictedOutcome : false;
+            return {
+              evalA,
+              evalB,
+              fixture,
+              actual,
+              isDivergent,
+              winnerA: evalA.predictedOutcome,
+              winnerB: evalB?.predictedOutcome || 'draw',
+              correctA: evalA.isCorrect,
+              correctB: evalB?.isCorrect || false,
+            };
+          }).filter(d => d.isDivergent);
+
+        const handleRollbackToBaseline = () => {
+          const updatedState: LearningModelState = {
+            ...learningState,
+            weights: { ...DEFAULT_ENGINE_WEIGHTS },
+            accuracyPct: baselineEval.accuracyPct,
+            brierLoss: baselineEval.brierLoss,
+            totalEpochsTrained: 0,
+            lastTrainedAt: new Date().toISOString(),
+          };
+          saveLearningState(updatedState);
+          onUpdateLearningState(updatedState);
+          setStatusMessage('Rollback complete! Prediction engine reverted to Baseline Default weights.');
+          setTimeout(() => setStatusMessage(null), 4000);
+        };
+
+        return (
+          <div className="space-y-6">
+            {/* Header / Summary Card */}
+            <div className="p-4 rounded-xl bg-slate-900 border border-amber-500/30 shadow-lg">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-bold font-mono text-amber-400 flex items-center gap-2">
+                    <GitCompare className="w-4 h-4 text-amber-400" />
+                    Model Checkpoint Comparison & A/B Benchmark
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-1">
+                    Side-by-side performance audit across all {totalMatches} historical fixtures. Compare the active calibrated model against the default baseline.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRollbackToBaseline}
+                    className="px-3 py-1.5 rounded-lg bg-rose-950/70 hover:bg-rose-900 border border-rose-500/40 text-rose-300 text-xs font-mono font-bold flex items-center gap-1.5 transition-all shadow-sm"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Rollback to Baseline</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Comparative Head-to-Head Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Card 1: Overall Accuracy */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider block">Overall Accuracy</span>
+                <div className="flex items-baseline justify-between">
+                  <div>
+                    <span className="text-xs font-mono text-slate-400">Model A (Learned): </span>
+                    <span className="text-base font-black font-mono text-sky-400">{currentEval.accuracyPct}%</span>
+                  </div>
+                  <div>
+                    <span className="text-xs font-mono text-slate-400">Model B: </span>
+                    <span className="text-base font-black font-mono text-slate-300">{baselineEval.accuracyPct}%</span>
+                  </div>
+                </div>
+                <div className="text-[11px] font-mono flex items-center gap-1 text-emerald-400 pt-1 border-t border-slate-800">
+                  <TrendingUp className="w-3 h-3" />
+                  <span>
+                    Delta: {currentEval.accuracyPct >= baselineEval.accuracyPct ? '+' : ''}
+                    {(currentEval.accuracyPct - baselineEval.accuracyPct).toFixed(1)}% ({currentEval.correctCount} vs {baselineEval.correctCount} hits)
+                  </span>
+                </div>
+              </div>
+
+              {/* Card 2: Brier Loss Calibration */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider block">Brier Loss Score</span>
+                <div className="flex items-baseline justify-between">
+                  <div>
+                    <span className="text-xs font-mono text-slate-400">Model A: </span>
+                    <span className="text-base font-black font-mono text-emerald-400">{currentEval.brierLoss.toFixed(3)}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs font-mono text-slate-400">Model B: </span>
+                    <span className="text-base font-black font-mono text-slate-300">{baselineEval.brierLoss.toFixed(3)}</span>
+                  </div>
+                </div>
+                <div className="text-[11px] font-mono flex items-center gap-1 text-sky-400 pt-1 border-t border-slate-800">
+                  <ShieldCheck className="w-3 h-3" />
+                  <span>
+                    Delta: {(baselineEval.brierLoss - currentEval.brierLoss).toFixed(3)} lower error
+                  </span>
+                </div>
+              </div>
+
+              {/* Card 3: Home & Away Precision */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider block">Home / Away Accuracy</span>
+                <div className="text-xs font-mono space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Home Win:</span>
+                    <span className="font-bold text-sky-300">{modelAHomePct}% vs {modelBHomePct}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Away Win:</span>
+                    <span className="font-bold text-sky-300">{modelAAwayPct}% vs {modelBAwayPct}%</span>
+                  </div>
+                </div>
+                <div className="text-[10px] font-mono text-slate-400 pt-1 border-t border-slate-800">
+                  {actualHomes.length} home & {actualAways.length} away matches
+                </div>
+              </div>
+
+              {/* Card 4: Draw / Stalemate Accuracy */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider block">Draw Synergy Hit Rate</span>
+                <div className="flex items-baseline justify-between">
+                  <div>
+                    <span className="text-xs font-mono text-slate-400">Model A: </span>
+                    <span className="text-base font-black font-mono text-purple-400">{modelADrawPct}%</span>
+                  </div>
+                  <div>
+                    <span className="text-xs font-mono text-slate-400">Model B: </span>
+                    <span className="text-base font-black font-mono text-slate-400">{modelBDrawPct}%</span>
+                  </div>
+                </div>
+                <div className="text-[11px] font-mono flex items-center gap-1 text-purple-300 pt-1 border-t border-slate-800">
+                  <Target className="w-3 h-3" />
+                  <span>
+                    +{Math.round((modelADrawPct - modelBDrawPct) * 10) / 10}% draw capture gain
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Model Divergence Feed */}
+            <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden shadow-lg">
+              <div className="p-3.5 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ArrowRightLeft className="w-4 h-4 text-amber-400" />
+                  <span className="text-xs font-mono font-bold text-white uppercase">
+                    Prediction Divergence Cases ({divergentList.length} matches where models disagree)
+                  </span>
+                </div>
+                <span className="text-[11px] font-mono text-slate-400">
+                  Model A wins: {divergentList.filter(d => d.correctA && !d.correctB).length} | Model B wins: {divergentList.filter(d => d.correctB && !d.correctA).length}
+                </span>
+              </div>
+
+              {divergentList.length === 0 ? (
+                <div className="p-6 text-center text-xs font-mono text-slate-400">
+                  Both models are currently in 100% directional agreement across all historical fixtures.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-800/70 max-h-[460px] overflow-y-auto">
+                  {divergentList.map((item, idx) => (
+                    <div key={idx} className="p-3.5 hover:bg-slate-800/30 transition-colors">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-mono">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white">
+                              {item.fixture.homeTeam.name} vs {item.fixture.awayTeam.name}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 inline-flex items-center gap-1">
+                              <span className="text-xs leading-none" role="img" aria-label={getLeagueMeta(item.fixture.league).country}>{getLeagueMeta(item.fixture.league).flagEmoji}</span>
+                              <span className="text-slate-400">{getLeagueMeta(item.fixture.league).country} /</span>
+                              <span className="text-slate-200 font-semibold">{item.fixture.league}</span>
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950 font-bold text-slate-200 border border-slate-700">
+                              FT {(item.evalA?.actualOutcome || 'FT').toUpperCase()}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-400 block">
+                            Actual Outcome: <strong className="text-white uppercase">{item.actual}</strong>
+                          </span>
+                        </div>
+
+                        {/* Comparative Calls */}
+                        <div className="flex items-center gap-3">
+                          {/* Model A Call */}
+                          <div className={`px-2.5 py-1 rounded-lg border text-xs font-mono flex items-center gap-1.5 ${
+                            item.correctA
+                              ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
+                              : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+                          }`}>
+                            <span className="text-[10px] text-slate-400">Model A:</span>
+                            <span className="font-bold uppercase">{item.winnerA}</span>
+                            {item.correctA ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <XCircle className="w-3.5 h-3.5 text-rose-400" />}
+                          </div>
+
+                          {/* Model B Call */}
+                          <div className={`px-2.5 py-1 rounded-lg border text-xs font-mono flex items-center gap-1.5 ${
+                            item.correctB
+                              ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
+                              : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+                          }`}>
+                            <span className="text-[10px] text-slate-400">Model B:</span>
+                            <span className="font-bold uppercase">{item.winnerB}</span>
+                            {item.correctB ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <XCircle className="w-3.5 h-3.5 text-rose-400" />}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Hyperparameter Delta Table */}
+            <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden shadow-lg">
+              <div className="p-3 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
+                <span className="text-xs font-mono font-bold text-white uppercase flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-sky-400" />
+                  Full Parameter Delta Table (Model A vs Model B)
+                </span>
+                <span className="text-[11px] font-mono text-slate-400">
+                  {ruleWeightItems.length} active parameters tracked
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left font-mono text-xs">
+                  <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 text-[10px] uppercase">
+                    <tr>
+                      <th className="p-2.5">Rule</th>
+                      <th className="p-2.5">Parameter Name</th>
+                      <th className="p-2.5 text-right">Model A (Active)</th>
+                      <th className="p-2.5 text-right">Model B (Baseline)</th>
+                      <th className="p-2.5 text-right">Shift (Δ)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {ruleWeightItems.map((item) => {
+                      const valA = (learningState.weights[item.key] as number) ?? 0;
+                      const valB = (DEFAULT_ENGINE_WEIGHTS[item.key] as number) ?? 0;
+                      const delta = Math.round((valA - valB) * 100) / 100;
+                      return (
+                        <tr key={item.key} className="hover:bg-slate-800/40">
+                          <td className="p-2.5 text-sky-400 font-bold">Rule {item.ruleNumber}</td>
+                          <td className="p-2.5 text-slate-200 font-semibold">{item.name}</td>
+                          <td className="p-2.5 text-right font-bold text-white">{valA.toFixed(2)} {item.unit}</td>
+                          <td className="p-2.5 text-right text-slate-400">{valB.toFixed(2)} {item.unit}</td>
+                          <td className={`p-2.5 text-right font-bold ${delta > 0 ? 'text-emerald-400' : delta < 0 ? 'text-rose-400' : 'text-slate-500'}`}>
+                            {delta > 0 ? '+' : ''}{delta.toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

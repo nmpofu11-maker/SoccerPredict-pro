@@ -15,12 +15,12 @@ export async function requestAITacticalSynthesis(
         brierLoss: state.brierLoss,
         totalEpochs: state.totalEpochsTrained,
         weights: state.weights,
-        recentEvaluations: recentEvaluations.slice(0, 8).map(e => ({
-          match: `${e.fixture.homeTeam.name} vs ${e.fixture.awayTeam.name}`,
-          actual: e.actualOutcome,
-          predicted: e.predictedOutcome,
-          correct: e.isCorrect,
-          probs: e.probabilities,
+        recentEvaluations: (recentEvaluations || []).slice(0, 8).map(e => ({
+          match: `${e?.fixture?.homeTeam?.name || 'Home'} vs ${e?.fixture?.awayTeam?.name || 'Away'}`,
+          actual: e?.actualOutcome || 'draw',
+          predicted: e?.predictedOutcome || 'draw',
+          correct: e?.isCorrect || false,
+          probs: e?.probabilities || { home: 33, draw: 34, away: 33 },
         })),
       }),
     });
