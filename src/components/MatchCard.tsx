@@ -378,29 +378,32 @@ export const MatchCard: React.FC<MatchCardProps> = ({
         </div>
 
         {/* Kickoff Date & Time + Live Indicator + SofaScore Google Search */}
-        <div className="flex items-center gap-2 text-[11px] font-mono flex-shrink-0">
-          {isLive ? (
+        <div className="flex items-center gap-2 text-[11px] font-mono flex-shrink-0 flex-wrap justify-end">
+          <div className="flex items-center gap-1 text-slate-400" title={`Kickoff Date & Time: ${localDateStr} at ${localTimeStr}`}>
+            <Clock className="w-3 h-3 text-sky-400 animate-pulse" />
+            <span className="font-semibold text-slate-300">{localDateStr}</span>
+            <span className="text-slate-500">•</span>
+            <span className="text-white font-bold">{localTimeStr}</span>
+          </div>
+
+          {isLive && (
             <span
               id={`live-status-pill-${fixture.id}`}
-              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-black uppercase tracking-wider animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.3)]"
-              title={`Match is currently in play (started at ${localTimeStr})`}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[9.5px] font-black uppercase tracking-wider animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.3)]"
+              title="Match is currently in play"
             >
-              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
               <span>LIVE {liveMinute}</span>
             </span>
-          ) : isFinished ? (
+          )}
+
+          {isFinished && (
             <span
-              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 text-[10px] font-bold"
-              title={`Match concluded (started at ${localTimeStr})`}
+              className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 text-[9.5px] font-bold"
+              title="Match concluded"
             >
               FT
             </span>
-          ) : (
-            <div className="flex items-center gap-1.5 text-slate-400">
-              <Clock className="w-3 h-3 text-sky-400" />
-              <span>{localDateStr}</span>
-              <span className="text-white font-bold">{localTimeStr}</span>
-            </div>
           )}
 
           <a

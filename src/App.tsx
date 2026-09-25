@@ -40,6 +40,8 @@ import {
 import { loadTeamIntelligenceMatrices } from './engine/teamIntelligenceMatrix';
 import { ensurePersistentStorage } from './services/durablePersistence';
 import { deleteFixtureOnServer, purgeFixturesOnServer, ingestSlateToServer } from './services/apiService';
+import { fetchSettledResults } from './services/resultsService';
+import { HistoricalMatchResult } from './types/soccer';
 import { HISTORICAL_MATCH_RESULTS } from './data/historical_results';
 import { isFavouriteTeam, isHighVolatilityLeague } from './constants/favourites';
 import { getLeagueMeta, LeagueCategoryId, matchesLeagueCategory, LEAGUE_CATEGORIES } from './constants/leagues';
@@ -79,6 +81,47 @@ export default function App() {
   const [fixtures, setFixtures] = useState<MatchFixture[]>(() => loadFixturesDataset());
   const [overrides, setOverrides] = useState<Record<string, ManualOverrideType>>(() => loadManualOverrides());
   const [learningState, setLearningState] = useState<LearningModelState>(() => loadLearningState());
+
+  // Results settled by the server-side API-Football pipeline (real, growing
+  // outcomes) — merged with the static seed dataset so "yesterday" and the
+  // learning engine aren't stuck evaluating the same frozen snapshot forever.
+  const [serverSettledResults, setServerSettledResults] = useState<HistoricalMatchResult[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      fetchSettledResults().then((results) => {
+        if (!cancelled) setServerSettledResults(results);
+      });
+    };
+    load();
+    const interval = setInterval(load, 15 * 60 * 1000); // refresh every 15 minutes
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const combinedHistoricalResults = useMemo<HistoricalMatchResult[]>(() => {
+    const seenIds = new Set<string>();
+    const combined: HistoricalMatchResult[] = [];
+    // Server-settled (real, automated) results take priority over the static seed
+    // in case the same fixture id ever appears in both.
+    for (const r of serverSettledResults) {
+      if (r && r.id && !seenIds.has(r.id)) {
+        seenIds.add(r.id);
+        combined.push(r);
+      }
+    }
+    for (const r of HISTORICAL_MATCH_RESULTS) {
+      if (r && r.id && !seenIds.has(r.id)) {
+        seenIds.add(r.id);
+        combined.push(r);
+      }
+    }
+    return combined;
+  }, [serverSettledResults]);
+
   const [teamMatrices, setTeamMatrices] = useState(() => loadTeamIntelligenceMatrices());
   const [activeTab, setActiveTab] = useState<'timeline' | 'favourites' | 'learning' | 'yesterday' | 'groups' | 'todaysMatches' | 'smartCoach'>(() => {
     const s = loadUserSettings();
@@ -391,8 +434,8 @@ export default function App() {
 
   // Compute live empirical cumulative prediction success rate & yesterday metrics
   const performanceData = useMemo(() => {
-    return calculateEnginePerformance(HISTORICAL_MATCH_RESULTS, learningState.weights);
-  }, [learningState.weights]);
+    return calculateEnginePerformance(combinedHistoricalResults, learningState.weights);
+  }, [combinedHistoricalResults, learningState.weights]);
 
   const cumulativeSuccessRate = performanceData.summary.allTimeAccuracyPct;
   const correctPredictionsCount = performanceData.summary.allTimeCorrect;
@@ -436,7 +479,7 @@ export default function App() {
 
         // If background auto-learning is enabled, run an incremental gradient calibration epoch
         if (learningState.isAutoLearningEnabled) {
-          const tuned = trainSingleEpoch(learningState.weights, HISTORICAL_MATCH_RESULTS, 0.02);
+          const tuned = trainSingleEpoch(learningState.weights, combinedHistoricalResults, 0.02);
           const updatedState: LearningModelState = {
             ...learningState,
             weights: tuned.updatedWeights,
@@ -460,7 +503,7 @@ export default function App() {
         setIsScrapingNow(false);
         setSecondsUntilNextScrape(autoScrapeConfig.intervalSeconds);
       });
-  }, [autoScrapeConfig.intervalSeconds, fixtures, learningState]);
+  }, [autoScrapeConfig.intervalSeconds, fixtures, learningState, combinedHistoricalResults]);
 
   // Automated Scraper Interval Countdown
   useEffect(() => {
@@ -794,7 +837,7 @@ export default function App() {
                           fixture={fixture}
                           prediction={prediction}
                           onOverrideChange={handleOverrideChange}
-                          historicalResults={HISTORICAL_MATCH_RESULTS}
+                          historicalResults={combinedHistoricalResults}
                           onAddToBetSlip={handleAddToBetSlip}
                           onShareMatch={handleShareMatch}
                           onDeleteMatch={handleDeleteMatch}

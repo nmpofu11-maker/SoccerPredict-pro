@@ -279,6 +279,80 @@ export function deriveTeamMetricsFromOdds(homeDec: number, drawDec: number, away
 }
 
 /**
+ * Helper to robustly parse a kickoff/starting time from a raw string line.
+ * Supports:
+ *  - "25 Sep - 18:15" or "Friday 25 Sep - 18:15"
+ *  - "Sep 25 18:15"
+ *  - "25/09 18:15" or "25/09/2026 18:15"
+ *  - "18:15" or "18h15" on a single line
+ */
+export function parseKickoffTimeFromLine(
+  line: string,
+  currentYear: number,
+  currentMonth: string,
+  currentDay: string,
+  MONTH_MAP: Record<string, string>
+): string | null {
+  const clean = line.trim();
+  if (!clean) return null;
+
+  // 1. Standard word month with time e.g., "25 Sep - 18:15" or "25 Sep 18:15" or "Friday, 25 Sep - 18:15"
+  const wordMonthMatch = clean.match(/(?:[A-Za-z]+,?\s+)?(\d{1,2})\s+([A-Za-z]{3,9})(?:\s*-\s*|\s+)(\d{1,2})[:hH](\d{2})/i);
+  if (wordMonthMatch) {
+    const day = wordMonthMatch[1].padStart(2, '0');
+    const monthKey = wordMonthMatch[2].toLowerCase().substring(0, 3);
+    const month = MONTH_MAP[monthKey] || currentMonth;
+    const hour = wordMonthMatch[3].padStart(2, '0');
+    const min = wordMonthMatch[4].padStart(2, '0');
+    return `${currentYear}-${month}-${day}T${hour}:${min}:00+02:00`;
+  }
+
+  // 2. Month word first e.g., "Sep 25 18:15" or "Friday, Sep 25 - 18:15"
+  const monthWordFirstMatch = clean.match(/(?:[A-Za-z]+,?\s+)?([A-Za-z]{3,9})\s+(\d{1,2})(?:\s*-\s*|\s+)(\d{1,2})[:hH](\d{2})/i);
+  if (monthWordFirstMatch) {
+    const monthKey = monthWordFirstMatch[1].toLowerCase().substring(0, 3);
+    const month = MONTH_MAP[monthKey] || currentMonth;
+    const day = monthWordFirstMatch[2].padStart(2, '0');
+    const hour = monthWordFirstMatch[3].padStart(2, '0');
+    const min = monthWordFirstMatch[4].padStart(2, '0');
+    return `${currentYear}-${month}-${day}T${hour}:${min}:00+02:00`;
+  }
+
+  // 3. Slash or dash separated digits date e.g., "25/09 18:15" or "25/09/2026 18:15" or "25-09 18:15"
+  const slashDateMatch = clean.match(/(\d{1,2})[/\-](\d{1,2})(?:[/\-](\d{2,4}))?\s+(\d{1,2})[:hH](\d{2})/);
+  if (slashDateMatch) {
+    const day = slashDateMatch[1].padStart(2, '0');
+    const month = slashDateMatch[2].padStart(2, '0');
+    const year = slashDateMatch[3] ? (slashDateMatch[3].length === 2 ? `20${slashDateMatch[3]}` : slashDateMatch[3]) : String(currentYear);
+    const hour = slashDateMatch[4].padStart(2, '0');
+    const min = slashDateMatch[5].padStart(2, '0');
+    return `${year}-${month}-${day}T${hour}:${min}:00+02:00`;
+  }
+
+  // 4. Raw ISO date-time like "2026-09-25T18:15:00"
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(clean)) {
+    const isoPart = clean.substring(0, 16).replace(' ', 'T');
+    return `${isoPart}:00+02:00`;
+  }
+
+  // 5. Time only e.g., "18:15" or "06:15 PM" on its own line
+  const timeOnlyMatch = clean.match(/^(\d{1,2})[:hH](\d{2})(?:\s*(AM|PM))?$/i);
+  if (timeOnlyMatch) {
+    let hour = parseInt(timeOnlyMatch[1], 10);
+    const min = timeOnlyMatch[2].padStart(2, '0');
+    const ampm = timeOnlyMatch[3];
+    if (ampm) {
+      if (ampm.toUpperCase() === 'PM' && hour < 12) hour += 12;
+      if (ampm.toUpperCase() === 'AM' && hour === 12) hour = 0;
+    }
+    const hourStr = String(hour).padStart(2, '0');
+    return `${currentYear}-${currentMonth}-${currentDay}T${hourStr}:${min}:00+02:00`;
+  }
+
+  return null;
+}
+
+/**
  * Universal Bookmaker raw text parser (Hollywoodbets, Betway, Bet365, etc.)
  * Robustly parses team vs team pairs, dates, fractional or decimal odds, and strips competitions.
  */
@@ -341,6 +415,20 @@ export function parseHollywoodbetsRawText(text: string): MatchFixture[] {
     let rawHome = (parts[0] || '').trim();
     let rawAway = (parts[1] || '').trim();
 
+    let kickoffTime = defaultKickoff;
+
+    // Check if kickoff time is prefixed or suffixed inside the matchup line itself
+    const homeTimeExtracted = parseKickoffTimeFromLine(rawHome, currentYear, currentMonth, currentDay, MONTH_MAP);
+    if (homeTimeExtracted) {
+      kickoffTime = homeTimeExtracted;
+      rawHome = rawHome.replace(/^\d{1,2}[:hH]\d{2}(?:\s*(?:AM|PM))?\s*/i, '').trim();
+    }
+    const awayTimeExtracted = parseKickoffTimeFromLine(rawAway, currentYear, currentMonth, currentDay, MONTH_MAP);
+    if (awayTimeExtracted) {
+      kickoffTime = awayTimeExtracted;
+      rawAway = rawAway.replace(/\s*\d{1,2}[:hH]\d{2}(?:\s*(?:AM|PM))?$/i, '').trim();
+    }
+
     // Strip any competition text polluted into team strings
     const homeCleanRes = cleanTeamString(rawHome);
     const awayCleanRes = cleanTeamString(rawAway);
@@ -354,7 +442,6 @@ export function parseHollywoodbetsRawText(text: string): MatchFixture[] {
     }
 
     let league = '';
-    let kickoffTime = defaultKickoff;
     let homeOddsRaw: string | number = 1.0;
     let drawOddsRaw: string | number = 2.5;
     let awayOddsRaw: string | number = 1.0;
@@ -366,15 +453,9 @@ export function parseHollywoodbetsRawText(text: string): MatchFixture[] {
         league = line;
       }
 
-      // Regex for date like "25 Sep - 18:15" or "25/09 18:15"
-      const dateMatch = line.match(/(\d{1,2})\s+([A-Za-z]{3})\s*-\s*(\d{1,2}):(\d{2})/);
-      if (dateMatch) {
-        const day = dateMatch[1].padStart(2, '0');
-        const monthKey = dateMatch[2].toLowerCase();
-        const month = MONTH_MAP[monthKey] || currentMonth;
-        const hour = dateMatch[3].padStart(2, '0');
-        const min = dateMatch[4].padStart(2, '0');
-        kickoffTime = `${currentYear}-${month}-${day}T${hour}:${min}:00+02:00`;
+      const parsedTime = parseKickoffTimeFromLine(line, currentYear, currentMonth, currentDay, MONTH_MAP);
+      if (parsedTime) {
+        kickoffTime = parsedTime;
       }
 
       if (/^draw$/i.test(line) && k + 1 < nextMatchLineIdx) {
