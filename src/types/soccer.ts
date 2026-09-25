@@ -48,6 +48,7 @@ export interface MatchFixture {
   id: string;
   kickoffTime: string; // ISO string e.g. "2026-09-04T16:30:00Z"
   league: string;
+  competition?: string;
   venue: string;
   round?: string;
   isHighStakes: boolean;
@@ -60,6 +61,13 @@ export interface MatchFixture {
     draw: number;
     away: number;
     provider?: string;
+  };
+  isBookmakerProtected?: boolean;
+  impliedProbabilities?: {
+    home: number;
+    draw: number;
+    away: number;
+    marginPercent: number;
   };
   authenticity?: MatchAuthenticityStamp;
 }

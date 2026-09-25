@@ -805,7 +805,122 @@ export function getLeagueMeta(leagueName: string): LeagueInfo {
     return ALL_LEAGUES_DIRECTORY[aliasMap[normalizedKey]];
   }
 
-  // 4. Heuristic inference by country keywords
+  // 4. Prefix-based resolution for "Country • Competition" format
+  if (leagueName.includes('•')) {
+    const rawCountryPrefix = leagueName.split('•')[0].trim();
+    const cLower = rawCountryPrefix.toLowerCase();
+    
+    if (/nigeria/i.test(cLower)) {
+      return {
+        id: leagueName.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+        name: leagueName,
+        country: "Nigeria",
+        region: "continental",
+        isHighVolatility: false,
+        tier: 1,
+        flagEmoji: "🇳🇬",
+        color: "#15803d",
+      };
+    }
+    if (/israel/i.test(cLower)) {
+      return {
+        id: leagueName.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+        name: leagueName,
+        country: "Israel",
+        region: "europe",
+        isHighVolatility: false,
+        tier: 1,
+        flagEmoji: "🇮🇱",
+        color: "#0284c7",
+      };
+    }
+    if (/south africa/i.test(cLower)) {
+      return {
+        id: leagueName.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+        name: leagueName,
+        country: "South Africa",
+        region: "south_africa",
+        isHighVolatility: false,
+        tier: 1,
+        flagEmoji: "🇿🇦",
+        color: "#059669",
+      };
+    }
+    if (/england/i.test(cLower)) {
+      return {
+        id: leagueName.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+        name: leagueName,
+        country: "England",
+        region: "england",
+        isHighVolatility: false,
+        tier: 1,
+        flagEmoji: "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+        color: "#3b0764",
+      };
+    }
+    if (/jordan/i.test(cLower)) {
+      return {
+        id: leagueName.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+        name: leagueName,
+        country: "Jordan",
+        region: "asia_pacific",
+        isHighVolatility: false,
+        tier: 1,
+        flagEmoji: "🇯🇴",
+        color: "#047857",
+      };
+    }
+    if (/austria/i.test(cLower)) {
+      return {
+        id: leagueName.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+        name: leagueName,
+        country: "Austria",
+        region: "europe",
+        isHighVolatility: false,
+        tier: 1,
+        flagEmoji: "🇦🇹",
+        color: "#b91c1c",
+      };
+    }
+    if (/egypt/i.test(cLower)) {
+      return {
+        id: leagueName.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+        name: leagueName,
+        country: "Egypt",
+        region: "continental",
+        isHighVolatility: false,
+        tier: 1,
+        flagEmoji: "🇪🇬",
+        color: "#b45309",
+      };
+    }
+    if (/ghana/i.test(cLower)) {
+      return {
+        id: leagueName.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+        name: leagueName,
+        country: "Ghana",
+        region: "continental",
+        isHighVolatility: false,
+        tier: 1,
+        flagEmoji: "🇬🇭",
+        color: "#d97706",
+      };
+    }
+    if (/morocco/i.test(cLower)) {
+      return {
+        id: leagueName.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+        name: leagueName,
+        country: "Morocco",
+        region: "continental",
+        isHighVolatility: false,
+        tier: 1,
+        flagEmoji: "🇲🇦",
+        color: "#dc2626",
+      };
+    }
+  }
+
+  // 5. Heuristic inference by country keywords
   let inferredCountry = "Global";
   let inferredFlag = "⚽";
   let inferredRegion: LeagueInfo['region'] = "europe";
@@ -814,7 +929,47 @@ export function getLeagueMeta(leagueName: string): LeagueInfo {
     inferredCountry = "South Africa";
     inferredFlag = "🇿🇦";
     inferredRegion = "south_africa";
-  } else if (/england|english|premier league|championship|fa cup|carabao/i.test(normalizedKey)) {
+  } else if (/nigeria/i.test(normalizedKey)) {
+    inferredCountry = "Nigeria";
+    inferredFlag = "🇳🇬";
+    inferredRegion = "continental";
+  } else if (/israel/i.test(normalizedKey)) {
+    inferredCountry = "Israel";
+    inferredFlag = "🇮🇱";
+    inferredRegion = "europe";
+  } else if (/ghana/i.test(normalizedKey)) {
+    inferredCountry = "Ghana";
+    inferredFlag = "🇬🇭";
+    inferredRegion = "continental";
+  } else if (/egypt/i.test(normalizedKey)) {
+    inferredCountry = "Egypt";
+    inferredFlag = "🇪🇬";
+    inferredRegion = "continental";
+  } else if (/morocco/i.test(normalizedKey)) {
+    inferredCountry = "Morocco";
+    inferredFlag = "🇲🇦";
+    inferredRegion = "continental";
+  } else if (/algeria/i.test(normalizedKey)) {
+    inferredCountry = "Algeria";
+    inferredFlag = "🇩🇿";
+    inferredRegion = "continental";
+  } else if (/kenya/i.test(normalizedKey)) {
+    inferredCountry = "Kenya";
+    inferredFlag = "🇰🇪";
+    inferredRegion = "continental";
+  } else if (/zambia/i.test(normalizedKey)) {
+    inferredCountry = "Zambia";
+    inferredFlag = "🇿🇲";
+    inferredRegion = "continental";
+  } else if (/tanzania/i.test(normalizedKey)) {
+    inferredCountry = "Tanzania";
+    inferredFlag = "🇹🇿";
+    inferredRegion = "continental";
+  } else if (/uganda/i.test(normalizedKey)) {
+    inferredCountry = "Uganda";
+    inferredFlag = "🇺🇬";
+    inferredRegion = "continental";
+  } else if (/england|english|\bepl\b|championship|fa cup|carabao/i.test(normalizedKey) || normalizedKey === 'premier league') {
     inferredCountry = "England";
     inferredFlag = "🏴󠁧󠁢󠁥󠁮󠁧󠁿";
     inferredRegion = "england";
@@ -941,6 +1096,94 @@ export function getLeagueMeta(leagueName: string): LeagueInfo {
   } else if (/paraguay/i.test(normalizedKey)) {
     inferredCountry = "Paraguay";
     inferredFlag = "🇵🇾";
+    inferredRegion = "americas";
+  } else if (/israel/i.test(normalizedKey)) {
+    inferredCountry = "Israel";
+    inferredFlag = "🇮🇱";
+    inferredRegion = "europe";
+  } else if (/egypt/i.test(normalizedKey)) {
+    inferredCountry = "Egypt";
+    inferredFlag = "🇪🇬";
+    inferredRegion = "continental";
+  } else if (/north macedonia|macedonia/i.test(normalizedKey)) {
+    inferredCountry = "North Macedonia";
+    inferredFlag = "🇲🇰";
+    inferredRegion = "europe";
+  } else if (/slovakia/i.test(normalizedKey)) {
+    inferredCountry = "Slovakia";
+    inferredFlag = "🇸🇰";
+    inferredRegion = "europe";
+  } else if (/united arab emirates|uae/i.test(normalizedKey)) {
+    inferredCountry = "UAE";
+    inferredFlag = "🇦🇪";
+    inferredRegion = "asia_pacific";
+  } else if (/qatar/i.test(normalizedKey)) {
+    inferredCountry = "Qatar";
+    inferredFlag = "🇶🇦";
+    inferredRegion = "asia_pacific";
+  } else if (/estonia/i.test(normalizedKey)) {
+    inferredCountry = "Estonia";
+    inferredFlag = "🇪🇪";
+    inferredRegion = "europe";
+  } else if (/oman/i.test(normalizedKey)) {
+    inferredCountry = "Oman";
+    inferredFlag = "🇴🇲";
+    inferredRegion = "asia_pacific";
+  } else if (/croatia/i.test(normalizedKey)) {
+    inferredCountry = "Croatia";
+    inferredFlag = "🇭🇷";
+    inferredRegion = "europe";
+  } else if (/nigeria/i.test(normalizedKey)) {
+    inferredCountry = "Nigeria";
+    inferredFlag = "🇳🇬";
+    inferredRegion = "continental";
+  } else if (/finland/i.test(normalizedKey)) {
+    inferredCountry = "Finland";
+    inferredFlag = "🇫🇮";
+    inferredRegion = "europe";
+  } else if (/jordan/i.test(normalizedKey)) {
+    inferredCountry = "Jordan";
+    inferredFlag = "🇯🇴";
+    inferredRegion = "asia_pacific";
+  } else if (/switzerland|swiss/i.test(normalizedKey)) {
+    inferredCountry = "Switzerland";
+    inferredFlag = "🇨🇭";
+    inferredRegion = "europe";
+  } else if (/uruguay/i.test(normalizedKey)) {
+    inferredCountry = "Uruguay";
+    inferredFlag = "🇺🇾";
+    inferredRegion = "americas";
+  } else if (/ecuador/i.test(normalizedKey)) {
+    inferredCountry = "Ecuador";
+    inferredFlag = "🇪🇨";
+    inferredRegion = "americas";
+  } else if (/puerto rico/i.test(normalizedKey)) {
+    inferredCountry = "Puerto Rico";
+    inferredFlag = "🇵🇷";
+    inferredRegion = "americas";
+  } else if (/morocco/i.test(normalizedKey)) {
+    inferredCountry = "Morocco";
+    inferredFlag = "🇲🇦";
+    inferredRegion = "continental";
+  } else if (/el salvador/i.test(normalizedKey)) {
+    inferredCountry = "El Salvador";
+    inferredFlag = "🇸🇻";
+    inferredRegion = "americas";
+  } else if (/panama/i.test(normalizedKey)) {
+    inferredCountry = "Panama";
+    inferredFlag = "🇵🇦";
+    inferredRegion = "americas";
+  } else if (/honduras/i.test(normalizedKey)) {
+    inferredCountry = "Honduras";
+    inferredFlag = "🇭🇳";
+    inferredRegion = "americas";
+  } else if (/myanmar/i.test(normalizedKey)) {
+    inferredCountry = "Myanmar";
+    inferredFlag = "🇲🇲";
+    inferredRegion = "asia_pacific";
+  } else if (/argentina/i.test(normalizedKey)) {
+    inferredCountry = "Argentina";
+    inferredFlag = "🇦🇷";
     inferredRegion = "americas";
   }
 

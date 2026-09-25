@@ -37,6 +37,9 @@ export class ErrorBoundary extends React.Component<Props, State> {
   private handleResetStorage = () => {
     try {
       localStorage.removeItem('soccer_engine_user_settings_v1');
+      localStorage.removeItem('soccer_engine_user_settings_v2');
+      localStorage.removeItem('soccer_engine_user_settings_v3');
+      localStorage.removeItem('soccer_engine_live_fixtures_v10_hollywoodbets_18sept2026_noghost');
     } catch {
       // ignore
     }

@@ -37,7 +37,9 @@ import {
   loadLearningStateWithServerFallback,
   evaluateHistoricalBacktest,
 } from './engine/selfLearningEngine';
+import { loadTeamIntelligenceMatrices } from './engine/teamIntelligenceMatrix';
 import { ensurePersistentStorage } from './services/durablePersistence';
+import { deleteFixtureOnServer, purgeFixturesOnServer, ingestSlateToServer } from './services/apiService';
 import { HISTORICAL_MATCH_RESULTS } from './data/historical_results';
 import { isFavouriteTeam, isHighVolatilityLeague } from './constants/favourites';
 import { getLeagueMeta, LeagueCategoryId, matchesLeagueCategory, LEAGUE_CATEGORIES } from './constants/leagues';
@@ -77,6 +79,7 @@ export default function App() {
   const [fixtures, setFixtures] = useState<MatchFixture[]>(() => loadFixturesDataset());
   const [overrides, setOverrides] = useState<Record<string, ManualOverrideType>>(() => loadManualOverrides());
   const [learningState, setLearningState] = useState<LearningModelState>(() => loadLearningState());
+  const [teamMatrices, setTeamMatrices] = useState(() => loadTeamIntelligenceMatrices());
   const [activeTab, setActiveTab] = useState<'timeline' | 'favourites' | 'learning' | 'yesterday' | 'groups' | 'todaysMatches' | 'smartCoach'>(() => {
     const s = loadUserSettings();
     return (s.activeTab as 'timeline' | 'favourites' | 'learning' | 'yesterday' | 'groups' | 'todaysMatches' | 'smartCoach') || 'timeline';
@@ -92,14 +95,14 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<LeagueCategoryId>('all');
   const [dateRange, setDateRange] = useState<DateRangeFilter>(() => {
     const s = loadUserSettings();
-    const range = s.dateRange || DEFAULT_DATE_RANGE;
-    // If the active tab is today's matches, always force a fresh today's date bounds
-    if (s.activeTab === 'todaysMatches') {
+    const range = s.dateRange || { presetId: 'today', startDate: '', endDate: '' };
+    // If the active tab is today's matches or preset is 'all'/unset, default to today's slate
+    if (s.activeTab === 'todaysMatches' || !range.presetId || range.presetId === 'all') {
       const { startDate, endDate } = calculatePresetDates('today');
       return { startDate, endDate, presetId: 'today' };
     }
     // If we have a saved dynamic preset, re-evaluate it against actual current client time
-    if (range.presetId && range.presetId !== 'all' && range.presetId !== 'custom') {
+    if (range.presetId && range.presetId !== 'custom') {
       const { startDate, endDate } = calculatePresetDates(range.presetId);
       return { startDate, endDate, presetId: range.presetId };
     }
@@ -240,10 +243,10 @@ export default function App() {
     saveUserSettings({ searchQuery: '', selectedLeague: 'all', activeTab: 'timeline', dateRange: DEFAULT_DATE_RANGE });
   };
 
-  // Evaluate all predictions sequentially through the pure JS 8-rule engine with adaptive calibrated weights
+  // Evaluate all predictions sequentially through the pure JS 8-rule engine with adaptive calibrated weights and team intelligence matrices
   const predictions = useMemo(() => {
-    return evaluateAllFixtures(fixtures, overrides, learningState.weights);
-  }, [fixtures, overrides, learningState.weights]);
+    return evaluateAllFixtures(fixtures, overrides, learningState.weights, teamMatrices);
+  }, [fixtures, overrides, learningState.weights, teamMatrices]);
 
   // Derive unique available leagues for filtering
   const availableLeagues = useMemo(() => {
@@ -498,12 +501,50 @@ export default function App() {
   const handleImportCustomFixtures = (custom: MatchFixture[]) => {
     saveCustomFixtures(custom);
     setFixtures(custom);
+    // Persist to server disk manifest so fixtures are never lost on restart or across devices
+    ingestSlateToServer({ fixtures: custom }).catch((e) => console.warn('Server disk persist error:', e));
+  };
+
+  // Delete individual match fixture
+  const handleDeleteMatch = async (matchId: string) => {
+    try {
+      const res = await deleteFixtureOnServer(matchId);
+      const updated = res.fixtures && res.fixtures.length >= 0 ? res.fixtures : fixtures.filter(f => f.id !== matchId);
+      setFixtures(updated);
+      saveCustomFixtures(updated);
+      setAutoScrapeNotice(`Deleted fixture ID: ${matchId}`);
+      setTimeout(() => setAutoScrapeNotice(null), 3000);
+    } catch (err) {
+      console.warn('Delete fixture failed, applying local update:', err);
+      const updated = fixtures.filter(f => f.id !== matchId);
+      setFixtures(updated);
+      saveCustomFixtures(updated);
+    }
+  };
+
+  // Purge and reset all stored fixtures and slates to a clean state
+  const handlePurgeSlates = async () => {
+    if (!window.confirm('Are you sure you want to purge and reset all stored fixtures and slates? This will wipe the manifest to a clean state.')) {
+      return;
+    }
+    try {
+      await purgeFixturesOnServer();
+      setFixtures([]);
+      saveCustomFixtures([]);
+      setAutoScrapeNotice('All fixtures and slates have been purged cleanly.');
+      setTimeout(() => setAutoScrapeNotice(null), 3500);
+    } catch (err) {
+      console.warn('Purge failed, resetting local state:', err);
+      setFixtures([]);
+      saveCustomFixtures([]);
+    }
   };
 
   // Restore factory defaults
   const handleRestoreDefaults = () => {
     const defaults = restoreDefaultFixtures();
     setFixtures(defaults);
+    ingestSlateToServer({ fixtures: defaults }).catch(() => {});
   };
 
   const metadata: IngestionMetadata = useMemo(() => {
@@ -527,6 +568,7 @@ export default function App() {
       <Navbar
         onOpenIngestion={() => handleOpenIngestionModal('autoscrape')}
         onOpenVerification={() => handleOpenIngestionModal('verification')}
+        onPurgeSlates={handlePurgeSlates}
         authenticityScore={auditReport?.overallAuthenticityScore ?? 100}
         onOpenRules={() => setIsRulesModalOpen(true)}
         onOpenFavouritesList={() => setIsFavMatrixOpen(true)}
@@ -660,6 +702,7 @@ export default function App() {
                 onUpdateLearningState={(newState) => {
                   setLearningState(newState);
                   saveLearningState(newState);
+                  setTeamMatrices(loadTeamIntelligenceMatrices());
                 }}
                 onOpenApkModal={() => setIsApkModalOpen(true)}
                 onOpenStatisticalModal={() => setIsStatisticalModalOpen(true)}
@@ -754,6 +797,7 @@ export default function App() {
                           historicalResults={HISTORICAL_MATCH_RESULTS}
                           onAddToBetSlip={handleAddToBetSlip}
                           onShareMatch={handleShareMatch}
+                          onDeleteMatch={handleDeleteMatch}
                           isLiveSimulationActive={isLiveSimulationActive}
                         />
                       );

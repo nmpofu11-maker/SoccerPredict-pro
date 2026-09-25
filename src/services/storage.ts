@@ -6,7 +6,7 @@ import { verifyAndSanitizeFixtures } from './dataIntegrityValidator';
 const STORAGE_KEYS = {
   OVERRIDES: 'soccer_engine_manual_overrides_v1',
   SETTINGS: 'soccer_engine_user_settings_v3',
-  CUSTOM_FIXTURES: 'soccer_engine_live_fixtures_v10_hollywoodbets_18sept2026_noghost',
+  CUSTOM_FIXTURES: 'soccer_engine_live_fixtures_v15_sast_kickoffs',
   LAST_INGESTION: 'soccer_engine_ingestion_metadata_v3',
 };
 
@@ -32,7 +32,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   dateRange: {
     startDate: '',
     endDate: '',
-    presetId: 'all',
+    presetId: 'today',
   },
 };
 
@@ -129,7 +129,9 @@ export function loadFixturesDataset(): MatchFixture[] {
         'soccer_engine_custom_fixtures_v6_real_march2025',
         'soccer_engine_live_fixtures_v7_real_active',
         'soccer_engine_live_fixtures_v8_sept2026_active',
-        'soccer_engine_live_fixtures_v9_hollywoodbets_18sept2026'
+        'soccer_engine_live_fixtures_v9_hollywoodbets_18sept2026',
+        'soccer_engine_live_fixtures_v10_hollywoodbets_18sept2026_noghost',
+        'soccer_engine_live_fixtures_v11_hollywoodbets_24sept2026'
       ].forEach((legacyKey) => {
         localStorage.removeItem(legacyKey);
       });
@@ -138,8 +140,9 @@ export function loadFixturesDataset(): MatchFixture[] {
       if (custom) {
         const parsed = JSON.parse(custom);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Drop any legacy ghost matches before today (2026-09-18)
-          const nonGhost = parsed.filter(f => f && f.kickoffTime && f.kickoffTime >= '2026-09-18T00:00:00Z');
+          // Drop any legacy ghost matches older than 48 hours
+          const minDateIso = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString().slice(0, 10);
+          const nonGhost = parsed.filter(f => f && f.kickoffTime && f.kickoffTime.slice(0, 10) >= minDateIso);
           if (nonGhost.length > 0) {
             const { fixtures: validated } = verifyAndSanitizeFixtures(nonGhost);
             return sortFixturesByKickoff(validated);

@@ -1,5 +1,5 @@
 // Service Worker for Soccer Prediction Engine PWA / APK
-const CACHE_NAME = 'soccer-predictor-v1';
+const CACHE_NAME = 'soccer-predictor-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -7,16 +7,37 @@ const STATIC_ASSETS = [
   '/icon.svg',
 ];
 
+// Check if current scope is a dev preview environment
+const isDevEnv =
+  self.location.hostname === 'localhost' ||
+  self.location.hostname.includes('ais-dev-') ||
+  self.location.port === '3000';
+
 self.addEventListener('install', (event) => {
+  if (isDevEnv) {
+    self.skipWaiting();
+    return;
+  }
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_ASSETS);
+    }).catch(() => {
+      // Ignore cache failures in dynamic environments
     })
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
+  if (isDevEnv) {
+    // Unregister and clear caches immediately in dev environments
+    event.waitUntil(
+      caches.keys().then((keys) => {
+        return Promise.all(keys.map((key) => caches.delete(key)));
+      }).then(() => self.registration.unregister())
+    );
+    return;
+  }
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
@@ -28,6 +49,11 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  if (isDevEnv) {
+    // In dev environment, never intercept any requests
+    return;
+  }
+
   const url = new URL(event.request.url);
 
   // Do NOT intercept server API routes, dev bundles, or non-GET requests

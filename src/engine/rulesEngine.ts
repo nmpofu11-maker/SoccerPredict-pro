@@ -5,9 +5,11 @@ import {
   ManualOverrideType,
   EngineWeights,
 } from '../types/soccer';
+import { TeamIntelligenceMatrices } from '../types/superLearning';
 import { isFavouriteTeam, isHighVolatilityLeague, getLeagueClusterProfile } from '../constants/favourites';
 import { computeComparativeDominance } from '../utils/robustMetricsCalculator';
 import { resolveTeamPerformanceProfile, formatSquadValue } from '../utils/teamPerformanceProfile';
+import { getTeamLearnedCoefficients } from './teamIntelligenceMatrix';
 
 export const DEFAULT_ENGINE_WEIGHTS: EngineWeights = {
   stakesMotivationBoost: 2.5,
@@ -62,10 +64,15 @@ export function sanitizeEngineWeights(weights?: Partial<EngineWeights> | null): 
 export function evaluateFixturePrediction(
   fixture: MatchFixture,
   manualOverride: ManualOverrideType = 'none',
-  weights?: Partial<EngineWeights>
+  weights?: Partial<EngineWeights>,
+  teamMatrices?: TeamIntelligenceMatrices
 ): PredictionResult {
   const w: EngineWeights = sanitizeEngineWeights(weights);
   const appliedRules: RuleAppliedItem[] = [];
+
+  // Retrieve Aggressive Super-Learning Protocol dynamic coefficients
+  const homeLearned = getTeamLearnedCoefficients(fixture.homeTeam.name, teamMatrices);
+  const awayLearned = getTeamLearnedCoefficients(fixture.awayTeam.name, teamMatrices);
 
   // Check 80 Priority Favourite status upfront for tagging & Rule 8
   const homeIsFav = isFavouriteTeam(fixture.homeTeam.name);
@@ -75,10 +82,22 @@ export function evaluateFixturePrediction(
   if (homeIsFav) favouriteTeams.push(fixture.homeTeam.name);
   if (awayIsFav) favouriteTeams.push(fixture.awayTeam.name);
 
-  // Initial baseline scores (Calibrated home advantage baseline vs away baseline)
-  let homePoints = w.homeAdvantageBaseline;
+  // Initial baseline scores: modulated by Super-Learned home advantage multiplier
+  let homePoints = w.homeAdvantageBaseline * (homeLearned.home_advantage_multiplier || 1.15);
   let awayPoints = w.awayAdvantageBaseline;
   let drawPoints = 6.8;
+
+  // Super-Learning Active Notification Tag
+  if (homeLearned.home_advantage_multiplier > 1.20 || homeLearned.form_momentum_weight > 0.88) {
+    appliedRules.push({
+      ruleNumber: 0,
+      ruleName: 'Aggressive Super-Learning Protocol',
+      tag: `⚡ Super-Learned: ${fixture.homeTeam.shortName || fixture.homeTeam.name} (x${homeLearned.home_advantage_multiplier.toFixed(2)} Fortress)`,
+      impact: `Super-learned coefficients: Home multiplier x${homeLearned.home_advantage_multiplier.toFixed(2)}, Form weight x${homeLearned.form_momentum_weight.toFixed(2)}`,
+      beneficiary: 'home',
+      description: `Aggressive Super-Learning Protocol active. Team coefficients continuously optimized from historical outcomes without limits.`,
+    });
+  }
 
   // League-Specific Cluster Archetype Calibration (Defensive draw-heavy vs High-scoring vs Fortress)
   const leagueCluster = getLeagueClusterProfile(fixture.league);
@@ -751,7 +770,8 @@ export function evaluateFixturePrediction(
 export function evaluateAllFixtures(
   fixtures: MatchFixture[],
   overridesMap: Record<string, ManualOverrideType> = {},
-  weights?: Partial<EngineWeights>
+  weights?: Partial<EngineWeights>,
+  teamMatrices?: TeamIntelligenceMatrices
 ): Record<string, PredictionResult> {
   const results: Record<string, PredictionResult> = {};
   if (!Array.isArray(fixtures)) return results;
@@ -759,7 +779,7 @@ export function evaluateAllFixtures(
     const fixture = fixtures[i];
     if (!fixture || !fixture.id || !fixture.homeTeam || !fixture.awayTeam) continue;
     const override = overridesMap[fixture.id] || 'none';
-    results[fixture.id] = evaluateFixturePrediction(fixture, override, weights);
+    results[fixture.id] = evaluateFixturePrediction(fixture, override, weights, teamMatrices);
   }
   return results;
 }

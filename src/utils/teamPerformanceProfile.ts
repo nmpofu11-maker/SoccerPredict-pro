@@ -929,6 +929,101 @@ export const CANONICAL_TEAM_PROFILES: Record<string, TeamPerformanceProfile> = {
     avgMatchRating: 6.64,
   },
 
+  // === NIGERIA PREMIER LEAGUE ===
+  'rivers united': {
+    lastSeasonRank: 1,
+    lastSeasonStanding: '1st (Champions)',
+    lastSeasonPoints: 68,
+    totalSquadValueEur: 3.2,
+    avgMatchRating: 7.18,
+  },
+  'rivers united fc': {
+    lastSeasonRank: 1,
+    lastSeasonStanding: '1st (Champions)',
+    lastSeasonPoints: 68,
+    totalSquadValueEur: 3.2,
+    avgMatchRating: 7.18,
+  },
+  'kun khalifat': {
+    lastSeasonRank: 19,
+    lastSeasonStanding: '19th',
+    lastSeasonPoints: 22,
+    totalSquadValueEur: 0.75,
+    avgMatchRating: 6.68,
+  },
+  'kun khalifat fc': {
+    lastSeasonRank: 19,
+    lastSeasonStanding: '19th',
+    lastSeasonPoints: 22,
+    totalSquadValueEur: 0.75,
+    avgMatchRating: 6.68,
+  },
+  'enyimba': {
+    lastSeasonRank: 2,
+    lastSeasonStanding: '2nd (Runners-up)',
+    lastSeasonPoints: 63,
+    totalSquadValueEur: 2.8,
+    avgMatchRating: 7.08,
+  },
+  'enyimba fc': {
+    lastSeasonRank: 2,
+    lastSeasonStanding: '2nd (Runners-up)',
+    lastSeasonPoints: 63,
+    totalSquadValueEur: 2.8,
+    avgMatchRating: 7.08,
+  },
+  'remo stars': {
+    lastSeasonRank: 2,
+    lastSeasonStanding: '2nd',
+    lastSeasonPoints: 65,
+    totalSquadValueEur: 2.9,
+    avgMatchRating: 7.05,
+  },
+  'rangers international': {
+    lastSeasonRank: 1,
+    lastSeasonStanding: '1st (Champions)',
+    lastSeasonPoints: 70,
+    totalSquadValueEur: 3.1,
+    avgMatchRating: 7.12,
+  },
+  'plateau united': {
+    lastSeasonRank: 4,
+    lastSeasonStanding: '4th',
+    lastSeasonPoints: 58,
+    totalSquadValueEur: 2.2,
+    avgMatchRating: 6.90,
+  },
+  'shooting stars': {
+    lastSeasonRank: 5,
+    lastSeasonStanding: '5th',
+    lastSeasonPoints: 56,
+    totalSquadValueEur: 2.0,
+    avgMatchRating: 6.88,
+  },
+  'kano pillars': {
+    lastSeasonRank: 6,
+    lastSeasonStanding: '6th',
+    lastSeasonPoints: 52,
+    totalSquadValueEur: 1.9,
+    avgMatchRating: 6.85,
+  },
+
+  // === ISRAEL LEAGUES ===
+  'maccabi kiryat ata-bialik': {
+    lastSeasonRank: 1,
+    lastSeasonStanding: '1st (Champions)',
+    lastSeasonPoints: 62,
+    totalSquadValueEur: 1.5,
+    avgMatchRating: 6.95,
+  },
+  'hapoel bnei jat united': {
+    lastSeasonRank: 19,
+    lastSeasonStanding: '19th',
+    lastSeasonPoints: 18,
+    totalSquadValueEur: 0.45,
+    avgMatchRating: 6.60,
+  },
+
   // === SAUDI PRO LEAGUE ===
   'al ittihad': {
     lastSeasonRank: 5,
@@ -1212,19 +1307,43 @@ export function resolveTeamPerformanceProfile(
       totalSquadValueEur = Math.round(baseValuation * rankDecay * 100) / 100;
     } else {
       // Senior professional leagues
-      const isTop5League =
+      const isEnglishPremierLeague =
         league &&
-        /premier league|la liga|serie a|bundesliga|ligue 1/i.test(league);
+        (/english premier league|^premier league$|\bepl\b/i.test(league) ||
+          (/premier league/i.test(league) &&
+            !league.includes('•') &&
+            !/nigeria|ghana|egypt|kenya|zambia|tanzania|uganda|russia|ukraine|israel|kuwait|singapore|kazakhstan|malta|jamaica|wales|ireland|ethiopia/i.test(league)));
+
+      const isTop5League =
+        isEnglishPremierLeague ||
+        (league && /la liga|serie a|bundesliga|ligue 1/i.test(league));
+
+      const isAfricanOrRegionalLeague =
+        league &&
+        /nigeria|ghana|egypt|kenya|zambia|tanzania|uganda|algeria|morocco|tunisia|cameroon|ivory coast|senegal|angola|congo|ethiopia|rwanda|botswana|zimbabwe|south african first division/i.test(league);
+
       const isMinorTier =
         league &&
-        /faroe|jordan|iraq|malta|wales|ireland|iceland|algeria|san marino|paraguay/i.test(league);
+        (/faroe|jordan|iraq|malta|wales|ireland|iceland|san marino|paraguay|bolivia|estonia|macedonia|oman|myanmar|vietnam|thailand|kuwait|bahrain/i.test(league) || isAfricanOrRegionalLeague);
+
       const isSecondTier =
         league &&
         /championship|serie b|2\. bundesliga|ligue 2|eerste|segunda|challenge league/i.test(league);
 
-      const baseValuation = isTop5League ? 450 : isSecondTier ? 35 : isMinorTier ? 6 : 95;
+      let baseValuation = 95;
+      if (isTop5League) {
+        baseValuation = 450;
+      } else if (isAfricanOrRegionalLeague) {
+        baseValuation = 3.5;
+      } else if (isMinorTier) {
+        baseValuation = 6.0;
+      } else if (isSecondTier) {
+        baseValuation = 35;
+      }
+
       const rankDecay = Math.max(0.18, 1 - (currentRank - 1) * 0.045);
-      totalSquadValueEur = Math.round(baseValuation * rankDecay);
+      const calculatedVal = baseValuation * rankDecay;
+      totalSquadValueEur = calculatedVal >= 10 ? Math.round(calculatedVal) : Math.round(calculatedVal * 100) / 100;
     }
   }
 

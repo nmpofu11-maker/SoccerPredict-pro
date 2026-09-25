@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { fetchVerificationAudit, recalibrateOfficialStandings } from '../services/scraperService';
 import { ALL_LEAGUES_DIRECTORY, LEAGUE_CATEGORIES, getLeagueMeta } from '../constants/leagues';
+import { parseHollywoodbetsRawText } from '../services/hollywoodbetsParser';
 
 interface ScraperIngestionModalProps {
   isOpen: boolean;
@@ -140,24 +141,52 @@ export const ScraperIngestionModal: React.FC<ScraperIngestionModalProps> = ({
   const handleSaveCustom = () => {
     try {
       setParseError(null);
-      const parsed = JSON.parse(customJsonInput);
-      if (!Array.isArray(parsed)) {
-        throw new Error('Root element must be a JSON array of MatchFixtures.');
+      const trimmed = customJsonInput.trim();
+      if (!trimmed) {
+        throw new Error('Input cannot be empty.');
       }
-      if (parsed.length === 0) {
-        throw new Error('Array cannot be empty.');
+
+      let parsedFixtures: MatchFixture[] = [];
+
+      // Check if user pasted Hollywoodbets / Betway raw text
+      if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) {
+        parsedFixtures = parseHollywoodbetsRawText(trimmed);
+        if (parsedFixtures.length === 0) {
+          throw new Error('Could not parse any matches from text. Ensure format contains "Team A vs Team B" and dates.');
+        }
+      } else {
+        const parsed = JSON.parse(trimmed);
+        if (!Array.isArray(parsed)) {
+          throw new Error('Root element must be a JSON array of MatchFixtures.');
+        }
+        if (parsed.length === 0) {
+          throw new Error('Array cannot be empty.');
+        }
+        for (const item of parsed) {
+          if (!item.id || !item.kickoffTime || !item.homeTeam || !item.awayTeam) {
+            throw new Error(`Item ${item.id || 'unknown'} is missing required fields (kickoffTime, homeTeam, awayTeam).`);
+          }
+        }
+        parsedFixtures = parsed as MatchFixture[];
       }
-      for (const item of parsed) {
-        if (!item.id || !item.kickoffTime || !item.homeTeam || !item.awayTeam) {
-          throw new Error(`Item ${item.id || 'unknown'} is missing required fields (kickoffTime, homeTeam, awayTeam).`);
+
+      // Merge with existing fixtures or replace
+      const idMap = new Map<string, MatchFixture>();
+      for (const f of parsedFixtures) {
+        idMap.set(f.id, f);
+      }
+      for (const f of fixtures) {
+        if (!idMap.has(f.id)) {
+          idMap.set(f.id, f);
         }
       }
-      onImportCustomFixtures(parsed as MatchFixture[]);
+      const combined = Array.from(idMap.values());
+      onImportCustomFixtures(combined);
       setIsEditing(false);
       // Trigger audit on newly imported custom dataset
-      handleRunAudit(parsed as MatchFixture[]);
+      handleRunAudit(combined);
     } catch (err: any) {
-      setParseError(err.message || 'Invalid JSON format');
+      setParseError(err.message || 'Invalid format');
     }
   };
 
@@ -967,7 +996,7 @@ export const ScraperIngestionModal: React.FC<ScraperIngestionModalProps> = ({
                 value={customJsonInput}
                 onChange={(e) => setCustomJsonInput(e.target.value)}
                 className="w-full flex-1 min-h-[260px] bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-xs text-slate-200 focus:outline-none focus:border-sky-500 resize-none"
-                placeholder="Paste valid JSON array of MatchFixtures..."
+                placeholder="Paste valid JSON array of MatchFixtures OR paste copied match listings directly from Hollywoodbets / Betway (e.g. 'Team A vs Team B', dates, odds)..."
               />
             ) : (
               <pre className="w-full flex-1 min-h-[260px] max-h-[360px] overflow-auto bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-[11px] text-slate-300 leading-relaxed select-all">

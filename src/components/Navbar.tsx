@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   MoreVertical,
   BarChart3,
+  Trash2,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -19,6 +20,7 @@ interface NavbarProps {
   onOpenApkModal?: () => void;
   onOpenStatisticalAnalysis?: () => void;
   onOpenVerification?: () => void;
+  onPurgeSlates?: () => void;
   authenticityScore?: number;
   overridesCount: number;
   autoScrapeEnabled: boolean;
@@ -39,6 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenApkModal,
   onOpenStatisticalAnalysis,
   onOpenVerification,
+  onPurgeSlates,
   authenticityScore = 100,
   autoScrapeEnabled,
   onToggleAutoScrape,
@@ -222,7 +225,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               )}
 
-              <div className="border-t border-slate-800/80 my-1 pt-1">
+              <div className="border-t border-slate-800/80 my-1 pt-1 space-y-0.5">
                 <button
                   type="button"
                   onClick={() => {
@@ -235,6 +238,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <RefreshCw className={`w-3.5 h-3.5 text-sky-400 ${isScrapingNow ? 'animate-spin' : ''}`} />
                   <span>Trigger Scrape Now</span>
                 </button>
+
+                {onPurgeSlates && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMenu(false);
+                      onPurgeSlates();
+                    }}
+                    className="w-full px-3 py-2 text-left flex items-center gap-2 text-rose-300 hover:bg-rose-950/60 hover:text-rose-200 transition-colors"
+                    id="btn-nav-purge-slates"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Purge & Reset Slates</span>
+                  </button>
+                )}
               </div>
             </div>
           )}

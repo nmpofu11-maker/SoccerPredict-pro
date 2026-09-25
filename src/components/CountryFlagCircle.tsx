@@ -3,6 +3,27 @@ import React, { useState } from 'react';
 // ISO 3166-1 alpha-2 mapping for countries/regions
 const COUNTRY_CODE_MAP: Record<string, string> = {
   'South Africa': 'za',
+  'Nigeria': 'ng',
+  'Israel': 'il',
+  'Egypt': 'eg',
+  'Ghana': 'gh',
+  'Morocco': 'ma',
+  'Algeria': 'dz',
+  'Tunisia': 'tn',
+  'Cameroon': 'cm',
+  'Ivory Coast': 'ci',
+  'Senegal': 'sn',
+  'Kenya': 'ke',
+  'Zambia': 'zm',
+  'Tanzania': 'tz',
+  'Uganda': 'ug',
+  'Jordan': 'jo',
+  'Saudi Arabia': 'sa',
+  'UAE': 'ae',
+  'Qatar': 'qa',
+  'Oman': 'om',
+  'Kuwait': 'kw',
+  'Bahrain': 'bh',
   'England': 'gb-eng',
   'Scotland': 'gb-sct',
   'Spain': 'es',
@@ -16,7 +37,6 @@ const COUNTRY_CODE_MAP: Record<string, string> = {
   'USA/Canada': 'us',
   'USA': 'us',
   'Japan': 'jp',
-  'Saudi Arabia': 'sa',
   'Switzerland': 'ch',
   'Austria': 'at',
   'Belgium': 'be',
@@ -29,6 +49,9 @@ const COUNTRY_CODE_MAP: Record<string, string> = {
   'Colombia': 'co',
   'Chile': 'cl',
   'Bolivia': 'bo',
+  'Ecuador': 'ec',
+  'Paraguay': 'py',
+  'Uruguay': 'uy',
   'China': 'cn',
   'Australia': 'au',
   'South Korea': 'kr',
@@ -36,6 +59,13 @@ const COUNTRY_CODE_MAP: Record<string, string> = {
   'Ireland': 'ie',
   'Romania': 'ro',
   'Latvia': 'lv',
+  'Estonia': 'ee',
+  'North Macedonia': 'mk',
+  'Slovakia': 'sk',
+  'San Marino': 'sm',
+  'Myanmar': 'mm',
+  'Thailand': 'th',
+  'Vietnam': 'vn',
   'Malaysia': 'my',
   'Europe': 'eu',
   // Continental or Global
@@ -45,9 +75,32 @@ const COUNTRY_CODE_MAP: Record<string, string> = {
 };
 
 export function getCountryCode(countryName?: string, leagueName?: string): string | null {
+  // 1. Direct countryName lookup
+  if (countryName && countryName !== 'Global') {
+    const direct = COUNTRY_CODE_MAP[countryName];
+    if (direct) return direct;
+
+    const lower = countryName.toLowerCase().trim();
+    for (const [k, v] of Object.entries(COUNTRY_CODE_MAP)) {
+      if (k.toLowerCase() === lower && v) {
+        return v;
+      }
+    }
+  }
+
+  // 2. Parse from league prefix e.g. "Nigeria • Premier League"
   if (leagueName) {
+    if (leagueName.includes('•')) {
+      const prefix = leagueName.split('•')[0].trim().toLowerCase();
+      for (const [k, v] of Object.entries(COUNTRY_CODE_MAP)) {
+        if (prefix.includes(k.toLowerCase()) && v) {
+          return v;
+        }
+      }
+    }
+
     const l = leagueName.toLowerCase();
-    if (l.includes('premier league') || l.includes('championship') || l.includes('league one') || l.includes('fa cup') || l.includes('carabao')) {
+    if (l.includes('english premier') || l.includes('epl') || l.includes('championship') || l.includes('league one') || l.includes('fa cup') || l.includes('carabao')) {
       return 'gb-eng';
     }
     if (l.includes('scottish') || l.includes('scotland')) {
@@ -70,16 +123,6 @@ export function getCountryCode(countryName?: string, leagueName?: string): strin
     }
   }
 
-  if (!countryName) return null;
-  const direct = COUNTRY_CODE_MAP[countryName];
-  if (direct) return direct;
-
-  const lower = countryName.toLowerCase().trim();
-  for (const [k, v] of Object.entries(COUNTRY_CODE_MAP)) {
-    if (k.toLowerCase() === lower && v) {
-      return v;
-    }
-  }
   return null;
 }
 

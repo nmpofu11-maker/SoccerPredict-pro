@@ -21,12 +21,29 @@
     <script>
       // Register Service Worker safely for PWA and standalone APK installation
       try {
-        if ('serviceWorker' in navigator && window.location.protocol.startsWith('http') && window.self === window.top) {
-          window.addEventListener('load', function() {
-            navigator.serviceWorker.register('/sw.js').catch(function() {
-              // Silently ignore registration failures in restricted sandbox
+        if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+          const isDev = window.location.hostname.includes('ais-dev-') || window.location.hostname === 'localhost' || window.location.port === '3000';
+          if (isDev) {
+            // Clean up any stale service workers in development preview
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+              for (var i = 0; i < registrations.length; i++) {
+                registrations[i].unregister();
+              }
+            }).catch(function() {});
+            if ('caches' in window) {
+              caches.keys().then(function(names) {
+                for (var j = 0; j < names.length; j++) {
+                  caches.delete(names[j]);
+                }
+              }).catch(function() {});
+            }
+          } else if (window.self === window.top) {
+            window.addEventListener('load', function() {
+              navigator.serviceWorker.register('/sw.js').catch(function() {
+                // Silently ignore registration failures in restricted sandbox
+              });
             });
-          });
+          }
         }
       } catch (e) {
         // Silently ignore in sandboxed environments

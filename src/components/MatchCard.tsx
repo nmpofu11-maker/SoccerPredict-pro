@@ -15,7 +15,7 @@ import { getTeamOutlierStatus } from '../utils/robustMetricsCalculator';
 import { OutlierIndicator } from './OutlierIndicator';
 import { VolatilityHeatmapOverlay } from './VolatilityHeatmapOverlay';
 import { resolveTeamPerformanceProfile, formatSquadValue } from '../utils/teamPerformanceProfile';
-import { Clock, Flame, ChevronDown, ChevronUp, Star, ExternalLink, CheckCircle2, Zap, Search, Share2, Ticket, Swords } from 'lucide-react';
+import { Clock, Flame, ChevronDown, ChevronUp, Star, ExternalLink, CheckCircle2, Zap, Search, Share2, Ticket, Swords, Trash2 } from 'lucide-react';
 
 const isInternationalCompetition = (leagueName: string = ''): boolean => {
   const l = leagueName.toLowerCase();
@@ -62,6 +62,7 @@ interface MatchCardProps {
   historicalResults?: HistoricalMatchResult[];
   onAddToBetSlip?: (item: BetSlipItem) => void;
   onShareMatch?: (fixture: MatchFixture, prediction: PredictionResult) => void;
+  onDeleteMatch?: (matchId: string) => void;
   isLiveSimulationActive?: boolean;
 }
 
@@ -72,6 +73,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   historicalResults = HISTORICAL_MATCH_RESULTS,
   onAddToBetSlip,
   onShareMatch,
+  onDeleteMatch,
   isLiveSimulationActive = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -213,7 +215,23 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     day: 'numeric',
   });
 
+  // Dynamic Live / In-Play / Finished Status
+  const now = Date.now();
+  const kickoffMs = kickoffDate.getTime();
+  const diffMinutes = Math.floor((now - kickoffMs) / 60000);
+  const isLive = diffMinutes >= 0 && diffMinutes <= 115;
+  const isFinished = diffMinutes > 115;
+  const liveMinute = isLive ? (diffMinutes > 90 ? '90+' : diffMinutes > 45 ? `${Math.min(90, diffMinutes)}'` : `${Math.max(1, diffMinutes)}'`) : null;
+
   const leagueMeta = getLeagueMeta(fixture.league || '');
+
+  const displayLeagueName = useMemo(() => {
+    if (!fixture.league) return 'League Match';
+    if (fixture.league.includes('•')) {
+      return fixture.league.split('•')[1].trim();
+    }
+    return fixture.league;
+  }, [fixture.league]);
 
   const isQuickBet = prediction.confidenceScore > 80;
 
@@ -315,7 +333,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             </span>
             <span className="text-slate-600 text-[10px] font-mono select-none">/</span>
             <span className="font-semibold text-slate-200 truncate">
-              {fixture.league}
+              {displayLeagueName}
             </span>
           </span>
 
@@ -359,13 +377,31 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           )}
         </div>
 
-        {/* Kickoff Date & Time + SofaScore Google Search */}
+        {/* Kickoff Date & Time + Live Indicator + SofaScore Google Search */}
         <div className="flex items-center gap-2 text-[11px] font-mono flex-shrink-0">
-          <div className="flex items-center gap-1.5 text-slate-400">
-            <Clock className="w-3 h-3 text-sky-400" />
-            <span>{localDateStr}</span>
-            <span className="text-white font-bold">{localTimeStr}</span>
-          </div>
+          {isLive ? (
+            <span
+              id={`live-status-pill-${fixture.id}`}
+              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-black uppercase tracking-wider animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.3)]"
+              title={`Match is currently in play (started at ${localTimeStr})`}
+            >
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+              <span>LIVE {liveMinute}</span>
+            </span>
+          ) : isFinished ? (
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 text-[10px] font-bold"
+              title={`Match concluded (started at ${localTimeStr})`}
+            >
+              FT
+            </span>
+          ) : (
+            <div className="flex items-center gap-1.5 text-slate-400">
+              <Clock className="w-3 h-3 text-sky-400" />
+              <span>{localDateStr}</span>
+              <span className="text-white font-bold">{localTimeStr}</span>
+            </div>
+          )}
 
           <a
             id={`google-sofascore-btn-${fixture.id}`}
@@ -379,6 +415,18 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             <span>SofaScore</span>
             <ExternalLink className="w-2.5 h-2.5 text-slate-500 group-hover:text-sky-400" />
           </a>
+
+          {onDeleteMatch && (
+            <button
+              type="button"
+              onClick={() => onDeleteMatch(fixture.id)}
+              className="inline-flex items-center justify-center p-1 rounded bg-slate-950/90 hover:bg-rose-950/60 border border-slate-700/80 hover:border-rose-500/60 text-slate-400 hover:text-rose-300 transition-all shadow-sm cursor-pointer"
+              title={`Delete fixture: ${fixture.homeTeam.name} vs ${fixture.awayTeam.name}`}
+              id={`btn-delete-fixture-${fixture.id}`}
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          )}
         </div>
       </div>
 

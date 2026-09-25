@@ -149,11 +149,12 @@ export function sanitizeLiveIncomingFixtures(rawItems: any[]): LiveSanitizationR
     }
 
     // 5. Strict Temporal Sanity Check: Ghost match detection
-    // Upcoming fixtures must not have kickoff times prior to today's active date (2026-09-18)
-    if (typeof cleanKickoff === 'string' && cleanKickoff < '2026-09-18T00:00:00Z') {
+    // Upcoming fixtures must not have kickoff times older than 48 hours
+    const minActiveDate = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    if (typeof cleanKickoff === 'string' && cleanKickoff.slice(0, 10) < minActiveDate) {
       droppedMatches.push({
         index,
-        reason: `Ghost match dropped: Kickoff timestamp (${cleanKickoff.slice(0, 10)}) is prior to current active slate (2026-09-18)`,
+        reason: `Ghost match dropped: Kickoff timestamp (${cleanKickoff.slice(0, 10)}) is older than 48 hours`,
         itemSnippet: `id=${cleanId}, ${rawHome.name} vs ${rawAway.name}, kickoff=${cleanKickoff}`,
       });
       return;
