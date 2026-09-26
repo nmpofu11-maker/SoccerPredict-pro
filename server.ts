@@ -18,7 +18,6 @@ import {
   type ApiFootballFixture,
 } from './src/services/serverApiFootball';
 import { fetchNormalizedFixturesByDate, theSportsDbUsingSharedKey } from './src/services/serverTheSportsDb';
-import { fetchDailyFixtures, mapSportmonksToInternal } from './src/services/sportmonksService';
 import { parseRawFixtures, extractTextFromPDF, scrapeUrl } from './src/services/manualDataService';
 import { parseRawResults } from './src/services/resultParserService';
 import { fetchCategories, fetchEventsByCategory } from './src/services/sportApi';
@@ -534,7 +533,7 @@ function writeResultsLog(entries: SettledResultEntry[]): void {
 }
 
 interface CronStatus {
-  ingest: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; fixturesIngested: number; sourceUsed?: 'API_FOOTBALL_LIVE' | 'THESPORTSDB_FALLBACK' | 'SPORTMONKS_LIVE' | null };
+  ingest: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; fixturesIngested: number; sourceUsed?: 'API_FOOTBALL_LIVE' | 'THESPORTSDB_LIVE' | null };
   settlement: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; resultsSettled: number };
 }
 
@@ -585,17 +584,15 @@ function mapApiFootballToInternalFixture(f: ApiFootballFixture): any {
   const homeName = f.teams.home.name;
   const awayName = f.teams.away.name;
   const isFallbackSource = (f as any).__source === 'thesportsdb';
-  const isSportmonksSource = (f as any).__source === 'sportmonks';
-  const idPrefix = isFallbackSource ? 'thesportsdb' : (isSportmonksSource ? 'sportmonks' : 'apifootball');
+  const idPrefix = isFallbackSource ? 'thesportsdb' : 'apifootball';
   return {
     id: `${idPrefix}_${f.fixture.id}`,
-    apiFootballFixtureId: (isFallbackSource || isSportmonksSource) ? undefined : f.fixture.id, // only a real API-Football id if it came from API-Football
+    apiFootballFixtureId: isFallbackSource ? undefined : f.fixture.id, // only a real API-Football id if it came from API-Football
     theSportsDbEventId: isFallbackSource ? f.fixture.id : undefined,
-    sportmonksFixtureId: isSportmonksSource ? f.fixture.id : undefined,
     // Separate from authenticity.source (which is constrained to a fixed union elsewhere in
     // the app) — this tracks which live provider actually produced this fixture, for logs
     // and the cron-status endpoint, without fighting that type constraint.
-    automationSource: isFallbackSource ? 'THESPORTSDB_FALLBACK' : (isSportmonksSource ? 'SPORTMONKS_LIVE' : 'API_FOOTBALL_LIVE'),
+    automationSource: isFallbackSource ? 'THESPORTSDB_LIVE' : 'API_FOOTBALL_LIVE',
     kickoffTime: f.fixture.date,
     league: `${f.league.country} • ${f.league.name}`,
     venue: f.fixture.venue?.name || `${homeName} Stadium`,
@@ -647,46 +644,45 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
   const dateStr = new Date().toISOString().slice(0, 10);
 
   let afFixtures: ApiFootballFixture[] | null = null;
-  let sourceUsed: 'API_FOOTBALL_LIVE' | 'THESPORTSDB_FALLBACK' | 'SPORTMONKS_LIVE' | null = null;
+  let sourceUsed: 'API_FOOTBALL_LIVE' | 'THESPORTSDB_LIVE' | null = null;
   let primaryError: string | null = null;
 
-  // Try Sportmonks first
+  // TheSportsDB is primary: it doesn't depend on an account that can be
+  // suspended/banned the way API-Football's has been repeatedly for this
+  // deployment (traced to Cloud Run's shared outbound IP triggering their
+  // anti-abuse detection — an infrastructure issue, not a code issue).
   try {
-    console.log(`[DEBUG] SPORTMONKS_API_KEY: ${process.env.SPORTMONKS_API_KEY ? 'Present' : 'Missing'}`);
-    const smFixtures = await fetchDailyFixtures(dateStr);
-    afFixtures = smFixtures.map(mapSportmonksToInternal);
-    sourceUsed = 'SPORTMONKS_LIVE';
+    afFixtures = (await fetchNormalizedFixturesByDate(dateStr)) as unknown as ApiFootballFixture[];
+    sourceUsed = 'THESPORTSDB_LIVE';
+    if (theSportsDbUsingSharedKey()) {
+      console.warn('[cron:ingest] Using TheSportsDB shared public test key — get your own free key at thesportsdb.com/api.php for a private, more reliable quota.');
+    }
   } catch (err: unknown) {
-    primaryError = err instanceof Error ? err.message : 'Unknown Sportmonks error';
-    console.warn(`[cron:ingest] Sportmonks failed, trying API-Football: ${primaryError}`);
+    primaryError = err instanceof Error ? err.message : 'Unknown TheSportsDB error';
+    console.warn(`[cron:ingest] TheSportsDB failed, trying API-Football: ${primaryError}`);
   }
 
+  // API-Football as secondary — kept in case the account issue ever resolves.
   if (afFixtures === null && apiFootballConfigured()) {
     try {
       afFixtures = await fetchFixturesByDate(dateStr);
       sourceUsed = 'API_FOOTBALL_LIVE';
     } catch (err: unknown) {
-      primaryError = err instanceof Error ? err.message : 'Unknown API-Football error';
-      console.warn(`[cron:ingest] API-Football failed, falling back to TheSportsDB: ${primaryError}`);
-    }
-  }
-
-  // Fall back to TheSportsDB if API-Football wasn't configured or just failed.
-  if (afFixtures === null) {
-    try {
-      afFixtures = (await fetchNormalizedFixturesByDate(dateStr)) as unknown as ApiFootballFixture[];
-      sourceUsed = 'THESPORTSDB_FALLBACK';
-      if (theSportsDbUsingSharedKey()) {
-        console.warn('[cron:ingest] Using TheSportsDB shared public test key — get your own free key at thesportsdb.com/api.php for a private, more reliable quota.');
-      }
-    } catch (fallbackErr: unknown) {
-      const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : 'Unknown TheSportsDB error';
-      const msg = `All providers failed. Sportmonks: ${primaryError || 'failed'}, API-Football: ${apiFootballConfigured() ? 'failed' : 'not configured'}. TheSportsDB fallback: ${fallbackMsg}`;
+      const apiFootballErr = err instanceof Error ? err.message : 'Unknown API-Football error';
+      const msg = `Both providers failed. TheSportsDB: ${primaryError}. API-Football: ${apiFootballErr}`;
       status.ingest = { lastRunAt: new Date().toISOString(), lastSuccess: false, lastMessage: msg, fixturesIngested: 0, sourceUsed: null };
       writeCronStatus(status);
       console.error(`[cron:ingest] ${msg}`);
       return { success: false, message: msg, count: 0 };
     }
+  }
+
+  if (afFixtures === null) {
+    const msg = `TheSportsDB failed: ${primaryError}. API-Football not configured as a secondary.`;
+    status.ingest = { lastRunAt: new Date().toISOString(), lastSuccess: false, lastMessage: msg, fixturesIngested: 0, sourceUsed: null };
+    writeCronStatus(status);
+    console.error(`[cron:ingest] ${msg}`);
+    return { success: false, message: msg, count: 0 };
   }
 
   try {
@@ -724,7 +720,7 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     writeDiskManifest(combined);
     fixturesCache = null; // invalidate in-memory cache so next read picks up new data
 
-    const sourceLabel = sourceUsed === 'THESPORTSDB_FALLBACK' ? 'TheSportsDB (fallback)' : 'API-Football';
+    const sourceLabel = sourceUsed === 'THESPORTSDB_LIVE' ? 'TheSportsDB' : 'API-Football';
     const msg = `Ingested ${mapped.length} fixtures from ${sourceLabel} for ${dateStr} (${newCount} new).`;
     status.ingest = { lastRunAt: new Date().toISOString(), lastSuccess: true, lastMessage: msg, fixturesIngested: mapped.length, sourceUsed };
     writeCronStatus(status);
@@ -748,7 +744,7 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
 async function runSettlementJob(): Promise<{ success: boolean; message: string; count: number }> {
   const status = readCronStatus();
   if (!apiFootballConfigured() && theSportsDbUsingSharedKey()) {
-    console.warn('[cron:settlement] SOCCER_API_KEY not set — settlement will rely entirely on the TheSportsDB fallback (shared public test key). Coverage will be narrower than with API-Football.');
+    console.warn('[cron:settlement] SOCCER_API_KEY not set — settlement relies on TheSportsDB\'s shared public test key. Get your own free key for more reliable capacity.');
   }
 
   try {
@@ -776,7 +772,9 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
       dateGroups.get(d)!.push(f);
     }
 
-    // Determine the safe dates for API-Football Free Plan (typically yesterday, today, tomorrow)
+    // Determine the safe dates for API-Football's Free Plan (typically yesterday, today, tomorrow).
+    // TheSportsDB has no such restriction, but we apply the same window for consistency and to
+    // avoid hammering either provider with a huge backlog of historical dates in one run.
     const todayStr = new Date().toISOString().slice(0, 10);
     const yesterdayStr = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const tomorrowStr = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -784,33 +782,24 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
 
     for (const [dateStr, fixturesForDate] of dateGroups.entries()) {
       if (!allowedDates.has(dateStr)) {
-        console.warn(`[cron:settlement] Skipping historical date ${dateStr} to respect API-Football Free Plan constraints.`);
+        console.warn(`[cron:settlement] Skipping historical date ${dateStr} — outside the yesterday/today/tomorrow settlement window.`);
         continue;
       }
 
       try {
         let afFixtures: ApiFootballFixture[];
-        let dateSourceUsed: 'API_FOOTBALL_LIVE' | 'THESPORTSDB_FALLBACK' | 'SPORTMONKS_LIVE' = 'SPORTMONKS_LIVE';
-        
-        // Try Sportmonks first
+        let dateSourceUsed: 'API_FOOTBALL_LIVE' | 'THESPORTSDB_LIVE' = 'THESPORTSDB_LIVE';
+
+        // TheSportsDB first (primary, no suspension risk on this deployment)
         try {
-          const smFixtures = await fetchDailyFixtures(dateStr);
-          afFixtures = smFixtures.map(mapSportmonksToInternal);
-        } catch (smErr) {
-          console.warn(`[cron:settlement] Sportmonks failed for ${dateStr}, trying API-Football:`, smErr);
-          
+          afFixtures = (await fetchNormalizedFixturesByDate(dateStr)) as unknown as ApiFootballFixture[];
+        } catch (primaryErr) {
+          console.warn(`[cron:settlement] TheSportsDB failed for ${dateStr}, trying API-Football:`, primaryErr);
           if (apiFootballConfigured()) {
-            try {
-              afFixtures = await fetchFixturesByDate(dateStr);
-              dateSourceUsed = 'API_FOOTBALL_LIVE';
-            } catch (primaryErr) {
-              console.warn(`[cron:settlement] API-Football failed for ${dateStr}, falling back to TheSportsDB:`, primaryErr);
-              afFixtures = (await fetchNormalizedFixturesByDate(dateStr)) as unknown as ApiFootballFixture[];
-              dateSourceUsed = 'THESPORTSDB_FALLBACK';
-            }
+            afFixtures = await fetchFixturesByDate(dateStr);
+            dateSourceUsed = 'API_FOOTBALL_LIVE';
           } else {
-            afFixtures = (await fetchNormalizedFixturesByDate(dateStr)) as unknown as ApiFootballFixture[];
-            dateSourceUsed = 'THESPORTSDB_FALLBACK';
+            throw primaryErr;
           }
         }
 
@@ -830,16 +819,13 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
           let match: ApiFootballFixture | undefined = undefined;
           let matchedById = false;
 
-          // Attempt lookup by known fixture ID first (API-Football id or, if this date came
-          // from the TheSportsDB or Sportmonks fallback/primary, a previously-recorded event id)
+          // Attempt lookup by known fixture ID first (whichever provider's id this fixture
+          // was originally recorded with, matching the provider that answered for this date)
           if (dateSourceUsed === 'API_FOOTBALL_LIVE' && Number.isFinite(f.apiFootballFixtureId)) {
             match = byIdMap.get(f.apiFootballFixtureId);
             if (match) matchedById = true;
-          } else if (dateSourceUsed === 'THESPORTSDB_FALLBACK' && Number.isFinite(f.theSportsDbEventId)) {
+          } else if (dateSourceUsed === 'THESPORTSDB_LIVE' && Number.isFinite(f.theSportsDbEventId)) {
             match = byIdMap.get(f.theSportsDbEventId);
-            if (match) matchedById = true;
-          } else if (dateSourceUsed === 'SPORTMONKS_LIVE' && Number.isFinite(f.sportmonksFixtureId)) {
-            match = byIdMap.get(f.sportmonksFixtureId);
             if (match) matchedById = true;
           }
 
@@ -854,7 +840,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
           const outcome = mapApiFootballOutcome(match);
           if (!outcome) continue;
 
-          const sourceLabel = dateSourceUsed === 'SPORTMONKS_LIVE' ? 'Sportmonks' : (dateSourceUsed === 'THESPORTSDB_FALLBACK' ? 'TheSportsDB (fallback)' : 'API-Football');
+          const sourceLabel = dateSourceUsed === 'THESPORTSDB_LIVE' ? 'TheSportsDB' : 'API-Football';
           newEntries.push({
             id: f.id,
             fixture: f,
@@ -1844,18 +1830,15 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Soccer Prediction Server running on port ${PORT}`);
 
-    // The pipeline now always schedules — even without SOCCER_API_KEY, it can run
-    // entirely on the TheSportsDB fallback (with narrower coverage), rather than
-    // being fully disabled. Both jobs internally decide, per run, which provider
-    // to actually use and record that in /api/admin/cron-status.
-    if (!apiFootballConfigured()) {
-      console.warn(
-        '[startup] SOCCER_API_KEY is not set. The automated pipeline will run on the ' +
-        'TheSportsDB fallback only (narrower league coverage). Set SOCCER_API_KEY to ' +
-        'restore full API-Football coverage.'
-      );
+    // TheSportsDB is the primary provider — it doesn't depend on an account
+    // that can be suspended (unlike API-Football, which was repeatedly
+    // suspended on this deployment due to Cloud Run's shared outbound IP
+    // triggering their anti-abuse detection). API-Football is kept as a
+    // secondary path in case that's ever resolved (e.g. a dedicated outbound IP).
+    if (apiFootballConfigured()) {
+      console.log('[startup] TheSportsDB is primary. API-Football configured as secondary if TheSportsDB fails.');
     } else {
-      console.log('[startup] API-Football configured, with TheSportsDB as an automatic fallback if it fails.');
+      console.log('[startup] TheSportsDB is primary (no API-Football key set — secondary path unavailable).');
     }
     console.log('[startup] Scheduling daily ingestion (05:00) and settlement (every 3h).');
 

@@ -6,7 +6,7 @@
  */
 
 import { MatchFixture, TeamStats } from '../types/soccer';
-import * as pdf from 'pdf-parse';
+import { PDFParse } from 'pdf-parse';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import fs from 'fs';
@@ -57,8 +57,13 @@ export function parseRawFixtures(rawLines: string[]): MatchFixture[] {
 
 export async function extractTextFromPDF(filePath: string): Promise<string> {
   const dataBuffer = fs.readFileSync(filePath);
-  const data = await pdf(dataBuffer);
-  return data.text;
+  const parser = new PDFParse({ data: dataBuffer });
+  try {
+    const result = await parser.getText();
+    return result.text;
+  } finally {
+    await parser.destroy();
+  }
 }
 
 export async function scrapeUrl(url: string): Promise<string> {

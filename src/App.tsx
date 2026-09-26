@@ -27,7 +27,6 @@ import {
   loadScrapeLogs,
   saveScrapeLog,
   performAutoScrape,
-  performLiveApiSync,
 } from './services/scraperService';
 import { evaluateAllFixtures } from './engine/rulesEngine';
 import {
@@ -40,7 +39,7 @@ import {
 import { loadTeamIntelligenceMatrices } from './engine/teamIntelligenceMatrix';
 import { ensurePersistentStorage } from './services/durablePersistence';
 import { deleteFixtureOnServer, purgeFixturesOnServer, ingestSlateToServer } from './services/apiService';
-import { fetchSettledResults } from './services/resultsService';
+import { fetchSettledResults, fetchDailySlate } from './services/resultsService';
 import { HistoricalMatchResult } from './types/soccer';
 import { HISTORICAL_MATCH_RESULTS } from './data/historical_results';
 import { isFavouriteTeam, isHighVolatilityLeague } from './constants/favourites';
@@ -68,7 +67,7 @@ import { ApkAndPerformanceModal } from './components/ApkAndPerformanceModal';
 import { YesterdayPerformanceView } from './components/YesterdayPerformanceView';
 import { StatisticalAnalysisModal } from './components/StatisticalAnalysisModal';
 import { SmartAccumulatorCoachTab } from './components/SmartAccumulatorCoachTab';
-import { ApiQuotaWidget } from './components/ApiQuotaWidget';
+import { PipelineStatusWidget } from './components/PipelineStatusWidget';
 import { BetSlipDrawer } from './components/BetSlipDrawer';
 import { PredictionShareModal } from './components/PredictionShareModal';
 import { BetSlipItem } from './types/soccer';
@@ -237,18 +236,20 @@ export default function App() {
       }
     }
 
-    // Automatically perform live API sync to retrieve and verify real-world match fixtures
-    performLiveApiSync(loadedFixtures)
-      .then(({ updatedFixtures, log, auditReport: report }) => {
-        if (updatedFixtures.length > 0) {
-          setFixtures(updatedFixtures);
-          saveCustomFixtures(updatedFixtures);
-          setScrapeLogs(prev => [log, ...prev].slice(0, 50));
-          if (report) setAuditReport(report);
+    // Fetch the real fixture slate from the automated server-side pipeline
+    // (data/fixtures-manifest.json via /api/fixtures/daily-slate). This is the
+    // ONE authoritative source — the previous ESPN-based performLiveApiSync
+    // call has been removed because it silently overwrote real pipeline data
+    // with narrower ESPN coverage on every single app load.
+    fetchDailySlate()
+      .then((serverFixtures) => {
+        if (serverFixtures && serverFixtures.length > 0) {
+          setFixtures(serverFixtures);
+          saveCustomFixtures(serverFixtures);
         }
       })
       .catch((err) => {
-        console.warn('Live API auto-sync on startup:', err);
+        console.warn('Daily slate fetch on startup failed, keeping local dataset:', err);
       });
   }, []);
 
@@ -455,16 +456,28 @@ export default function App() {
     setOverrides(cleared);
   };
 
-  // Trigger an automated scraping and live API ingestion cycle
+  // Trigger an automated scraping and live API ingestion cycle — now backed by
+  // the real server-side pipeline (fetchDailySlate) instead of the old
+  // ESPN-only performLiveApiSync, which had narrower coverage and would
+  // periodically overwrite real pipeline data with a sparser dataset.
   const triggerScrapeCycle = useCallback(() => {
     setIsScrapingNow(true);
-    performLiveApiSync(fixtures)
-      .then(({ updatedFixtures, log, auditReport: report }) => {
+    fetchDailySlate()
+      .then((serverFixtures) => {
+        const updatedFixtures = serverFixtures && serverFixtures.length > 0 ? serverFixtures : fixtures;
         setFixtures(updatedFixtures);
         saveCustomFixtures(updatedFixtures);
-        if (report) {
-          setAuditReport(report);
-        }
+
+        const log: ScrapeLogItem = {
+          id: `sync_${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          fixturesCount: updatedFixtures.length,
+          favouritesCount: updatedFixtures.filter((f) => isFavouriteTeam(f.homeTeam.name) || isFavouriteTeam(f.awayTeam.name)).length,
+          status: 'SYNCED',
+          details: serverFixtures && serverFixtures.length > 0
+            ? `Synced ${serverFixtures.length} fixtures from the automated server pipeline.`
+            : 'Server pipeline returned no fixtures; kept existing dataset.',
+        };
         const newLogs = saveScrapeLog(log);
         setScrapeLogs(newLogs);
 
@@ -662,7 +675,7 @@ export default function App() {
         <div className="flex-1 flex flex-col bg-[#020617] overflow-y-auto px-4 sm:px-6 py-4">
           <div className="max-w-7xl w-full mx-auto space-y-3">
             {/* Verified API Quota Guard */}
-            <ApiQuotaWidget onFixturesSynced={(syncedFixtures) => setFixtures(syncedFixtures)} />
+            <PipelineStatusWidget onFixturesSynced={(syncedFixtures) => setFixtures(syncedFixtures)} />
 
             {/* Live Simulation Mode Bar */}
             <div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5">
