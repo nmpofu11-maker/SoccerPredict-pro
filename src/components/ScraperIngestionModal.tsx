@@ -27,6 +27,7 @@ import {
   Search,
   Globe,
 } from 'lucide-react';
+import { ManualFixtureUpload } from './ManualFixtureUpload';
 import { fetchVerificationAudit, recalibrateOfficialStandings } from '../services/scraperService';
 import { ALL_LEAGUES_DIRECTORY, LEAGUE_CATEGORIES, getLeagueMeta } from '../constants/leagues';
 import { parseHollywoodbetsRawText } from '../services/hollywoodbetsParser';
@@ -68,7 +69,7 @@ export const ScraperIngestionModal: React.FC<ScraperIngestionModalProps> = ({
   onFixturesRecalibrated,
   initialTab = 'verification',
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'verification' | 'coverage' | 'autoscrape' | 'payload'>(initialTab);
+  const [activeSubTab, setActiveSubTab] = useState<'verification' | 'coverage' | 'autoscrape' | 'payload' | 'manual'>(initialTab as any);
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [customJsonInput, setCustomJsonInput] = useState('');
@@ -317,6 +318,19 @@ export const ScraperIngestionModal: React.FC<ScraperIngestionModalProps> = ({
           >
             <FileJson className="w-3.5 h-3.5 text-slate-400" />
             <span>Raw Ingestion JSON ({fixtures.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('manual')}
+            className={`py-2.5 px-4 font-bold border-b-2 transition-all flex items-center gap-2 ${
+              activeSubTab === 'manual'
+                ? 'border-emerald-500 text-white bg-slate-900/50'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Manual Upload</span>
           </button>
         </div>
 
@@ -601,6 +615,12 @@ export const ScraperIngestionModal: React.FC<ScraperIngestionModalProps> = ({
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {activeSubTab === 'manual' && (
+          <div className="p-4 sm:p-5 overflow-y-auto flex-1">
+            <ManualFixtureUpload />
           </div>
         )}
 

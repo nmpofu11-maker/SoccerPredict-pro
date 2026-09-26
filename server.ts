@@ -1,4 +1,5 @@
 import express from 'express';
+import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
@@ -16,8 +17,15 @@ import {
   getApiFootballQuotaState,
   type ApiFootballFixture,
 } from './src/services/serverApiFootball';
+import { fetchNormalizedFixturesByDate, theSportsDbUsingSharedKey } from './src/services/serverTheSportsDb';
+import { fetchDailyFixtures, mapSportmonksToInternal } from './src/services/sportmonksService';
+import { parseRawFixtures, extractTextFromPDF, scrapeUrl } from './src/services/manualDataService';
+import { parseRawResults } from './src/services/resultParserService';
+import { fetchCategories, fetchEventsByCategory } from './src/services/sportApi';
 
 dotenv.config();
+
+const upload = multer({ dest: 'uploads/' });
 
 const PORT = 3000;
 
@@ -526,7 +534,7 @@ function writeResultsLog(entries: SettledResultEntry[]): void {
 }
 
 interface CronStatus {
-  ingest: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; fixturesIngested: number };
+  ingest: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; fixturesIngested: number; sourceUsed?: 'API_FOOTBALL_LIVE' | 'THESPORTSDB_FALLBACK' | 'SPORTMONKS_LIVE' | null };
   settlement: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; resultsSettled: number };
 }
 
@@ -576,9 +584,18 @@ function mapApiFootballOutcome(f: ApiFootballFixture): 'home' | 'draw' | 'away' 
 function mapApiFootballToInternalFixture(f: ApiFootballFixture): any {
   const homeName = f.teams.home.name;
   const awayName = f.teams.away.name;
+  const isFallbackSource = (f as any).__source === 'thesportsdb';
+  const isSportmonksSource = (f as any).__source === 'sportmonks';
+  const idPrefix = isFallbackSource ? 'thesportsdb' : (isSportmonksSource ? 'sportmonks' : 'apifootball');
   return {
-    id: `apifootball_${f.fixture.id}`,
-    apiFootballFixtureId: f.fixture.id,
+    id: `${idPrefix}_${f.fixture.id}`,
+    apiFootballFixtureId: (isFallbackSource || isSportmonksSource) ? undefined : f.fixture.id, // only a real API-Football id if it came from API-Football
+    theSportsDbEventId: isFallbackSource ? f.fixture.id : undefined,
+    sportmonksFixtureId: isSportmonksSource ? f.fixture.id : undefined,
+    // Separate from authenticity.source (which is constrained to a fixed union elsewhere in
+    // the app) — this tracks which live provider actually produced this fixture, for logs
+    // and the cron-status endpoint, without fighting that type constraint.
+    automationSource: isFallbackSource ? 'THESPORTSDB_FALLBACK' : (isSportmonksSource ? 'SPORTMONKS_LIVE' : 'API_FOOTBALL_LIVE'),
     kickoffTime: f.fixture.date,
     league: `${f.league.country} • ${f.league.name}`,
     venue: f.fixture.venue?.name || `${homeName} Stadium`,
@@ -612,7 +629,7 @@ function mapApiFootballToInternalFixture(f: ApiFootballFixture): any {
     h2h: { homeWins: 2, draws: 1, awayWins: 2, totalLast5: 5, scoresLast5: ['1-1', '2-1', '0-1', '1-0', '2-2'] },
     authenticity: {
       status: 'VERIFIED_AUTHENTIC',
-      authenticityScore: 100,
+      authenticityScore: isFallbackSource ? 70 : 100,
       isAuthentic: true,
       verifiedAt: new Date().toISOString(),
       source: 'CANONICAL_AUDITED_DATASET',
@@ -627,17 +644,52 @@ function mapApiFootballToInternalFixture(f: ApiFootballFixture): any {
  */
 async function runDailyIngestJob(): Promise<{ success: boolean; message: string; count: number }> {
   const status = readCronStatus();
-  if (!apiFootballConfigured()) {
-    const msg = 'SOCCER_API_KEY not set — skipping API-Football ingestion.';
-    status.ingest = { lastRunAt: new Date().toISOString(), lastSuccess: false, lastMessage: msg, fixturesIngested: 0 };
-    writeCronStatus(status);
-    console.warn(`[cron:ingest] ${msg}`);
-    return { success: false, message: msg, count: 0 };
+  const dateStr = new Date().toISOString().slice(0, 10);
+
+  let afFixtures: ApiFootballFixture[] | null = null;
+  let sourceUsed: 'API_FOOTBALL_LIVE' | 'THESPORTSDB_FALLBACK' | 'SPORTMONKS_LIVE' | null = null;
+  let primaryError: string | null = null;
+
+  // Try Sportmonks first
+  try {
+    console.log(`[DEBUG] SPORTMONKS_API_KEY: ${process.env.SPORTMONKS_API_KEY ? 'Present' : 'Missing'}`);
+    const smFixtures = await fetchDailyFixtures(dateStr);
+    afFixtures = smFixtures.map(mapSportmonksToInternal);
+    sourceUsed = 'SPORTMONKS_LIVE';
+  } catch (err: unknown) {
+    primaryError = err instanceof Error ? err.message : 'Unknown Sportmonks error';
+    console.warn(`[cron:ingest] Sportmonks failed, trying API-Football: ${primaryError}`);
+  }
+
+  if (afFixtures === null && apiFootballConfigured()) {
+    try {
+      afFixtures = await fetchFixturesByDate(dateStr);
+      sourceUsed = 'API_FOOTBALL_LIVE';
+    } catch (err: unknown) {
+      primaryError = err instanceof Error ? err.message : 'Unknown API-Football error';
+      console.warn(`[cron:ingest] API-Football failed, falling back to TheSportsDB: ${primaryError}`);
+    }
+  }
+
+  // Fall back to TheSportsDB if API-Football wasn't configured or just failed.
+  if (afFixtures === null) {
+    try {
+      afFixtures = (await fetchNormalizedFixturesByDate(dateStr)) as unknown as ApiFootballFixture[];
+      sourceUsed = 'THESPORTSDB_FALLBACK';
+      if (theSportsDbUsingSharedKey()) {
+        console.warn('[cron:ingest] Using TheSportsDB shared public test key — get your own free key at thesportsdb.com/api.php for a private, more reliable quota.');
+      }
+    } catch (fallbackErr: unknown) {
+      const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : 'Unknown TheSportsDB error';
+      const msg = `All providers failed. Sportmonks: ${primaryError || 'failed'}, API-Football: ${apiFootballConfigured() ? 'failed' : 'not configured'}. TheSportsDB fallback: ${fallbackMsg}`;
+      status.ingest = { lastRunAt: new Date().toISOString(), lastSuccess: false, lastMessage: msg, fixturesIngested: 0, sourceUsed: null };
+      writeCronStatus(status);
+      console.error(`[cron:ingest] ${msg}`);
+      return { success: false, message: msg, count: 0 };
+    }
   }
 
   try {
-    const dateStr = new Date().toISOString().slice(0, 10);
-    const afFixtures = await fetchFixturesByDate(dateStr);
     const mapped = afFixtures.map(mapApiFootballToInternalFixture);
 
     const diskFixtures = readDiskManifest();
@@ -659,8 +711,9 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
       // Never clobber a Hollywoodbets-sourced or bookmaker-protected entry —
       // that slate is the source of truth for what to actually predict on.
       if (existing && (existing.isBookmakerProtected || (existing.id && existing.id.startsWith('hollywoodbets_')))) {
-        // Still tag the existing entry with the API-Football id so settlement can find it later.
-        if (!existing.apiFootballFixtureId) existing.apiFootballFixtureId = mf.apiFootballFixtureId;
+        // Still tag the existing entry with whichever provider id we got so settlement can find it later.
+        if (!existing.apiFootballFixtureId && mf.apiFootballFixtureId) existing.apiFootballFixtureId = mf.apiFootballFixtureId;
+        if (!existing.theSportsDbEventId && mf.theSportsDbEventId) existing.theSportsDbEventId = mf.theSportsDbEventId;
         continue;
       }
       if (!existing) newCount++;
@@ -671,14 +724,15 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     writeDiskManifest(combined);
     fixturesCache = null; // invalidate in-memory cache so next read picks up new data
 
-    const msg = `Ingested ${mapped.length} fixtures from API-Football for ${dateStr} (${newCount} new).`;
-    status.ingest = { lastRunAt: new Date().toISOString(), lastSuccess: true, lastMessage: msg, fixturesIngested: mapped.length };
+    const sourceLabel = sourceUsed === 'THESPORTSDB_FALLBACK' ? 'TheSportsDB (fallback)' : 'API-Football';
+    const msg = `Ingested ${mapped.length} fixtures from ${sourceLabel} for ${dateStr} (${newCount} new).`;
+    status.ingest = { lastRunAt: new Date().toISOString(), lastSuccess: true, lastMessage: msg, fixturesIngested: mapped.length, sourceUsed };
     writeCronStatus(status);
     console.log(`[cron:ingest] ${msg}`);
     return { success: true, message: msg, count: mapped.length };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown ingestion error';
-    status.ingest = { lastRunAt: new Date().toISOString(), lastSuccess: false, lastMessage: msg, fixturesIngested: 0 };
+    status.ingest = { lastRunAt: new Date().toISOString(), lastSuccess: false, lastMessage: msg, fixturesIngested: 0, sourceUsed };
     writeCronStatus(status);
     console.error(`[cron:ingest] FAILED: ${msg}`);
     return { success: false, message: msg, count: 0 };
@@ -693,12 +747,8 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
  */
 async function runSettlementJob(): Promise<{ success: boolean; message: string; count: number }> {
   const status = readCronStatus();
-  if (!apiFootballConfigured()) {
-    const msg = 'SOCCER_API_KEY not set — skipping settlement.';
-    status.settlement = { lastRunAt: new Date().toISOString(), lastSuccess: false, lastMessage: msg, resultsSettled: 0 };
-    writeCronStatus(status);
-    console.warn(`[cron:settlement] ${msg}`);
-    return { success: false, message: msg, count: 0 };
+  if (!apiFootballConfigured() && theSportsDbUsingSharedKey()) {
+    console.warn('[cron:settlement] SOCCER_API_KEY not set — settlement will rely entirely on the TheSportsDB fallback (shared public test key). Coverage will be narrower than with API-Football.');
   }
 
   try {
@@ -739,9 +789,32 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
       }
 
       try {
-        const afFixtures = await fetchFixturesByDate(dateStr);
+        let afFixtures: ApiFootballFixture[];
+        let dateSourceUsed: 'API_FOOTBALL_LIVE' | 'THESPORTSDB_FALLBACK' | 'SPORTMONKS_LIVE' = 'SPORTMONKS_LIVE';
         
-        // Build maps of API-Football fixtures by ID and by team name pair for O(1) lookups
+        // Try Sportmonks first
+        try {
+          const smFixtures = await fetchDailyFixtures(dateStr);
+          afFixtures = smFixtures.map(mapSportmonksToInternal);
+        } catch (smErr) {
+          console.warn(`[cron:settlement] Sportmonks failed for ${dateStr}, trying API-Football:`, smErr);
+          
+          if (apiFootballConfigured()) {
+            try {
+              afFixtures = await fetchFixturesByDate(dateStr);
+              dateSourceUsed = 'API_FOOTBALL_LIVE';
+            } catch (primaryErr) {
+              console.warn(`[cron:settlement] API-Football failed for ${dateStr}, falling back to TheSportsDB:`, primaryErr);
+              afFixtures = (await fetchNormalizedFixturesByDate(dateStr)) as unknown as ApiFootballFixture[];
+              dateSourceUsed = 'THESPORTSDB_FALLBACK';
+            }
+          } else {
+            afFixtures = (await fetchNormalizedFixturesByDate(dateStr)) as unknown as ApiFootballFixture[];
+            dateSourceUsed = 'THESPORTSDB_FALLBACK';
+          }
+        }
+
+        // Build maps of fixtures by ID and by team name pair for O(1) lookups
         const byIdMap = new Map<number, ApiFootballFixture>();
         const byNameMap = new Map<string, ApiFootballFixture>();
 
@@ -755,10 +828,19 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
 
         for (const f of fixturesForDate) {
           let match: ApiFootballFixture | undefined = undefined;
+          let matchedById = false;
 
-          // Attempt lookup by API-Football fixture ID first
-          if (Number.isFinite(f.apiFootballFixtureId)) {
+          // Attempt lookup by known fixture ID first (API-Football id or, if this date came
+          // from the TheSportsDB or Sportmonks fallback/primary, a previously-recorded event id)
+          if (dateSourceUsed === 'API_FOOTBALL_LIVE' && Number.isFinite(f.apiFootballFixtureId)) {
             match = byIdMap.get(f.apiFootballFixtureId);
+            if (match) matchedById = true;
+          } else if (dateSourceUsed === 'THESPORTSDB_FALLBACK' && Number.isFinite(f.theSportsDbEventId)) {
+            match = byIdMap.get(f.theSportsDbEventId);
+            if (match) matchedById = true;
+          } else if (dateSourceUsed === 'SPORTMONKS_LIVE' && Number.isFinite(f.sportmonksFixtureId)) {
+            match = byIdMap.get(f.sportmonksFixtureId);
+            if (match) matchedById = true;
           }
 
           // Fall back to name matching
@@ -772,6 +854,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
           const outcome = mapApiFootballOutcome(match);
           if (!outcome) continue;
 
+          const sourceLabel = dateSourceUsed === 'SPORTMONKS_LIVE' ? 'Sportmonks' : (dateSourceUsed === 'THESPORTSDB_FALLBACK' ? 'TheSportsDB (fallback)' : 'API-Football');
           newEntries.push({
             id: f.id,
             fixture: f,
@@ -779,13 +862,13 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             awayScore: match.goals.away as number,
             actualOutcome: outcome,
             date: dateStr,
-            notes: f.apiFootballFixtureId ? 'Settled via API-Football ID match' : 'Settled via API-Football name/date match',
+            notes: `Settled via ${sourceLabel}, ${matchedById ? 'ID match' : 'name/date match'}`,
             settledAt: new Date().toISOString(),
           });
           settledCount++;
         }
       } catch (dateErr) {
-        console.warn(`[cron:settlement] Could not resolve fixtures for date ${dateStr}:`, dateErr);
+        console.warn(`[cron:settlement] Could not resolve fixtures for date ${dateStr} via either provider:`, dateErr);
       }
     }
 
@@ -800,9 +883,13 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
     return { success: true, message: msg, count: settledCount };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown settlement error';
+    if (msg.includes('suspended') || msg.includes('access')) {
+      console.warn(`[cron:settlement] API-Football account suspension detected: ${msg}. Skipping settlement.`);
+    } else {
+      console.error(`[cron:settlement] FAILED: ${msg}`);
+    }
     status.settlement = { lastRunAt: new Date().toISOString(), lastSuccess: false, lastMessage: msg, resultsSettled: 0 };
     writeCronStatus(status);
-    console.error(`[cron:settlement] FAILED: ${msg}`);
     return { success: false, message: msg, count: 0 };
   }
 }
@@ -1354,7 +1441,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
           } catch (err: unknown) {
             lastSynthesisErr = err;
             const msg = err instanceof Error ? err.message : String(err);
-            if (msg.includes('503') || msg.includes('high demand') || msg.includes('429') || msg.includes('UNAVAILABLE')) {
+            if (msg.includes('503') || msg.includes('high demand') || msg.includes('429') || msg.includes('UNAVAILABLE') || msg.includes('resource_exhausted') || msg.includes('quota') || msg.includes('rate-limit')) {
               await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
               continue;
             }
@@ -1593,6 +1680,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       return res.json({
         status: 'success',
         apiFootballConfigured: apiFootballConfigured(),
+        theSportsDbUsingSharedKey: theSportsDbUsingSharedKey(),
         quota: getApiFootballQuotaState(),
         cron: readCronStatus(),
       });
@@ -1613,6 +1701,131 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
     return res.status(result.success ? 200 : 500).json({ status: result.success ? 'success' : 'error', ...result });
   });
 
+  // Manual upload endpoint
+  app.post('/api/admin/upload-fixtures', async (req, res) => {
+    try {
+      const { rawData } = req.body;
+      if (!rawData || !Array.isArray(rawData)) {
+        return res.status(400).json({ error: 'Invalid fixtures data' });
+      }
+      
+      const fixtures = parseRawFixtures(rawData);
+      
+      // Persist to file
+      const dir = path.join(process.cwd(), 'data');
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const filePath = path.join(dir, 'manual_fixtures.json');
+      fs.writeFileSync(filePath, JSON.stringify(fixtures, null, 2), 'utf-8');
+      
+      res.json({ success: true, count: fixtures.length });
+    } catch (error) {
+      console.error('Error uploading fixtures:', error);
+      res.status(500).json({ error: 'Failed to upload fixtures' });
+    }
+  });
+
+  // Manual upload endpoint for results
+  app.post('/api/admin/upload-results', async (req, res) => {
+    try {
+      const { rawData } = req.body;
+      if (!rawData || typeof rawData !== 'string') {
+        return res.status(400).json({ error: 'Invalid result data' });
+      }
+      
+      const results = parseRawResults(rawData);
+      
+      // Persist to file
+      const dir = path.join(process.cwd(), 'data');
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const filePath = path.join(dir, 'manual_results.json');
+      fs.writeFileSync(filePath, JSON.stringify(results, null, 2), 'utf-8');
+      
+      res.json({ success: true, count: results.length });
+    } catch (error) {
+      console.error('Error uploading results:', error);
+      res.status(500).json({ error: 'Failed to upload results' });
+    }
+  });
+
+  // Upload fixture PDF
+  app.post('/api/admin/upload-fixture-file', upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      const text = await extractTextFromPDF(req.file.path);
+      const lines = text.split('\n').filter(line => line.trim() !== '');
+      const fixtures = parseRawFixtures(lines);
+      
+      const dir = path.join(process.cwd(), 'data');
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const filePath = path.join(dir, 'manual_fixtures.json');
+      fs.writeFileSync(filePath, JSON.stringify(fixtures, null, 2), 'utf-8');
+      
+      res.json({ success: true, count: fixtures.length });
+    } catch (error) {
+      console.error('Error uploading fixture file:', error);
+      res.status(500).json({ error: 'Failed to upload fixture file' });
+    }
+  });
+
+  // Fetch fixture from link
+  app.post('/api/admin/fetch-fixture-link', async (req, res) => {
+    try {
+      const { url } = req.body;
+      if (!url) return res.status(400).json({ error: 'No URL provided' });
+      const text = await scrapeUrl(url);
+      const lines = text.split('\n').filter(line => line.trim() !== '');
+      const fixtures = parseRawFixtures(lines);
+      
+      const dir = path.join(process.cwd(), 'data');
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const filePath = path.join(dir, 'manual_fixtures.json');
+      fs.writeFileSync(filePath, JSON.stringify(fixtures, null, 2), 'utf-8');
+      
+      res.json({ success: true, count: fixtures.length });
+    } catch (error) {
+      console.error('Error fetching fixture link:', error);
+      res.status(500).json({ error: 'Failed to fetch fixture link' });
+    }
+  });
+
+  // Sync from SportAPI endpoint
+  app.post('/api/admin/sync-fixtures-from-api', async (req, res) => {
+    try {
+      const { categoryIds } = req.body;
+      const date = new Date().toISOString().split('T')[0];
+      let allEvents: any[] = [];
+      
+      // If no categoryIds provided, just take the first one available to save quota
+      const cats = await fetchCategories(date);
+      const targetCategoryIds = categoryIds && categoryIds.length > 0 ? categoryIds : [cats[0].category.id];
+      
+      for (const catId of targetCategoryIds) {
+        const events = await fetchEventsByCategory(catId, date);
+        allEvents = [...allEvents, ...events];
+      }
+      
+      // Map to internal format
+      const fixtures = allEvents.map(event => ({
+        time: event.time || '12:00',
+        homeTeam: event.homeTeam.name,
+        awayTeam: event.awayTeam.name,
+        league: event.tournament.uniqueTournament.name,
+        date: date
+      }));
+      
+      // Persist to file
+      const dir = path.join(process.cwd(), 'data');
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const filePath = path.join(dir, 'manual_fixtures.json');
+      fs.writeFileSync(filePath, JSON.stringify(fixtures, null, 2), 'utf-8');
+      
+      res.json({ success: true, count: fixtures.length });
+    } catch (error) {
+      console.error('Error syncing fixtures from API:', error);
+      res.status(500).json({ error: 'Failed to sync fixtures' });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -1631,32 +1844,38 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Soccer Prediction Server running on port ${PORT}`);
 
+    // The pipeline now always schedules — even without SOCCER_API_KEY, it can run
+    // entirely on the TheSportsDB fallback (with narrower coverage), rather than
+    // being fully disabled. Both jobs internally decide, per run, which provider
+    // to actually use and record that in /api/admin/cron-status.
     if (!apiFootballConfigured()) {
       console.warn(
-        '[startup] SOCCER_API_KEY is not set — daily fixture ingestion and result settlement are DISABLED. ' +
-        'Set SOCCER_API_KEY in your environment to enable the automated API-Football pipeline.'
+        '[startup] SOCCER_API_KEY is not set. The automated pipeline will run on the ' +
+        'TheSportsDB fallback only (narrower league coverage). Set SOCCER_API_KEY to ' +
+        'restore full API-Football coverage.'
       );
     } else {
-      console.log('[startup] API-Football configured. Scheduling daily ingestion (05:00) and settlement (every 3h).');
-
-      // Daily ingestion: pull the day's real fixtures at 05:00 server time.
-      cron.schedule('0 5 * * *', () => {
-        runDailyIngestJob().catch((e) => console.error('[cron:ingest] unhandled error', e));
-      });
-
-      // Settlement: check for finished matches every 3 hours around the clock,
-      // since kickoff times and match lengths vary across leagues/timezones.
-      cron.schedule('0 */3 * * *', () => {
-        runSettlementJob().catch((e) => console.error('[cron:settlement] unhandled error', e));
-      });
-
-      // Run both once, shortly after boot, so the pipeline doesn't sit idle
-      // until the next scheduled slot (e.g. after a redeploy).
-      setTimeout(() => {
-        runDailyIngestJob().catch((e) => console.error('[cron:ingest] startup run failed', e));
-        runSettlementJob().catch((e) => console.error('[cron:settlement] startup run failed', e));
-      }, 10_000);
+      console.log('[startup] API-Football configured, with TheSportsDB as an automatic fallback if it fails.');
     }
+    console.log('[startup] Scheduling daily ingestion (05:00) and settlement (every 3h).');
+
+    // Daily ingestion: pull the day's real fixtures at 05:00 server time.
+    cron.schedule('0 5 * * *', () => {
+      runDailyIngestJob().catch((e) => console.error('[cron:ingest] unhandled error', e));
+    });
+
+    // Settlement: check for finished matches every 3 hours around the clock,
+    // since kickoff times and match lengths vary across leagues/timezones.
+    cron.schedule('0 */3 * * *', () => {
+      runSettlementJob().catch((e) => console.error('[cron:settlement] unhandled error', e));
+    });
+
+    // Run both once, shortly after boot, so the pipeline doesn't sit idle
+    // until the next scheduled slot (e.g. after a redeploy).
+    setTimeout(() => {
+      runDailyIngestJob().catch((e) => console.error('[cron:ingest] startup run failed', e));
+      runSettlementJob().catch((e) => console.error('[cron:settlement] startup run failed', e));
+    }, 10_000);
   });
 }
 
