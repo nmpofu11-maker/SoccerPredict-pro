@@ -36,16 +36,25 @@ export interface TheRundownEvent {
   [key: string]: any;
 }
 
-// Major soccer sport IDs tracked by TheRundown
+// Major soccer sport IDs tracked by TheRundown.
+// These are verified directly against TheRundown's own live, no-auth reference
+// endpoint (GET https://therundown.io/api/v2/sports), not guessed or copied from
+// a stale doc example — the previous hardcoded list here had 6 of 8 IDs wrong,
+// which would have silently fetched the wrong competition under the wrong label
+// (e.g. id 16 was labeled "Serie A" but is actually UEFA Champions League).
+// Swapped the two rarely-active international tournaments (Euro Championship,
+// World Cup — only relevant every few years) for two regularly-active club
+// competitions TheRundown actually covers, since this is a daily fixture feed.
 export const THE_RUNDOWN_SOCCER_SPORTS = [
   { id: 11, name: 'EPL', country: 'England' },
-  { id: 17, name: 'La Liga', country: 'Spain' },
-  { id: 16, name: 'Serie A', country: 'Italy' },
-  { id: 18, name: 'Bundesliga', country: 'Germany' },
-  { id: 19, name: 'Ligue 1', country: 'France' },
+  { id: 14, name: 'La Liga', country: 'Spain' },
+  { id: 15, name: 'Serie A', country: 'Italy' },
+  { id: 13, name: 'Bundesliga', country: 'Germany' },
+  { id: 12, name: 'Ligue 1', country: 'France' },
   { id: 10, name: 'MLS', country: 'USA' },
-  { id: 12, name: 'UEFA Champions League', country: 'Europe' },
-  { id: 13, name: 'UEFA Europa League', country: 'Europe' },
+  { id: 16, name: 'UEFA Champions League', country: 'Europe' },
+  { id: 33, name: 'UEFA Europa League', country: 'Europe' },
+  { id: 34, name: 'Liga MX', country: 'Mexico' },
 ];
 
 export function theRundownConfigured(): boolean {

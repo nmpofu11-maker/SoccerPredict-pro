@@ -208,17 +208,18 @@ export function analyzePostMortemFailures(
 ): PostMortemFailureAnalysis[] {
   const analyses: PostMortemFailureAnalysis[] = [];
 
-  const validResults = (historicalResults || []).filter(
-    (m): m is HistoricalMatchResult => Boolean(m && m.fixture && m.fixture.homeTeam && m.fixture.awayTeam && m.actualOutcome)
-  );
+  const evaluated = (historicalResults || [])
+    .filter((m): m is HistoricalMatchResult => Boolean(m && m.fixture && m.fixture.homeTeam && m.fixture.awayTeam && m.actualOutcome))
+    .map((m) => ({
+      m,
+      pred: evaluateFixturePrediction(m.fixture, 'none'),
+    }));
 
-  const incorrectMatches = validResults.filter((m) => {
-    const pred = evaluateFixturePrediction(m.fixture, 'none');
+  const incorrectMatches = evaluated.filter(({ m, pred }) => {
     return Boolean(pred && pred.predictedWinner && pred.predictedWinner !== m.actualOutcome);
   });
 
-  for (const m of incorrectMatches.slice(0, 5)) {
-    const pred = evaluateFixturePrediction(m.fixture, 'none');
+  for (const { m, pred } of incorrectMatches.slice(0, 5)) {
     if (!pred) continue;
     const actual = m.actualOutcome || 'draw';
     const predicted = pred.predictedWinner || 'draw';
@@ -301,6 +302,14 @@ export function generateOptimalValueAccumulatorReport(
 
   const validFixtures = activeFixtures;
 
+  // Precompute historical predictions once to avoid 60,000+ redundant calculations in nested loops
+  const historicalEvaluations = (historicalResults || [])
+    .filter((h) => Boolean(h && h.fixture && h.actualOutcome))
+    .map((h) => ({
+      result: h,
+      pred: evaluateFixturePrediction(h.fixture, 'none', weights),
+    }));
+
   for (const fixture of validFixtures) {
     const pred = evaluateFixturePrediction(fixture, (overrides[fixture.id] as any) || 'none', weights);
     if (!pred) continue;
@@ -341,21 +350,18 @@ export function generateOptimalValueAccumulatorReport(
       const ev = (outcome.prob / 100) * outcome.odds - 1; // Expected Value ratio
       const valueMarginPct = Number((((outcome.odds - fairOdds) / fairOdds) * 100).toFixed(1));
 
-      // Calculate historical sample accuracy in similar past fixtures
-      const matchingHistorical = (historicalResults || []).filter((h) => {
-        if (!h.fixture || !h.actualOutcome) return false;
-        const hPred = evaluateFixturePrediction(h.fixture, 'none', weights);
+      // Calculate historical sample accuracy in similar past fixtures (O(N) precomputed lookup)
+      const matchingHistorical = historicalEvaluations.filter(({ result: h, pred: hPred }) => {
+        if (!hPred) return false;
         const leagueMatch = h.fixture.league === fixture.league;
-        const probBandMatch = Math.abs(
-          (outcome.sel === 'home' ? hPred.homeWinPct : outcome.sel === 'away' ? hPred.awayWinPct : hPred.drawPct) - outcome.prob
-        ) <= 12;
+        const hProb = outcome.sel === 'home' ? hPred.homeWinPct : outcome.sel === 'away' ? hPred.awayWinPct : hPred.drawPct;
+        const probBandMatch = Math.abs(hProb - outcome.prob) <= 12;
         return leagueMatch || probBandMatch;
       });
 
       const sampleSize = matchingHistorical.length || 18;
-      const matchingWins = matchingHistorical.filter((h) => {
-        const hPred = evaluateFixturePrediction(h.fixture, 'none', weights);
-        return hPred.predictedWinner === h.actualOutcome;
+      const matchingWins = matchingHistorical.filter(({ result: h, pred: hPred }) => {
+        return hPred && hPred.predictedWinner === h.actualOutcome;
       }).length;
 
       const historicalWinRate = sampleSize > 0

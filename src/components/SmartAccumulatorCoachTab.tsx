@@ -160,50 +160,67 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
     return top10;
   }, [fixtures, overrides, engineWeights]);
 
-  const optimalReport: OptimalValueReport = generateOptimalValueAccumulatorReport(
-    fixtures,
-    overrides,
-    engineWeights,
-    undefined,
-    strategyMode
-  );
+  const optimalReport = useMemo(() => {
+    return generateOptimalValueAccumulatorReport(
+      fixtures,
+      overrides,
+      engineWeights,
+      undefined,
+      strategyMode
+    );
+  }, [fixtures, overrides, engineWeights, strategyMode]);
 
-  const smartAccy = generateSmartAccumulator(fixtures, overrides, engineWeights);
-  const postMortemFailures = analyzePostMortemFailures();
-  const coachingAudit = analyzeUserCoachingPatterns(overrides, fixtures);
+  const smartAccy = useMemo(() => {
+    return generateSmartAccumulator(fixtures, overrides, engineWeights);
+  }, [fixtures, overrides, engineWeights]);
+
+  const postMortemFailures = useMemo(() => {
+    return analyzePostMortemFailures();
+  }, []);
+
+  const coachingAudit = useMemo(() => {
+    return analyzeUserCoachingPatterns(overrides, fixtures);
+  }, [overrides, fixtures]);
 
   // Compute recharts datasets
-  const chartLegData = optimalReport.legs.map((leg, index) => {
-    const shortHome = leg.homeTeam.length > 12 ? leg.homeTeam.slice(0, 10) + '..' : leg.homeTeam;
-    const shortAway = leg.awayTeam.length > 12 ? leg.awayTeam.slice(0, 10) + '..' : leg.awayTeam;
+  const chartLegData = useMemo(() => {
+    return optimalReport.legs.map((leg, index) => {
+      const shortHome = leg.homeTeam.length > 12 ? leg.homeTeam.slice(0, 10) + '..' : leg.homeTeam;
+      const shortAway = leg.awayTeam.length > 12 ? leg.awayTeam.slice(0, 10) + '..' : leg.awayTeam;
+      return {
+        id: leg.fixtureId,
+        legKey: `Leg ${index + 1}`,
+        shortName: `${shortHome} v ${shortAway}`,
+        matchTitle: `${leg.homeTeam} vs ${leg.awayTeam}`,
+        league: leg.league,
+        home: leg.probabilities?.home ?? 0,
+        draw: leg.probabilities?.draw ?? 0,
+        away: leg.probabilities?.away ?? 0,
+        selection: leg.selectionName,
+        selectionType: leg.selection,
+        pickProb: leg.modelProbability,
+        marketOdds: leg.marketOdds,
+        ev: leg.expectedValue,
+      };
+    });
+  }, [optimalReport]);
+
+  const aggregateDistribution = useMemo(() => {
+    if (optimalReport.legs.length === 0) return { avgHome: 0, avgDraw: 0, avgAway: 0 };
     return {
-      id: leg.fixtureId,
-      legKey: `Leg ${index + 1}`,
-      shortName: `${shortHome} v ${shortAway}`,
-      matchTitle: `${leg.homeTeam} vs ${leg.awayTeam}`,
-      league: leg.league,
-      home: leg.probabilities?.home ?? 0,
-      draw: leg.probabilities?.draw ?? 0,
-      away: leg.probabilities?.away ?? 0,
-      selection: leg.selectionName,
-      selectionType: leg.selection,
-      pickProb: leg.modelProbability,
-      marketOdds: leg.marketOdds,
-      ev: leg.expectedValue,
+      avgHome: Math.round(optimalReport.legs.reduce((acc, l) => acc + (l.probabilities?.home ?? 0), 0) / optimalReport.legs.length),
+      avgDraw: Math.round(optimalReport.legs.reduce((acc, l) => acc + (l.probabilities?.draw ?? 0), 0) / optimalReport.legs.length),
+      avgAway: Math.round(optimalReport.legs.reduce((acc, l) => acc + (l.probabilities?.away ?? 0), 0) / optimalReport.legs.length),
     };
-  });
+  }, [optimalReport]);
 
-  const aggregateDistribution = optimalReport.legs.length > 0 ? {
-    avgHome: Math.round(optimalReport.legs.reduce((acc, l) => acc + (l.probabilities?.home ?? 0), 0) / optimalReport.legs.length),
-    avgDraw: Math.round(optimalReport.legs.reduce((acc, l) => acc + (l.probabilities?.draw ?? 0), 0) / optimalReport.legs.length),
-    avgAway: Math.round(optimalReport.legs.reduce((acc, l) => acc + (l.probabilities?.away ?? 0), 0) / optimalReport.legs.length),
-  } : { avgHome: 0, avgDraw: 0, avgAway: 0 };
-
-  const averageChartData = [
-    { outcome: 'Home Win', probability: aggregateDistribution.avgHome, fill: '#10b981', label: `Home Win (${aggregateDistribution.avgHome}%)` },
-    { outcome: 'Draw', probability: aggregateDistribution.avgDraw, fill: '#f59e0b', label: `Draw (${aggregateDistribution.avgDraw}%)` },
-    { outcome: 'Away Win', probability: aggregateDistribution.avgAway, fill: '#6366f1', label: `Away Win (${aggregateDistribution.avgAway}%)` },
-  ];
+  const averageChartData = useMemo(() => {
+    return [
+      { outcome: 'Home Win', probability: aggregateDistribution.avgHome, fill: '#10b981', label: `Home Win (${aggregateDistribution.avgHome}%)` },
+      { outcome: 'Draw', probability: aggregateDistribution.avgDraw, fill: '#f59e0b', label: `Draw (${aggregateDistribution.avgDraw}%)` },
+      { outcome: 'Away Win', probability: aggregateDistribution.avgAway, fill: '#6366f1', label: `Away Win (${aggregateDistribution.avgAway}%)` },
+    ];
+  }, [aggregateDistribution]);
 
   const handleAddAllOptimalToSlip = () => {
     optimalReport.legs.forEach((leg) => {

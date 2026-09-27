@@ -602,6 +602,42 @@ function mapSportApiAiToInternalFixture(f: any): any {
     ? `${f.league_zone || f.league_geo || 'Global'} • ${f.league_name}`
     : (typeof f.league === 'string' ? f.league : `${f.league?.country || 'Global'} • ${f.league?.name || 'League'}`);
 
+  // Parse odds if available from SportAPI object
+  let homeOdds = Number(f.home_odds || f.odds?.home || f.odds?.home_win || f.homeOdds);
+  let awayOdds = Number(f.away_odds || f.odds?.away || f.odds?.away_win || f.awayOdds);
+  let drawOdds = Number(f.draw_odds || f.odds?.draw || f.drawOdds);
+
+  let homeRank = 10;
+  let awayRank = 10;
+  let homePoss = 50;
+  let awayPoss = 50;
+  let homeSot = 4.5;
+  let awaySot = 4.5;
+  let isHomeDom = false;
+  let hasAwayForm = false;
+
+  if (Number.isFinite(homeOdds) && Number.isFinite(awayOdds) && homeOdds > 0 && awayOdds > 0) {
+    if (homeOdds < awayOdds * 0.7) {
+      // Home is substantial favorite
+      homeRank = 4;
+      awayRank = 14;
+      homePoss = 55;
+      awayPoss = 45;
+      homeSot = 5.4;
+      awaySot = 3.6;
+      isHomeDom = true;
+    } else if (awayOdds < homeOdds * 0.7) {
+      // Away is substantial favorite (e.g. clear mismatch like Inter Lagos away)
+      homeRank = 14;
+      awayRank = 4;
+      homePoss = 44;
+      awayPoss = 56;
+      homeSot = 3.5;
+      awaySot = 5.5;
+      hasAwayForm = true;
+    }
+  }
+
   return {
     id: `sportapiai_${idStr}`,
     sportApiAiFixtureId: idStr,
@@ -612,28 +648,29 @@ function mapSportApiAiToInternalFixture(f: any): any {
     round: f.stage || f.league?.round || f.round || 'Regular Season',
     isHighStakes: false,
     motivation: 'regular',
+    odds: (Number.isFinite(homeOdds) && Number.isFinite(awayOdds)) ? { home: homeOdds, draw: drawOdds || 3.4, away: awayOdds, provider: 'SportAPI.ai' } : undefined,
     homeTeam: {
       id: `sportapiai_team_${f.home_id || f.home_team?.id || f.homeTeam?.id || normalizeTeamName(homeName)}`,
       name: homeName,
       shortName: (f.home_short || homeName).slice(0, 3).toUpperCase(),
-      leagueRank: 10,
-      points: 15,
-      form: ['W', 'D', 'W', 'L', 'W'],
-      avgPossession: 52,
-      avgShotsOnTarget: 5.0,
-      isHomeDominant: true,
+      leagueRank: homeRank,
+      points: Math.max(1, 40 - homeRank * 2),
+      form: ['W', 'D', 'W', 'D', 'L'],
+      avgPossession: homePoss,
+      avgShotsOnTarget: homeSot,
+      isHomeDominant: isHomeDom,
       badgeColor: '#2563eb',
     },
     awayTeam: {
       id: `sportapiai_team_${f.away_id || f.away_team?.id || f.awayTeam?.id || normalizeTeamName(awayName)}`,
       name: awayName,
       shortName: (f.away_short || awayName).slice(0, 3).toUpperCase(),
-      leagueRank: 10,
-      points: 15,
-      form: ['W', 'D', 'W', 'L', 'W'],
-      avgPossession: 48,
-      avgShotsOnTarget: 4.5,
-      hasTopTierAwayForm: false,
+      leagueRank: awayRank,
+      points: Math.max(1, 40 - awayRank * 2),
+      form: ['W', 'D', 'W', 'D', 'L'],
+      avgPossession: awayPoss,
+      avgShotsOnTarget: awaySot,
+      hasTopTierAwayForm: hasAwayForm,
       badgeColor: '#dc2626',
     },
     h2h: { homeWins: 2, draws: 1, awayWins: 2, totalLast5: 5, scoresLast5: ['1-1', '2-1', '0-1', '1-0', '2-2'] },
@@ -674,10 +711,10 @@ function mapTheRundownToInternalFixture(ev: any): any {
       shortName: homeName.slice(0, 3).toUpperCase(),
       leagueRank: 10,
       points: 15,
-      form: ['W', 'D', 'W', 'L', 'W'],
-      avgPossession: 52,
-      avgShotsOnTarget: 5.0,
-      isHomeDominant: true,
+      form: ['W', 'D', 'W', 'D', 'L'],
+      avgPossession: 50,
+      avgShotsOnTarget: 4.5,
+      isHomeDominant: false,
       badgeColor: '#2563eb',
     },
     awayTeam: {
@@ -686,8 +723,8 @@ function mapTheRundownToInternalFixture(ev: any): any {
       shortName: awayName.slice(0, 3).toUpperCase(),
       leagueRank: 10,
       points: 15,
-      form: ['W', 'D', 'W', 'L', 'W'],
-      avgPossession: 48,
+      form: ['W', 'D', 'W', 'D', 'L'],
+      avgPossession: 50,
       avgShotsOnTarget: 4.5,
       hasTopTierAwayForm: false,
       badgeColor: '#dc2626',

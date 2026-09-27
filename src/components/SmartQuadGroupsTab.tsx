@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { MatchFixture, PredictionResult } from '../types/soccer';
 import {
   generateDualQuadGroupsForMatchDay,
@@ -18,9 +18,6 @@ interface SmartQuadGroupsTabProps {
 }
 
 export const SmartQuadGroupsTab: React.FC<SmartQuadGroupsTabProps> = ({ fixtures, predictions }) => {
-  const [dualMatchDayData, setDualMatchDayData] = useState<DualQuadGroupsMatchDay>(() =>
-    generateDualQuadGroupsForMatchDay('all', fixtures, predictions)
-  );
   const [activeQuadSet, setActiveQuadSet] = useState<'set1' | 'set2'>('set1');
   const [trackerStats, setTrackerStats] = useState<QuadGroupTrackerStats>(() => loadQuadGroupTrackerStats());
   const [disappointmentLedger, setDisappointmentLedger] = useState<TeamDisappointmentRecord[]>(() =>
@@ -30,9 +27,8 @@ export const SmartQuadGroupsTab: React.FC<SmartQuadGroupsTabProps> = ({ fixtures
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>('all');
   const [activeTabSubView, setActiveTabSubView] = useState<'groups' | 'tracker' | 'disappointment'>('groups');
 
-  useEffect(() => {
-    const data = generateDualQuadGroupsForMatchDay(selectedDateFilter, fixtures, predictions);
-    setDualMatchDayData(data);
+  const dualMatchDayData = useMemo(() => {
+    return generateDualQuadGroupsForMatchDay(selectedDateFilter, fixtures, predictions);
   }, [selectedDateFilter, fixtures, predictions]);
 
   const currentSetData = activeQuadSet === 'set1' ? dualMatchDayData.set1 : dualMatchDayData.set2;

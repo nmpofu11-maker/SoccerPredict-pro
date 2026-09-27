@@ -43,12 +43,12 @@
     "squadValueWeight": 0.4,
     "matchRatingWeight": 4.5
   },
-  "totalEpochsTrained": 3872,
+  "totalEpochsTrained": 3897,
   "accuracyPct": 67.1,
   "baselineAccuracyPct": 65.9,
   "brierLoss": 0.238,
   "baselineBrierLoss": 0.241,
-  "lastTrainedAt": "2026-09-27T05:14:45.633Z",
+  "lastTrainedAt": "2026-09-27T10:07:06.594Z",
   "isAutoLearningEnabled": true,
   "recentLossHistory": [
     0.241,
