@@ -88,12 +88,20 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
         </div>
       </div>
 
-      <div className="flex items-center gap-2.5 w-full sm:w-auto justify-between sm:justify-end">
+      <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
         {status && (
-          <div className="text-right hidden xs:block">
-            <div className="text-slate-400 text-[10px] uppercase">API-Football Quota</div>
-            <div className="text-sm font-black text-indigo-300">
-              {status.quota.callsUsed} / {status.quota.maxDailyLimit}
+          <div className="flex items-center gap-2">
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] text-slate-400 font-sans">SportAPI.ai</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.sportApiAiConfigured ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                {status.sportApiAiConfigured ? 'CONNECTED' : 'UNSET'}
+              </span>
+            </div>
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] text-slate-400 font-sans">TheRundown</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.theRundownConfigured ? 'bg-blue-500/20 border-blue-500/40 text-blue-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                {status.theRundownConfigured ? 'CONNECTED' : 'UNSET'}
+              </span>
             </div>
           </div>
         )}

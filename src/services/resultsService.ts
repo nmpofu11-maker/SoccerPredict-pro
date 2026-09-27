@@ -60,9 +60,8 @@ export async function fetchDailySlate(): Promise<MatchFixture[] | null> {
  
 export interface CronStatusResponse {
   status: 'success' | 'error';
-  apiFootballConfigured: boolean;
-  theSportsDbUsingSharedKey: boolean;
-  quota: { date: string; callsUsed: number; maxDailyLimit: number };
+  sportApiAiConfigured: boolean;
+  theRundownConfigured: boolean;
   cron: {
     ingest: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; fixturesIngested: number; sourceUsed?: string | null };
     settlement: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; resultsSettled: number };

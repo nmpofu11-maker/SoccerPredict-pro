@@ -43,35 +43,35 @@
     "squadValueWeight": 0.4,
     "matchRatingWeight": 4.5
   },
-  "totalEpochsTrained": 2702,
-  "accuracyPct": 68.3,
-  "baselineAccuracyPct": 69.5,
-  "brierLoss": 0.239,
-  "baselineBrierLoss": 0.238,
-  "lastTrainedAt": "2026-09-18T18:45:36.022Z",
+  "totalEpochsTrained": 3872,
+  "accuracyPct": 67.1,
+  "baselineAccuracyPct": 65.9,
+  "brierLoss": 0.238,
+  "baselineBrierLoss": 0.241,
+  "lastTrainedAt": "2026-09-27T05:14:45.633Z",
   "isAutoLearningEnabled": true,
   "recentLossHistory": [
-    0.239,
-    0.239,
-    0.239,
-    0.239,
-    0.239,
-    0.239,
-    0.239,
-    0.239,
-    0.239,
-    0.239,
-    0.239,
-    0.239,
-    0.239,
-    0.239,
-    0.239
+    0.241,
+    0.241,
+    0.241,
+    0.241,
+    0.241,
+    0.241,
+    0.241,
+    0.241,
+    0.241,
+    0.241,
+    0.241,
+    0.241,
+    0.241,
+    0.241,
+    0.241
   ],
   "aiTacticalSynthesis": {
-    "summary": "Online learning calibration evaluated against historical outcomes. High accuracy on domestic title contenders.",
+    "summary": "Aggressive Super-Learning Protocol operational: Continuous unbounded calibration engaged against match results and club coefficient matrices without limits.",
     "recommendations": [
       "Maintain shot-on-target differential above 0.40.",
-      "Dampen volatility spikes in secondary leagues.",
+      "Dampen volatility spikes in secondary leagues with learned coefficients.",
       "Keep 55% win floor for Tier 1 elite favourites."
     ],
     "ruleEfficiency": [
@@ -94,8 +94,13 @@
         "rule": "Rule 8: Favourite Floor",
         "impact": "Active 55%",
         "status": "optimal"
+      },
+      {
+        "rule": "⚡ Super-Learned Team Matrix",
+        "impact": "Club-specific coefficients active",
+        "status": "optimal"
       }
     ],
-    "timestamp": "2026-09-13T05:47:08.619Z"
+    "timestamp": "2026-09-24T10:58:32.138Z"
   }
 }
