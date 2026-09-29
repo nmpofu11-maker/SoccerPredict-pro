@@ -325,21 +325,14 @@ export function loadScrapeLogs(): ScrapeLogItem[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.SCRAPE_LOGS);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
     }
   } catch (err) {
     console.warn('Failed to load scrape logs', err);
   }
-  return [
-    {
-      id: 'init-1',
-      timestamp: new Date().toLocaleTimeString(),
-      fixturesCount: 18,
-      favouritesCount: 8,
-      status: 'SUCCESS',
-      details: 'Baseline bundle ingested (upcoming_fixtures.json)',
-    },
-  ];
+  return [];
+}
 }
 
 export function saveScrapeLog(log: ScrapeLogItem): ScrapeLogItem[] {
