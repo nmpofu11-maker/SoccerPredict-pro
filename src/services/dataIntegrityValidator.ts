@@ -110,52 +110,28 @@ function sanitizeTeamStats(
   let matchedOfficialTable = false;
 
   // Cross-reference only against the runtime official standings map.
-  // Bundled reference snapshots are never treated as current official evidence.
-  const verifiedData = undefined;
-  if (verifiedData) {
+  const cleanId = team.id ? team.id.replace('team_', '') : '';
+  const officialStanding = standingsMap
+    ? standingsMap.get(cleanId) ||
+      standingsMap.get(team.name.toLowerCase()) ||
+      (team.shortName ? standingsMap.get(team.shortName.toLowerCase()) : undefined)
+    : undefined;
+
+  if (officialStanding) {
     matchedOfficialTable = true;
-  }
-else {
-    // 1. Cross-reference with Official Standings Table if available
-    const cleanId = team.id ? team.id.replace('team_', '') : '';
-    const officialStanding = standingsMap
-      ? standingsMap.get(cleanId) ||
-        standingsMap.get(team.name.toLowerCase()) ||
-        (team.shortName ? standingsMap.get(team.shortName.toLowerCase()) : undefined)
-      : undefined;
-
-    if (officialStanding) {
-      matchedOfficialTable = true;
-      if (cleanTeam.leagueRank !== officialStanding.rank) {
-        repairsLog.push({
-          field: `${team.name} (leagueRank)`,
-          originalValue: cleanTeam.leagueRank,
-          repairedValue: officialStanding.rank,
-          reason: 'Synchronized with official league standings table rank',
-        });
-        cleanTeam.leagueRank = officialStanding.rank;
-      }
-      if (cleanTeam.points !== officialStanding.points) {
-        repairsLog.push({
-          field: `${team.name} (points)`,
-          originalValue: cleanTeam.points,
-          repairedValue: officialStanding.points,
-          reason: 'Synchronized with official league standings table points tally',
-        });
-        cleanTeam.points = officialStanding.points;
-      }
-    } else {
-      // Unknown standings must remain unknown; do not derive a league rank or points
-      // from a synthetic baseline because those values feed the prediction model.
-      if (!Number.isFinite(cleanTeam.leagueRank) || cleanTeam.leagueRank < 1 || cleanTeam.leagueRank > 24) {
-        cleanTeam.leagueRank = null;
-      }
-      if (!Number.isFinite(cleanTeam.points) || cleanTeam.points < 0) {
-        cleanTeam.points = null;
-      }
+    if (cleanTeam.leagueRank !== officialStanding.rank) {
+      repairsLog.push({ field: `${team.name} (leagueRank)`, originalValue: cleanTeam.leagueRank, repairedValue: officialStanding.rank, reason: 'Synchronized with runtime official league standings table rank' });
+      cleanTeam.leagueRank = officialStanding.rank;
     }
+    if (cleanTeam.points !== officialStanding.points) {
+      repairsLog.push({ field: `${team.name} (points)`, originalValue: cleanTeam.points, repairedValue: officialStanding.points, reason: 'Synchronized with runtime official league standings points' });
+      cleanTeam.points = officialStanding.points;
+    }
+  } else {
+    // Unknown standings remain unknown and are never replaced with synthetic values.
+    if (!Number.isFinite(cleanTeam.leagueRank) || cleanTeam.leagueRank < 1 || cleanTeam.leagueRank > 24) cleanTeam.leagueRank = null;
+    if (!Number.isFinite(cleanTeam.points) || cleanTeam.points < 0) cleanTeam.points = null;
   }
-
   // 2. Validate Form array. Missing form means no evidence, not five synthetic draws.
   if (!Array.isArray(cleanTeam.form)) {
     cleanTeam.form = [];
