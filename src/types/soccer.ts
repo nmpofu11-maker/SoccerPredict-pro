@@ -200,7 +200,7 @@ export interface LearningModelState {
   baselineAccuracyPct: number;
   brierLoss: number;
   baselineBrierLoss: number;
-  lastTrainedAt: string;
+  lastTrainedAt: string | null;
   isAutoLearningEnabled: boolean;
   recentLossHistory: number[];
   aiTacticalSynthesis?: AITacticalSynthesis;
