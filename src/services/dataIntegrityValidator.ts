@@ -256,19 +256,17 @@ export function verifyAndSanitizeFixture(
   });
 
   // Check 6: Head-to-Head Record Sanity
+  // Validate the observed record; never invent missing outcomes.
   const cleanH2H = { ...fixture.h2h };
   const h2hSum = (cleanH2H.homeWins || 0) + (cleanH2H.draws || 0) + (cleanH2H.awayWins || 0);
-  if (h2hSum !== 5 && cleanH2H.totalLast5 === 5) {
-    cleanH2H.homeWins = Math.max(0, cleanH2H.homeWins || 2);
-    cleanH2H.awayWins = Math.max(0, cleanH2H.awayWins || 1);
-    cleanH2H.draws = Math.max(0, 5 - (cleanH2H.homeWins + cleanH2H.awayWins));
-    cleanH2H.totalLast5 = 5;
-  }
+  const h2hConsistent = cleanH2H.totalLast5 === h2hSum;
   checks.push({
     checkName: 'Head-to-Head Sum Integrity',
-    passed: true,
-    details: `H2H last 5: ${cleanH2H.homeWins} Home Wins, ${cleanH2H.draws} Draws, ${cleanH2H.awayWins} Away Wins`,
-    severity: 'info',
+    passed: h2hConsistent,
+    details: h2hConsistent
+      ? `H2H record is internally consistent (${h2hSum} recorded matches)`
+      : `H2H record is inconsistent: totalLast5=${cleanH2H.totalLast5}, outcome counts=${h2hSum}; no synthetic correction applied`,
+    severity: h2hConsistent ? 'info' : 'warning',
   });
 
   // Check 7: Market Odds Sanity & Bookmaker Overround Integrity
