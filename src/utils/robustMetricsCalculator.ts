@@ -3,9 +3,9 @@ import { getHistoricalMatchesForTeam } from './formCalculator';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
 
 export interface ScheduleDifficultyAssessment {
-  avgOpponentRank: number;
+  avgOpponentRank: number | null;
   matchesEvaluated: number;
-  rankDelta: number; // positive = opponents were lower in table (easier), negative = tougher
+  rankDelta: number | null; // positive = opponents were lower in table (easier), negative = tougher
   scheduleType: 'soft_schedule' | 'tough_schedule' | 'neutral';
   scheduleDescription: string;
 }
@@ -19,12 +19,12 @@ export interface AnomalousMatchDetail {
 }
 
 export interface RobustAdjustedMetrics {
-  rawPossession: number;
-  rawShotsOnTarget: number;
-  effectivePossession: number;
-  effectiveShotsOnTarget: number;
-  possessionDelta: number;
-  shotsDelta: number;
+  rawPossession: number | null;
+  rawShotsOnTarget: number | null;
+  effectivePossession: number | null;
+  effectiveShotsOnTarget: number | null;
+  possessionDelta: number | null;
+  shotsDelta: number | null;
   outlierFiltered: boolean;
   hasOutliersCleaned: boolean;
   anomalousMatchesIgnored: number;
@@ -65,27 +65,19 @@ export function winsorizeValue(value: number, minBound: number, maxBound: number
  */
 export function evaluateOpponentSchedule(
   teamName: string,
-  teamRank: number,
+  teamRank: number | null,
   historicalResults: HistoricalMatchResult[] = HISTORICAL_MATCH_RESULTS
 ): ScheduleDifficultyAssessment {
   const matches = getHistoricalMatchesForTeam(teamName, historicalResults);
   const recent = matches.slice(-5);
 
-  if (recent.length === 0) {
-    // If no explicit historical matches, use team's rank relative to league median
-    const estimatedOpponentRank = Math.min(18, Math.max(2, teamRank > DEFAULT_LEAGUE_MEDIAN_RANK ? teamRank - 4 : teamRank + 4));
-    const rankDelta = estimatedOpponentRank - teamRank;
-    const scheduleType = rankDelta >= 4 ? 'soft_schedule' : rankDelta <= -4 ? 'tough_schedule' : 'neutral';
+  if (recent.length === 0 || teamRank === null || !Number.isFinite(teamRank)) {
     return {
-      avgOpponentRank: estimatedOpponentRank,
+      avgOpponentRank: null,
       matchesEvaluated: 0,
-      rankDelta,
-      scheduleType,
-      scheduleDescription: scheduleType === 'soft_schedule'
-        ? 'Estimated schedule against lower-table opponents'
-        : scheduleType === 'tough_schedule'
-        ? 'Estimated schedule against top-tier opponents'
-        : 'Balanced competition schedule',
+      rankDelta: null,
+      scheduleType: 'neutral',
+      scheduleDescription: 'Insufficient opponent-rank evidence for schedule classification',
     };
   }
 
@@ -100,7 +92,7 @@ export function evaluateOpponentSchedule(
         const isHome = orig.fixture.homeTeam.name.toLowerCase().includes(teamName.toLowerCase());
         const opponentTeam = isHome ? orig.fixture.awayTeam : orig.fixture.homeTeam;
         if (opponentTeam && opponentTeam.leagueRank) {
-          totalOpponentRank += opponentTeam.leagueRank;
+          totalOpponentRank += opponentTeam.leagueRank as number;
           matchesCounted++;
         }
       }
@@ -118,10 +110,10 @@ export function evaluateOpponentSchedule(
   let scheduleType: 'soft_schedule' | 'tough_schedule' | 'neutral' = 'neutral';
   let scheduleDescription = '';
 
-  if (rankDelta >= 3.5) {
+  if (rankDelta !== null && rankDelta >= 3.5) {
     scheduleType = 'soft_schedule';
     scheduleDescription = `Faced primarily lower-table sides (avg opponent rank #${avgOpponentRank}).`;
-  } else if (rankDelta <= -3.5) {
+  } else if (rankDelta !== null && rankDelta <= -3.5) {
     scheduleType = 'tough_schedule';
     scheduleDescription = `Tested against top-table opposition (avg opponent rank #${avgOpponentRank}).`;
   } else {
@@ -248,12 +240,12 @@ export function computeScheduleAdjustedMetrics(
 ): RobustAdjustedMetrics {
   if (!team) {
     return {
-      rawPossession: 50,
-      rawShotsOnTarget: 4.5,
-      effectivePossession: 50,
-      effectiveShotsOnTarget: 4.5,
-      possessionDelta: 0,
-      shotsDelta: 0,
+      rawPossession: null,
+      rawShotsOnTarget: null,
+      effectivePossession: null,
+      effectiveShotsOnTarget: null,
+      possessionDelta: null,
+      shotsDelta: null,
       outlierFiltered: false,
       hasOutliersCleaned: false,
       anomalousMatchesIgnored: 0,
@@ -272,9 +264,9 @@ export function computeScheduleAdjustedMetrics(
   const cacheKey = `${team.name}_${team.leagueRank}_${team.avgPossession}_${team.avgShotsOnTarget}_${historicalResults.length}`;
   const cached = scheduleAdjustedCache.get(cacheKey);
   if (cached) return cached;
-  const rawPossession = team.avgPossession || 50.0;
-  const rawShotsOnTarget = team.avgShotsOnTarget || 4.5;
-  const teamRank = team.leagueRank || 10;
+  const rawPossession = Number.isFinite(team.avgPossession) ? team.avgPossession : null;
+  const rawShotsOnTarget = Number.isFinite(team.avgShotsOnTarget) ? team.avgShotsOnTarget : null;
+  const teamRank = Number.isFinite(team.leagueRank) ? team.leagueRank : null;
 
   const outlierNotes: string[] = [];
   let outlierFiltered = false;
@@ -291,7 +283,7 @@ export function computeScheduleAdjustedMetrics(
   }
 
   // Step 2: Winsorize raw averages to ensure single freak matches cannot distort baselines
-  const possClamped = winsorizeValue(rawPossession, POSSESSION_LOWER_BOUND, POSSESSION_UPPER_BOUND);
+  const possClamped = rawPossession !== null ? winsorizeValue(rawPossession, POSSESSION_LOWER_BOUND, POSSESSION_UPPER_BOUND) : { value: 0, wasClamped: false };
   if (possClamped.wasClamped) {
     outlierFiltered = true;
     outlierNotes.push(
@@ -299,7 +291,7 @@ export function computeScheduleAdjustedMetrics(
     );
   }
 
-  const sotClamped = winsorizeValue(rawShotsOnTarget, SOT_LOWER_BOUND, SOT_UPPER_BOUND);
+  const sotClamped = rawShotsOnTarget !== null ? winsorizeValue(rawShotsOnTarget, SOT_LOWER_BOUND, SOT_UPPER_BOUND) : { value: 0, wasClamped: false };
   if (sotClamped.wasClamped) {
     outlierFiltered = true;
     outlierNotes.push(
@@ -315,8 +307,8 @@ export function computeScheduleAdjustedMetrics(
     }
   }
 
-  const baselinePoss = possClamped.value;
-  const baselineSot = sotClamped.value;
+  const baselinePoss = rawPossession !== null ? possClamped.value : null;
+  const baselineSot = rawShotsOnTarget !== null ? sotClamped.value : null;
 
   // Step 3: Evaluate Opponent Schedule Strength
   const schedule = evaluateOpponentSchedule(team.name, teamRank, historicalResults);
@@ -344,8 +336,8 @@ export function computeScheduleAdjustedMetrics(
     );
   }
 
-  const effectivePossession = Math.round((baselinePoss + possessionDelta) * 10) / 10;
-  const effectiveShotsOnTarget = Math.round((baselineSot + shotsDelta) * 10) / 10;
+  const effectivePossession = baselinePoss !== null ? Math.round((baselinePoss + possessionDelta) * 10) / 10 : null;
+  const effectiveShotsOnTarget = baselineSot !== null ? Math.round((baselineSot + shotsDelta) * 10) / 10 : null;
 
   const hasOutliersCleaned =
     Boolean(team.hasOutliersCleaned) ||
@@ -396,16 +388,22 @@ export function computeComparativeDominance(
   const homeMetrics = computeScheduleAdjustedMetrics(homeTeam, historicalResults);
   const awayMetrics = computeScheduleAdjustedMetrics(awayTeam, historicalResults);
 
-  const effectivePossDiff = Math.round((homeMetrics.effectivePossession - awayMetrics.effectivePossession) * 10) / 10;
-  const effectiveSotDiff = Math.round((homeMetrics.effectiveShotsOnTarget - awayMetrics.effectiveShotsOnTarget) * 10) / 10;
-  const rawSotDiff = Math.round((homeTeam.avgShotsOnTarget - awayTeam.avgShotsOnTarget) * 10) / 10;
+  const effectivePossDiff = homeMetrics.effectivePossession !== null && awayMetrics.effectivePossession !== null
+    ? Math.round((homeMetrics.effectivePossession - awayMetrics.effectivePossession) * 10) / 10
+    : null;
+  const effectiveSotDiff = homeMetrics.effectiveShotsOnTarget !== null && awayMetrics.effectiveShotsOnTarget !== null
+    ? Math.round((homeMetrics.effectiveShotsOnTarget - awayMetrics.effectiveShotsOnTarget) * 10) / 10
+    : null;
+  const rawSotDiff = homeTeam.avgShotsOnTarget !== null && awayTeam.avgShotsOnTarget !== null
+    ? Math.round((homeTeam.avgShotsOnTarget - awayTeam.avgShotsOnTarget) * 10) / 10
+    : null;
 
   let misleadingWarning: string | undefined;
 
   // Check if raw stats suggested a big edge that disappears once opponent schedule is normalized
-  if (rawSotDiff >= 3.0 && effectiveSotDiff < 2.0 && homeMetrics.schedule.scheduleType === 'soft_schedule') {
+  if (rawSotDiff !== null && effectiveSotDiff !== null && rawSotDiff >= 3.0 && effectiveSotDiff < 2.0 && homeMetrics.schedule.scheduleType === 'soft_schedule') {
     misleadingWarning = `${homeTeam.name}'s raw shot edge (+${rawSotDiff.toFixed(1)}) is inflated by facing opponents below them (avg #${homeMetrics.schedule.avgOpponentRank}). Schedule-adjusted edge is only +${effectiveSotDiff.toFixed(1)}.`;
-  } else if (rawSotDiff <= -3.0 && effectiveSotDiff > -2.0 && awayMetrics.schedule.scheduleType === 'soft_schedule') {
+  } else if (rawSotDiff !== null && effectiveSotDiff !== null && rawSotDiff <= -3.0 && effectiveSotDiff > -2.0 && awayMetrics.schedule.scheduleType === 'soft_schedule') {
     misleadingWarning = `${awayTeam.name}'s raw shot edge (+${Math.abs(rawSotDiff).toFixed(1)}) is inflated by facing opponents below them (avg #${awayMetrics.schedule.avgOpponentRank}). Schedule-adjusted edge is only +${Math.abs(effectiveSotDiff).toFixed(1)}.`;
   }
 
