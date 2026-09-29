@@ -19,7 +19,7 @@ export const DEFAULT_LEARNED_COEFFICIENTS: LearnedCoefficients = {
  * Canonical baseline coefficients for selected clubs.
  * These are reference priors, not observed sample counts or trained results.
  */
-const CANONICAL_INITIAL_MATRICES: TeamIntelligenceMatrices = {
+export const CANONICAL_INITIAL_MATRICES: TeamIntelligenceMatrices = {
   'Manchester City': {
     sample_size_matches: 0,
     learned_coefficients: {
