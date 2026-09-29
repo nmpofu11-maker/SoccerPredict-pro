@@ -171,44 +171,24 @@ function sanitizeTeamStats(
         cleanTeam.points = officialStanding.points;
       }
     } else {
-      // Math bounding: Rank must be 1 - 24
+      // Unknown standings must remain unknown; do not derive a league rank or points
+      // from a synthetic baseline because those values feed the prediction model.
       if (!Number.isFinite(cleanTeam.leagueRank) || cleanTeam.leagueRank < 1 || cleanTeam.leagueRank > 24) {
-        const repairedRank = isHome ? 8 : 11;
-        repairsLog.push({
-          field: `${team.name} (leagueRank)`,
-          originalValue: cleanTeam.leagueRank,
-          repairedValue: repairedRank,
-          reason: 'Rank was out of division bounds (1-24), calibrated to baseline',
-        });
-        cleanTeam.leagueRank = repairedRank;
+        cleanTeam.leagueRank = 0;
       }
-
-      // Points must be non-negative integer
       if (!Number.isFinite(cleanTeam.points) || cleanTeam.points < 0) {
-        const estimatedPoints = Math.max(0, (22 - cleanTeam.leagueRank) * 2);
-        repairsLog.push({
-          field: `${team.name} (points)`,
-          originalValue: cleanTeam.points,
-          repairedValue: estimatedPoints,
-          reason: 'Points were non-finite or negative, calculated from division position',
-        });
-        cleanTeam.points = estimatedPoints;
+        cleanTeam.points = 0;
       }
     }
   }
 
-  // 2. Validate Form array (Must be 'W', 'D', 'L' only, max 5)
-  if (!Array.isArray(cleanTeam.form) || cleanTeam.form.length === 0) {
-    cleanTeam.form = ['D', 'D', 'D', 'D', 'D'];
+  // 2. Validate Form array. Missing form means no evidence, not five synthetic draws.
+  if (!Array.isArray(cleanTeam.form)) {
+    cleanTeam.form = [];
   } else {
-    const validForm = cleanTeam.form
+    cleanTeam.form = cleanTeam.form
       .filter((char) => char === 'W' || char === 'D' || char === 'L')
       .slice(0, 5) as ('W' | 'D' | 'L')[];
-    if (validForm.length === 0) {
-      cleanTeam.form = ['D', 'D', 'D', 'D', 'D'];
-    } else {
-      cleanTeam.form = validForm;
-    }
   }
 
   // 2b. Form score sequence inspection (only preserve authentic full-time scores, never fabricate)
@@ -216,25 +196,16 @@ function sanitizeTeamStats(
     cleanTeam.formScores = [];
   }
 
-  // 3. Tactical Possession Bounds (25% - 75%)
-  if (!Number.isFinite(cleanTeam.avgPossession) || cleanTeam.avgPossession < 25 || cleanTeam.avgPossession > 75) {
-    const rankDiff = opponentRank - cleanTeam.leagueRank;
-    const balancedPossession = isHome
-      ? Math.max(35, Math.min(68, Math.round(50 + rankDiff * 1.4)))
-      : Math.max(32, Math.min(65, Math.round(50 - rankDiff * 1.4)));
-
-    if (isHome) {
-      cleanTeam.avgPossession = balancedPossession;
-    } else {
-      cleanTeam.avgPossession = 100 - balancedPossession;
-    }
+  // 3. Tactical possession is unavailable unless supplied by a trusted source.
+  // Keep a neutral value rather than deriving it from rank.
+  if (!Number.isFinite(cleanTeam.avgPossession) || cleanTeam.avgPossession < 0 || cleanTeam.avgPossession > 100) {
+    cleanTeam.avgPossession = 50;
   }
 
-  // 4. Tactical Shots on Target Bounds (1.5 - 12.0)
-  if (!Number.isFinite(cleanTeam.avgShotsOnTarget) || cleanTeam.avgShotsOnTarget < 1.0 || cleanTeam.avgShotsOnTarget > 15.0) {
-    const rankDiff = opponentRank - cleanTeam.leagueRank;
-    const baseShots = isHome ? 5.2 : 4.4;
-    cleanTeam.avgShotsOnTarget = Math.round(Math.max(1.8, Math.min(10.5, baseShots + rankDiff * 0.25)) * 10) / 10;
+  // 4. Shots on target are unavailable unless supplied by a trusted source.
+  // Keep a neutral league-average placeholder used only when the engine has no source value.
+  if (!Number.isFinite(cleanTeam.avgShotsOnTarget) || cleanTeam.avgShotsOnTarget < 0 || cleanTeam.avgShotsOnTarget > 20) {
+    cleanTeam.avgShotsOnTarget = 4.5;
   }
 
   // 5. Behavioral flags alignment
