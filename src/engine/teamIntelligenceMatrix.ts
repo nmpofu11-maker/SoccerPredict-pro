@@ -324,7 +324,7 @@ export function saveTeamIntelligenceMatrices(matrices: TeamIntelligenceMatrices)
     const payload = generateAggressiveSuperLearningPayload(matrices);
     fetch('/api/ai/super-learning/sync', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAdminApiHeaders() },
       body: JSON.stringify(payload),
     }).catch(() => {});
   }
