@@ -44,5 +44,5 @@ export async function requestAITacticalSynthesis(
       ruleEfficiency: [],
       timestamp: new Date().toISOString(),
     };
-
+  }
 }
