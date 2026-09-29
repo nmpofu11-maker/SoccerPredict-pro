@@ -171,7 +171,7 @@ function loadInitialDiskCache(): LiveFixturesCache {
   return {
     fixtures: sanitizedFallback,
     syncedAt: new Date().toISOString(),
-    provider: 'Hollywoodbets SA Live Coverage Feed (Verified Disk Manifest)',
+    provider: 'Disk Manifest (Sanitized)',,
     auditReport: fallbackAudit,
   };
 }
@@ -492,7 +492,7 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
       combinedFixtures.sort((a, b) => new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime());
 
       // Aggregate all standings maps across cached leagues
-      const aggregatedStandings = new Map<string, { rank: number; points: number }>();
+      const aggregatedStandings = new Map<string, { rank: number; points: number | null }>();
       for (const [, sMap] of standingsMemoryCache.entries()) {
         for (const [k, v] of sMap.entries()) {
           aggregatedStandings.set(k, v);
@@ -507,7 +507,7 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
       fixturesCache = {
         fixtures: validatedFixtures,
         syncedAt: new Date().toISOString(),
-        provider: 'Hollywoodbets SA Live Coverage Feed (Comprehensive ESPN + Verified Competitions)',
+        provider: 'ESPN + configured competition feeds (Sanitized)',,
         auditReport,
       };
       return fixturesCache;
