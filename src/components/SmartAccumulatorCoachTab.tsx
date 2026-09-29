@@ -63,7 +63,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
   onAddToBetSlip,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'optimal_report' | 'accumulator' | 'quadgroups' | 'postmortem' | 'coaching' | 'top10'>('optimal_report');
-  const [strategyMode, setStrategyMode] = useState<'optimal' | 'conservative' | 'high_alpha'>('optimal');
+  const [strategyMode, setStrategyMode] = useState<'balanced' | 'conservative' | 'high_alpha'>('balanced');
   const [chartMode, setChartMode] = useState<'grouped' | 'stacked' | 'average'>('grouped');
   const [isCopied, setIsCopied] = useState(false);
   const [addedAllSuccess, setAddedAllSuccess] = useState(false);
@@ -297,9 +297,9 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
       `====================================================`,
       `📊 AI AUTOMATED OPTIMAL VALUE REPORT`,
       `Bundle: ${optimalReport.bundleTitle}`,
-      `Heuristic Evidence Score: ${optimalReport.aiConfidenceRating}% (${optimalReport.evidenceLabel})`,
+      `Heuristic Evidence Score: ${optimalReport.heuristicEvidenceScore}% (${optimalReport.evidenceLabel})`,
       `Combined Match Odds: ${optimalReport.combinedOdds}x`,
-      `Historical Validation Rate: ${optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.historicalValidationRate}%``}`,
+      `Historical Cohort Hit Rate: ${optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.historicalValidationRate}%`}`}`,
       `Expected Value Alpha: +${optimalReport.expectedValueAlpha}%`,
       `Recommended Stake: ${optimalReport.recommendedStakeUnits} Units`,
       `Generated: ${new Date(optimalReport.generatedAt).toLocaleString()}`,
@@ -307,7 +307,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
       `EXECUTIVE SUMMARY:`,
       optimalReport.executiveSummary,
       ``,
-      `SELECTED OPTIMAL VALUE LEGS (${optimalReport.legs.length}):`,
+      `SELECTED EVIDENCE-GATED VALUE LEGS (${optimalReport.legs.length}):`,
       ...optimalReport.legs.map(
         (l, i) =>
           `${i + 1}. [${l.league}] ${l.homeTeam} vs ${l.awayTeam}\n` +
@@ -364,7 +364,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
               }`}
             >
               <Zap className="w-3.5 h-3.5 text-amber-300" />
-              <span>Optimal Value Report</span>
+              <span>Evidence-Gated Value Report</span>
             </button>
             <button
               onClick={() => setActiveSubTab('accumulator')}
@@ -432,7 +432,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                   <FileText className="w-4 h-4" />
                 </span>
                 <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400">
-                  Automated AI Optimal Value Intelligence Report
+                  Automated Evidence-Gated Value Report
                 </span>
                 <span className="px-2 py-0.5 bg-slate-800 text-slate-300 font-mono text-[10px] rounded border border-slate-700">
                   Live Sync
@@ -447,7 +447,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
             <div className="flex items-center flex-wrap gap-2.5">
               <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 font-mono text-xs">
                 <button
-                  onClick={() => setStrategyMode('optimal')}
+                  onClick={() => setStrategyMode('balanced')}
                   className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
                     strategyMode === 'balanced'
                       ? 'bg-emerald-600 text-white shadow'
@@ -455,7 +455,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                   }`}
                   title="Balanced Expected Value (EV > 0) with High Statistical Probability"
                 >
-                  Optimal Balanced EV
+                  Balanced Positive-EV
                 </button>
                 <button
                   onClick={() => setStrategyMode('conservative')}
@@ -530,7 +530,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                     Evidence Label
                   </span>
                   <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 font-mono text-[11px] font-bold rounded-full border border-emerald-500/30">
-                    {optimalReport.confidenceGrade}
+                    {optimalReport.evidenceLabel}
                   </span>
                 </div>
                 <div className="text-xs text-slate-400">
@@ -579,7 +579,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                   <div className="flex items-center justify-between text-slate-300 gap-4">
                     <span className="text-slate-400">Historical Fit:</span>
                     <span className="font-bold text-emerald-400">
-                      {optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.confidenceBreakdown.historicalBacktestFit}%`}
+                      {optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.confidenceBreakdown.historicalCohortFit}%`}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-slate-300 gap-4">
@@ -694,7 +694,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                     Historical Precedent & Bankroll Guard
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    Backtest evidence from authentic historical match outcomes
+                    Chronological holdout evidence from recorded historical outcomes
                   </p>
                 </div>
               </div>
@@ -897,13 +897,13 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
             </div>
           )}
 
-          {/* Optimal Value Legs Breakdown Cards */}
+          {/* Evidence-Gated Legs */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Zap className="w-5 h-5 text-amber-400" />
                 <h3 className="text-base font-black text-slate-100 font-mono">
-                  Identified Optimal Value Bundle Legs ({optimalReport.legs.length})
+                  Identified Evidence-Gated Bundle Legs ({optimalReport.legs.length})
                 </h3>
               </div>
               <div className="text-xs font-mono text-slate-400">
@@ -1316,11 +1316,11 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                   <Sparkles className="w-4 h-4" />
                 </span>
                 <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400">
-                  Ranked 1 to 10 Best Upcoming Selections (Next 12 Hours Window)
+                  Ranked Upcoming Selections (Next 12 Hours)
                 </span>
               </div>
               <h2 className="text-xl font-black text-slate-100 font-mono">
-                Top 10 Autonomous Best Value Picks (Next 12 Hours)
+                Top Upcoming Value Picks (Next 12 Hours)
               </h2>
               <p className="text-xs text-slate-400">
                 Sorted strictly by composite Expected Value, model confidence, and observed historical cohort hit-rate for matches kicking off within the next 12 hours. Color-coded with progressive shades of green where rank #1 is the darkest green.
