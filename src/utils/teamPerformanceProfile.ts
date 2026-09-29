@@ -1,11 +1,11 @@
 import { TeamStats } from '../types/soccer';
 
 export interface TeamPerformanceProfile {
-  lastSeasonRank: number; // 1 = Champion, 2 = 2nd, ..., 21 = Promoted
+  lastSeasonRank: number | null; // historical reference rank when available
   lastSeasonStanding: string; // e.g. "1st (Champions)", "2nd", "3rd", "Promoted"
   lastSeasonPoints?: number;
-  totalSquadValueEur: number; // in Millions of EUR (e.g. 1170 = €1.17B)
-  avgMatchRating: number; // 6.40 - 7.35 scale (Opta / WhoScored style)
+  totalSquadValueEur: number | null; // observed/reference market value in millions of EUR when available
+  avgMatchRating: number | null; // observed/reference rating when available
 }
 
 /**
@@ -1212,10 +1212,10 @@ export function resolveTeamPerformanceProfile(
 ): TeamPerformanceProfile {
   if (!team) {
     return {
-      lastSeasonRank: 10,
-      lastSeasonStanding: '10th',
-      totalSquadValueEur: 200,
-      avgMatchRating: 6.85,
+      lastSeasonRank: null,
+      lastSeasonStanding: 'Unknown',
+      totalSquadValueEur: null,
+      avgMatchRating: null,
     };
   }
 
@@ -1273,71 +1273,28 @@ export function resolveTeamPerformanceProfile(
     }
   }
 
-  const currentRank = team.leagueRank || 10;
-  const currentPossession = team.avgPossession || 50;
-  const currentSot = team.avgShotsOnTarget || 4.5;
-
-  // Derive last season rank if missing
+  // Use explicit fixture fields first, otherwise use the historical reference profile.
+  // No contextual numbers are synthesized from rank/possession/shots.
   const lastSeasonRank =
-    team.lastSeasonRank ??
-    (profile ? profile.lastSeasonRank : Math.min(20, Math.max(1, currentRank)));
-
+    Number.isFinite(team.lastSeasonRank) ? (team.lastSeasonRank as number) :
+    profile?.lastSeasonRank ?? null;
   const lastSeasonStanding =
     team.lastSeasonStanding ??
-    (profile ? profile.lastSeasonStanding : formatOrdinalStanding(lastSeasonRank));
-
-  // Determine baseline squad value if missing
-  let totalSquadValueEur = team.totalSquadValueEur;
-  if (totalSquadValueEur === undefined) {
-    if (profile) {
-      totalSquadValueEur = profile.totalSquadValueEur;
-    } else if (isWomen || isYouthOrReserve || isAmateurOrLowerTier) {
-      totalSquadValueEur = undefined;
-    } else {
-      // Senior professional leagues
-      const isEnglishPremierLeague =
-        league &&
-        (/english premier league|^premier league$|\bepl\b/i.test(league) ||
-          (/premier league/i.test(league) &&
-            !league.includes('•') &&
-            !/nigeria|ghana|egypt|kenya|zambia|tanzania|uganda|russia|ukraine|israel|kuwait|singapore|kazakhstan|malta|jamaica|wales|ireland|ethiopia/i.test(league)));
-
-      const isTop5League =
-        isEnglishPremierLeague ||
-        (league && /la liga|serie a|bundesliga|ligue 1/i.test(league));
-
-      const isAfricanOrRegionalLeague =
-        league &&
-        /nigeria|ghana|egypt|kenya|zambia|tanzania|uganda|algeria|morocco|tunisia|cameroon|ivory coast|senegal|angola|congo|ethiopia|rwanda|botswana|zimbabwe|south african first division/i.test(league);
-
-      const isMinorTier =
-        league &&
-        (/faroe|jordan|iraq|malta|wales|ireland|iceland|san marino|paraguay|bolivia|estonia|macedonia|oman|myanmar|vietnam|thailand|kuwait|bahrain/i.test(league) || isAfricanOrRegionalLeague);
-
-      const isSecondTier =
-        league &&
-        /championship|serie b|2\. bundesliga|ligue 2|eerste|segunda|challenge league/i.test(league);
-
-      // No observed market-value source was supplied. Leave value unknown.
-
-      totalSquadValueEur = undefined;
-    }
-  }
-
-  // Determine average match rating if missing
-  let avgMatchRating = team.avgMatchRating;
-  if (avgMatchRating === undefined) {
-    if (profile) {
-      avgMatchRating = profile.avgMatchRating;
-    } else {
-      avgMatchRating = undefined;
-    }
-  }
+    (lastSeasonRank !== null ? formatOrdinalStanding(lastSeasonRank) : (profile?.lastSeasonStanding ?? 'Unknown'));
+  const lastSeasonPoints =
+    Number.isFinite(team.lastSeasonPoints) ? team.lastSeasonPoints :
+    (profile?.lastSeasonPoints ?? undefined);
+  const totalSquadValueEur =
+    Number.isFinite(team.totalSquadValueEur) ? (team.totalSquadValueEur as number) :
+    (profile?.totalSquadValueEur ?? null);
+  const avgMatchRating =
+    Number.isFinite(team.avgMatchRating) ? (team.avgMatchRating as number) :
+    (profile?.avgMatchRating ?? null);
 
   return {
     lastSeasonRank,
     lastSeasonStanding,
-    lastSeasonPoints: team.lastSeasonPoints ?? (profile ? profile.lastSeasonPoints : undefined),
+    lastSeasonPoints,
     totalSquadValueEur,
     avgMatchRating,
   };
