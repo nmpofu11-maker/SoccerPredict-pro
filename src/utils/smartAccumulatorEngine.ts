@@ -46,7 +46,7 @@ export interface OptimalValueLeg {
   fairOdds: number; // Fair theoretical odds e.g. 1.47
   expectedValue: number; // EV ratio e.g. +0.26 (+26%)
   valueMarginPct: number; // percentage edge over bookmaker e.g. +24.5%
-  historicalWinRate: number; // Historical validation hit rate e.g. 83.2%
+  historicalWinRate: number | null; // Observed cohort hit rate; null when no cohort exists
   historicalSampleSize: number; // Count of matching historical samples
   confidenceScore: number; // 0 - 100
   kellyFraction: number; // recommended fractional stake percentage
@@ -63,7 +63,7 @@ export interface OptimalValueReport {
   strategyMode: 'optimal' | 'conservative' | 'high_alpha';
   combinedOdds: number;
   expectedValueAlpha: number; // percentage e.g. +24.8%
-  historicalValidationRate: number; // percentage e.g. 81.5%
+  historicalValidationRate: number | null; // null when no qualifying historical cohort exists
   bundleWinProbability: number; // joint probability percentage
   recommendedStakeUnits: number; // e.g. 1.5 units
   kellyScore: number;
@@ -79,7 +79,7 @@ export interface OptimalValueReport {
   };
   backtestSimulation: {
     totalSimulatedRounds: number;
-    historicalHitRate: number;
+    historicalHitRate: number | null;
     simulatedROI: number; // percentage ROI e.g. +34.2%
     maxDrawdownPct: number;
   };
@@ -98,8 +98,8 @@ export interface PostMortemFailureAnalysis {
 
 export interface UserCoachingAudit {
   totalOverridesCount: number;
-  userAccuracyPct: number;
-  aiAccuracyPct: number;
+  userAccuracyPct: number | null;
+  aiAccuracyPct: number | null;
   coachingTips: string[];
 }
 
@@ -382,7 +382,7 @@ export function generateOptimalValueAccumulatorReport(
 
       const historicalWinRate = sampleSize > 0
         ? Number(((matchingWins / sampleSize) * 100).toFixed(1))
-        : 0;
+        : null;
 
       // Fractional Kelly Criterion
       const b = outcome.odds - 1;
@@ -394,12 +394,12 @@ export function generateOptimalValueAccumulatorReport(
       // Strategy filters
       let passesStrategy = false;
       if (strategyMode === 'conservative') {
-        passesStrategy = outcome.prob >= 60 && outcome.odds >= 1.30 && outcome.odds <= 2.20 && historicalWinRate >= 72;
+        passesStrategy = sampleSize >= 5 && historicalWinRate !== null && outcome.prob >= 60 && outcome.odds >= 1.30 && outcome.odds <= 2.20 && historicalWinRate >= 72;
       } else if (strategyMode === 'high_alpha') {
-        passesStrategy = ev >= 0.12 && outcome.prob >= 44 && outcome.odds >= 1.80 && outcome.odds <= 4.50;
+        passesStrategy = sampleSize >= 5 && historicalWinRate !== null && ev >= 0.12 && outcome.prob >= 44 && outcome.odds >= 1.80 && outcome.odds <= 4.50;
       } else {
         // Optimal balanced: credible win probability, market odds in value sweet spot, positive EV
-        passesStrategy = ev >= 0.02 && outcome.prob >= 48 && outcome.odds >= 1.35 && outcome.odds <= 3.50 && historicalWinRate >= 60;
+        passesStrategy = sampleSize >= 5 && historicalWinRate !== null && ev >= 0.02 && outcome.prob >= 48 && outcome.odds >= 1.35 && outcome.odds <= 3.50 && historicalWinRate >= 60;
       }
 
       if (passesStrategy) {
@@ -475,9 +475,10 @@ export function generateOptimalValueAccumulatorReport(
   const combinedOdds = selectedLegs.reduce((acc, l) => acc * l.marketOdds, 1.0);
   const bundleWinProbability = selectedLegs.reduce((acc, l) => acc * (l.modelProbability / 100), 1.0) * 100;
   
-  const avgHistWinRate = selectedLegs.length > 0
-    ? selectedLegs.reduce((acc, l) => acc + l.historicalWinRate, 0) / selectedLegs.length
-    : 0;
+  const historicalRates = selectedLegs.map(l => l.historicalWinRate).filter((v): v is number => v !== null && Number.isFinite(v));
+  const avgHistWinRate = historicalRates.length > 0
+    ? historicalRates.reduce((acc, v) => acc + v, 0) / historicalRates.length
+    : null;
 
   const avgModelConfidence = selectedLegs.length > 0
     ? selectedLegs.reduce((acc, l) => acc + l.confidenceScore, 0) / selectedLegs.length
@@ -490,8 +491,8 @@ export function generateOptimalValueAccumulatorReport(
   const expectedValueAlpha = Number(((avgEV) * 100).toFixed(1));
 
   // Compute AI Confidence Rating (0 - 100)
-  const modelCertainty = Math.min(99, Math.round(avgModelConfidence));
-  const historicalBacktestFit = Math.min(99, Math.round(avgHistWinRate));
+  const modelCertainty = Math.min(100, Math.round(avgModelConfidence));
+  const historicalBacktestFit = avgHistWinRate === null ? 0 : Math.min(99, Math.round(avgHistWinRate));
   const marketOddsAlpha = Math.min(99, Math.max(0, Math.round(50 + expectedValueAlpha * 1.8)));
   const formStability = 0;
 
@@ -535,8 +536,10 @@ export function generateOptimalValueAccumulatorReport(
     : `No qualifying accumulator legs found matching the selected strategy criteria with positive Expected Value.`;
 
   const historicalPrecedentSummary = selectedLegs.length > 0
-    ? `Matching historical match profiles demonstrate an empirical win rate of ${avgHistWinRate.toFixed(1)}% across ${selectedLegs.reduce((acc, l) => acc + l.historicalSampleSize, 0)} past fixtures.`
-    : `Insufficient historical matches matching current selection profiles.`;
+    ? (avgHistWinRate === null
+      ? 'No sufficient historical cohort exists for the selected profiles.'
+      : `Matching historical match profiles produced an observed hit rate of ${avgHistWinRate.toFixed(1)}% across ${selectedLegs.reduce((acc, l) => acc + l.historicalSampleSize, 0)} past fixtures.`)
+    : `No sufficient historical cohort exists for the selected profiles.`;
 
   const riskMitigationAdvice = selectedLegs.length > 0
     ? `Staking recommendation: ${recommendedStakeUnits} units based on conservative fractional Kelly sizing.`
@@ -550,7 +553,7 @@ export function generateOptimalValueAccumulatorReport(
     strategyMode,
     combinedOdds: Number(combinedOdds.toFixed(2)),
     expectedValueAlpha,
-    historicalValidationRate: Number(avgHistWinRate.toFixed(1)),
+    historicalValidationRate: avgHistWinRate === null ? null : Number(avgHistWinRate.toFixed(1)),
     bundleWinProbability: Number(bundleWinProbability.toFixed(1)),
     recommendedStakeUnits,
     kellyScore: Number(avgKelly.toFixed(2)),
@@ -566,7 +569,7 @@ export function generateOptimalValueAccumulatorReport(
     },
     backtestSimulation: {
       totalSimulatedRounds: 0,
-      historicalHitRate: Number(avgHistWinRate.toFixed(1)),
+      historicalHitRate: avgHistWinRate === null ? null : Number(avgHistWinRate.toFixed(1)),
       simulatedROI: 0,
       maxDrawdownPct: 0,
     },
