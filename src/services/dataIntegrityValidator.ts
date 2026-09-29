@@ -6,7 +6,6 @@ import {
   TeamStats,
   MatchMotivation,
 } from '../types/soccer';
-import { lookupVerifiedTeamData } from './verifiedStandingsData';
 
 export type { DataIntegrityAuditReport };
 
@@ -110,38 +109,13 @@ function sanitizeTeamStats(
   const cleanTeam: TeamStats = { ...team };
   let matchedOfficialTable = false;
 
-  // 0. Primary Verified Official Table Lookup (SofaScore / ESPN patch table)
-  const verifiedData = lookupVerifiedTeamData(team.name);
+  // Cross-reference only against the runtime official standings map.
+  // Bundled reference snapshots are never treated as current official evidence.
+  const verifiedData = undefined;
   if (verifiedData) {
     matchedOfficialTable = true;
-    if (cleanTeam.leagueRank !== verifiedData.rank) {
-      repairsLog.push({
-        field: `${team.name} (leagueRank)`,
-        originalValue: cleanTeam.leagueRank,
-        repairedValue: verifiedData.rank,
-        reason: 'Synchronized with verified official SofaScore league rank',
-      });
-      cleanTeam.leagueRank = verifiedData.rank;
-    }
-    if (cleanTeam.points !== verifiedData.points) {
-      repairsLog.push({
-        field: `${team.name} (points)`,
-        originalValue: cleanTeam.points,
-        repairedValue: verifiedData.points,
-        reason: 'Synchronized with verified official SofaScore points tally',
-      });
-      cleanTeam.points = verifiedData.points;
-    }
-    if (verifiedData.form && verifiedData.form.length === 5) {
-      cleanTeam.form = verifiedData.form;
-    }
-    if (verifiedData.formScores && verifiedData.formScores.length === 5) {
-      cleanTeam.formScores = verifiedData.formScores;
-    }
-    if (verifiedData.squadValueEur) {
-      cleanTeam.totalSquadValueEur = verifiedData.squadValueEur;
-    }
-  } else {
+  }
+else {
     // 1. Cross-reference with Official Standings Table if available
     const cleanId = team.id ? team.id.replace('team_', '') : '';
     const officialStanding = standingsMap
@@ -360,16 +334,18 @@ export function verifyAndSanitizeFixture(
 
   // Calculate Stakes Motivation
   let cleanMotivation: MatchMotivation = 'regular';
-  if (cleanHome.leagueRank <= 3 || cleanAway.leagueRank <= 3) {
+  const homeRankKnown = Number.isFinite(cleanHome.leagueRank);
+  const awayRankKnown = Number.isFinite(cleanAway.leagueRank);
+  if ((homeRankKnown && (cleanHome.leagueRank as number) <= 3) || (awayRankKnown && (cleanAway.leagueRank as number) <= 3)) {
     cleanMotivation = 'title_race';
-  } else if (cleanHome.leagueRank >= 17 || cleanAway.leagueRank >= 17) {
+  } else if ((homeRankKnown && (cleanHome.leagueRank as number) >= 17) || (awayRankKnown && (cleanAway.leagueRank as number) >= 17)) {
     cleanMotivation = 'relegation_battle';
   }
 
   // Calculate Authenticity Score
   const passedChecksCount = checks.filter((c) => c.passed).length;
   const rawScore = Math.round((passedChecksCount / checks.length) * 100);
-  const authenticityScore = bothTeamsCrossReferenced ? Math.max(95, rawScore) : Math.max(85, rawScore);
+  const authenticityScore = rawScore;
 
   const status =
     repairs.length === 0 && bothTeamsCrossReferenced
@@ -383,7 +359,7 @@ export function verifyAndSanitizeFixture(
     authenticityScore,
     isAuthentic: status === 'VERIFIED_AUTHENTIC',
     verifiedAt: new Date().toISOString(),
-    source: bothTeamsCrossReferenced ? 'OFFICIAL_ESPN_STANDINGS' : 'CANONICAL_AUDITED_DATASET',
+    source: bothTeamsCrossReferenced ? 'OFFICIAL_ESPN_STANDINGS' : 'UNVERIFIED_PROVIDER_INGESTION',
     checks,
     repairedFields: repairs.map((r) => r.field),
   };
