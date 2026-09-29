@@ -295,7 +295,7 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
               </span>
             </div>
             <div className="text-[10px] font-mono text-purple-300/80 mt-1">
-              Overall model backtest accuracy
+              Overall model accuracy on recorded settled results
             </div>
           </div>
         </div>
