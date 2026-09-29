@@ -32,7 +32,7 @@ export interface RuleAblationItem {
   ablatedBrier: number;
   deltaBrier: number;
   ablationCategory: 'Motivation' | 'Standings' | 'Form' | 'Venue' | 'Tactical' | 'Fatigue' | 'Volatility' | 'Favourite' | 'Draw';
-  significanceRank: number;
+  descriptiveRank: number;
 }
 
 export interface BaselineBenchmark {
@@ -186,11 +186,10 @@ export function runStatisticalEvaluation(
     { range: '70% - 100%', min: 0.70, max: 1.01, count: 0, correct: 0, sumProb: 0 },
   ];
 
+  const empiricalPick = empH >= empD && empH >= empA ? 'home' : empD >= empA ? 'draw' : 'away';
   for (const m of holdoutDataset) {
     const actual = m.actualOutcome || 'draw';
-    if (actual === 'home') countHome++;
-    else if (actual === 'draw') countDraw++;
-    else countAway++;
+    if (empiricalPick === actual) empiricalCorrect++;
 
     const pred: PredictionResult = evaluateFixturePrediction(m.fixture, 'none', weights, teamMatrices);
     const ph = Math.max(0.01, Math.min(0.98, pred.homeWinPct / 100));
@@ -308,6 +307,7 @@ export function runStatisticalEvaluation(
   let logLossEmp = 0;
   let correctStandings = 0;
   let standingsSupport = 0;
+  let empiricalCorrect = 0;
   let rpsStandings = 0;
   let brierStandings = 0;
   let logLossStandings = 0;
@@ -487,14 +487,14 @@ export function runStatisticalEvaluation(
       ablatedBrier: Number(meanAblatedBrier.toFixed(4)),
       deltaBrier: Number((meanAblatedBrier - meanBrierScore).toFixed(4)),
       ablationCategory: cfg.ablationCategory,
-      significanceRank: 0,
+      descriptiveRank: 0,
     };
   });
 
-  // Order only by the measured holdout metric difference; this is a descriptive ranking, not proof of causality.
+  // Order only by the measured holdout metric difference; this is descriptive ordering, not proof of causality.
   ruleAblations.sort((a, b) => (b.deltaBrier + b.deltaRPS * 2) - (a.deltaBrier + a.deltaRPS * 2));
   ruleAblations.forEach((item, idx) => {
-    item.significanceRank = idx + 1;
+    item.descriptiveRank = idx + 1;
   });
 
   return {
@@ -518,7 +518,7 @@ export function runStatisticalEvaluation(
       },
       empiricalDistribution: {
         name: 'Empirical League Prior Baseline',
-        accuracy: Number((empH * 100).toFixed(1)),
+        accuracy: Number(((empiricalCorrect / total) * 100).toFixed(1)),
         meanRPS: Number(meanRPSEmp.toFixed(4)),
         meanBrierScore: Number(meanBrierEmp.toFixed(4)),
         meanLogLoss: Number(meanLogLossEmp.toFixed(4)),
