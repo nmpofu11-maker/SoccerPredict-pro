@@ -3,7 +3,7 @@ import { TeamStats } from '../types/soccer';
 import { computeComparativeDominance } from '../utils/robustMetricsCalculator';
 import { ShieldAlert, ShieldCheck, Filter, Info, AlertTriangle, Coins, Star, Award } from 'lucide-react';
 import { OutlierIndicator } from './OutlierIndicator';
-import { resolveTeamPerformanceProfile, formatSquadValue } from '../utils/teamPerformanceProfile';
+import { formatSquadValue } from '../utils/teamPerformanceProfile';
 
 interface MetricsDisplayProps {
   homeTeam: TeamStats;
@@ -24,26 +24,17 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
   const homeShort = homeTeam.shortName || homeTeam.name || 'Home';
   const awayShort = awayTeam.shortName || awayTeam.name || 'Away';
 
-  // Resolve canonical profiles for last season standings, squad market value, and match rating
-  const homeProfile = useMemo(() => resolveTeamPerformanceProfile(homeTeam, league), [homeTeam, league]);
-  const awayProfile = useMemo(() => resolveTeamPerformanceProfile(awayTeam, league), [awayTeam, league]);
+  const homeSquadVal = Number.isFinite(homeTeam.totalSquadValueEur) ? homeTeam.totalSquadValueEur : null;
+  const awaySquadVal = Number.isFinite(awayTeam.totalSquadValueEur) ? awayTeam.totalSquadValueEur : null;
+  const totalSquadVal = homeSquadVal !== null && awaySquadVal !== null ? homeSquadVal + awaySquadVal : 0;
+  const homeValWidth = totalSquadVal > 0 ? Math.round((homeSquadVal! / totalSquadVal) * 100) : 0;
+  const awayValWidth = totalSquadVal > 0 ? 100 - homeValWidth : 0;
 
-  const homeSquadVal = homeTeam.totalSquadValueEur ?? homeProfile?.totalSquadValueEur ?? 200;
-  const awaySquadVal = awayTeam.totalSquadValueEur ?? awayProfile?.totalSquadValueEur ?? 200;
-  const totalSquadVal = homeSquadVal + awaySquadVal || 1;
-  const homeValWidth = Math.min(92, Math.max(8, Math.round((homeSquadVal / totalSquadVal) * 100)));
-  const awayValWidth = 100 - homeValWidth;
-
-  const homeRating = homeTeam.avgMatchRating ?? homeProfile?.avgMatchRating ?? 6.85;
-  const awayRating = awayTeam.avgMatchRating ?? awayProfile?.avgMatchRating ?? 6.85;
-  const totalRating = homeRating + awayRating || 1;
-  const homeRatingWidth = Math.min(92, Math.max(8, Math.round((homeRating / totalRating) * 100)));
-  const awayRatingWidth = 100 - homeRatingWidth;
-
-  const lastSeasonRankHome = homeTeam.lastSeasonRank ?? homeProfile?.lastSeasonRank ?? 10;
-  const lastSeasonRankAway = awayTeam.lastSeasonRank ?? awayProfile?.lastSeasonRank ?? 10;
-  const lastSeasonStandingHome = homeTeam.lastSeasonStanding ?? homeProfile?.lastSeasonStanding ?? '10th';
-  const lastSeasonStandingAway = awayTeam.lastSeasonStanding ?? awayProfile?.lastSeasonStanding ?? '10th';
+  const homeRating = Number.isFinite(homeTeam.avgMatchRating) ? homeTeam.avgMatchRating : null;
+  const awayRating = Number.isFinite(awayTeam.avgMatchRating) ? awayTeam.avgMatchRating : null;
+  const totalRating = homeRating !== null && awayRating !== null ? homeRating + awayRating : 0;
+  const homeRatingWidth = totalRating > 0 ? Math.round((homeRating! / totalRating) * 100) : 0;
+  const awayRatingWidth = totalRating > 0 ? 100 - homeRatingWidth : 0;
 
   // Compute robust schedule & outlier normalized metrics
   const comparative = useMemo(() => {
@@ -53,17 +44,17 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
   const { homeMetrics, awayMetrics, misleadingWarning } = comparative;
 
   // Values based on active mode (Adjusted vs Raw)
-  const homePoss = showAdjusted ? homeMetrics.effectivePossession : (homeTeam.avgPossession || 50);
-  const awayPoss = showAdjusted ? awayMetrics.effectivePossession : (awayTeam.avgPossession || 50);
-  const totalPoss = homePoss + awayPoss || 100;
-  const homePossWidth = Math.min(92, Math.max(8, Math.round((homePoss / totalPoss) * 100)));
-  const awayPossWidth = 100 - homePossWidth;
+  const homePoss = showAdjusted ? homeMetrics.effectivePossession : homeTeam.avgPossession;
+  const awayPoss = showAdjusted ? awayMetrics.effectivePossession : awayTeam.avgPossession;
+  const totalPoss = homePoss !== null && awayPoss !== null ? homePoss + awayPoss : 0;
+  const homePossWidth = totalPoss > 0 ? Math.round((homePoss! / totalPoss) * 100) : 0;
+  const awayPossWidth = totalPoss > 0 ? 100 - homePossWidth : 0;
 
-  const homeSot = showAdjusted ? homeMetrics.effectiveShotsOnTarget : (homeTeam.avgShotsOnTarget || 0);
-  const awaySot = showAdjusted ? awayMetrics.effectiveShotsOnTarget : (awayTeam.avgShotsOnTarget || 0);
-  const totalSot = homeSot + awaySot || 1;
-  const homeSotWidth = Math.min(92, Math.max(8, Math.round((homeSot / totalSot) * 100)));
-  const awaySotWidth = 100 - homeSotWidth;
+  const homeSot = showAdjusted ? homeMetrics.effectiveShotsOnTarget : homeTeam.avgShotsOnTarget;
+  const awaySot = showAdjusted ? awayMetrics.effectiveShotsOnTarget : awayTeam.avgShotsOnTarget;
+  const totalSot = homeSot !== null && awaySot !== null ? homeSot + awaySot : 0;
+  const homeSotWidth = totalSot > 0 ? Math.round((homeSot! / totalSot) * 100) : 0;
+  const awaySotWidth = totalSot > 0 ? 100 - homeSotWidth : 0;
 
   const hasScheduleDeflation = homeMetrics.schedule.scheduleType === 'soft_schedule' || awayMetrics.schedule.scheduleType === 'soft_schedule';
   const hasScheduleUplift = homeMetrics.schedule.scheduleType === 'tough_schedule' || awayMetrics.schedule.scheduleType === 'tough_schedule';
@@ -152,14 +143,14 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
       <div className="flex flex-col gap-1">
         <div className="flex items-center justify-between text-[11px]">
           {/* HOME TEAM ATTRIBUTION */}
-          <div className="flex items-center gap-1.5 min-w-0" title={`${homeTeam.name} (Home): ${homePoss.toFixed(1)}% possession`}>
+          <div className="flex items-center gap-1.5 min-w-0" title={`${homeTeam.name} (Home): ${homePoss === null ? 'N/A' : `${homePoss === null ? 'N/A' : `${homePoss.toFixed(1)}%`}`} possession`}>
             <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
             <span className="text-emerald-400 font-bold tracking-tight truncate max-w-[80px] sm:max-w-[110px]">
               {homeShort}
             </span>
             <span className="text-slate-400 text-[9px] font-medium">(H)</span>
             <span className="text-white font-extrabold text-xs ml-0.5">
-              {homePoss.toFixed(1)}%
+              {homePoss === null ? 'N/A' : `${homePoss.toFixed(1)}%`}
             </span>
             {homeMetrics.hasOutliersCleaned && (
               <OutlierIndicator
@@ -173,7 +164,7 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
                 id={`outlier-poss-home-${homeTeam.id || homeTeam.name}`}
               />
             )}
-            {showAdjusted && homeMetrics.possessionDelta !== 0 && (
+            {showAdjusted && homeMetrics.possessionDelta !== null && homeMetrics.possessionDelta !== 0 && (
               <span className={`text-[8.5px] font-bold ${homeMetrics.possessionDelta > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
                 ({homeMetrics.possessionDelta > 0 ? `+${homeMetrics.possessionDelta}` : homeMetrics.possessionDelta}%)
               </span>
@@ -188,8 +179,8 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
           </div>
 
           {/* AWAY TEAM ATTRIBUTION */}
-          <div className="flex items-center justify-end gap-1.5 min-w-0" title={`${awayTeam.name} (Away): ${awayPoss.toFixed(1)}% possession`}>
-            {showAdjusted && awayMetrics.possessionDelta !== 0 && (
+          <div className="flex items-center justify-end gap-1.5 min-w-0" title={`${awayTeam.name} (Away): ${awayPoss === null ? 'N/A' : `${awayPoss === null ? 'N/A' : `${awayPoss.toFixed(1)}%`}`} possession`}>
+            {showAdjusted && awayMetrics.possessionDelta !== null && awayMetrics.possessionDelta !== 0 && (
               <span className={`text-[8.5px] font-bold ${awayMetrics.possessionDelta > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
                 ({awayMetrics.possessionDelta > 0 ? `+${awayMetrics.possessionDelta}` : awayMetrics.possessionDelta}%)
               </span>
@@ -207,7 +198,7 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
               />
             )}
             <span className="text-white font-extrabold text-xs mr-0.5">
-              {awayPoss.toFixed(1)}%
+              {awayPoss === null ? 'N/A' : `${awayPoss.toFixed(1)}%`}
             </span>
             <span className="text-slate-400 text-[9px] font-medium">(A)</span>
             <span className="text-rose-400 font-bold tracking-tight truncate max-w-[80px] sm:max-w-[110px]">
@@ -222,12 +213,12 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
           <div
             className="bg-emerald-500 h-full transition-all duration-300"
             style={{ width: `${homePossWidth}%` }}
-            title={`${homeTeam.name}: ${homePoss.toFixed(1)}% (${homePossWidth}% share)`}
+            title={`${homeTeam.name}: ${homePoss === null ? 'N/A' : `${homePoss.toFixed(1)}%`} (${homePossWidth}% share)`}
           />
           <div
             className="bg-rose-500 h-full transition-all duration-300"
             style={{ width: `${awayPossWidth}%` }}
-            title={`${awayTeam.name}: ${awayPoss.toFixed(1)}% (${awayPossWidth}% share)`}
+            title={`${awayTeam.name}: ${awayPoss === null ? 'N/A' : `${awayPoss.toFixed(1)}%`} (${awayPossWidth}% share)`}
           />
         </div>
       </div>
@@ -236,14 +227,14 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
       <div className="flex flex-col gap-1">
         <div className="flex items-center justify-between text-[11px]">
           {/* HOME TEAM ATTRIBUTION */}
-          <div className="flex items-center gap-1.5 min-w-0" title={`${homeTeam.name} (Home): ${homeSot.toFixed(1)} SOT`}>
+          <div className="flex items-center gap-1.5 min-w-0" title={`${homeTeam.name} (Home): ${homeSot === null ? 'N/A' : `${homeSot === null ? 'N/A' : homeSot.toFixed(1)} SOT`}`}>
             <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
             <span className="text-emerald-400 font-bold tracking-tight truncate max-w-[80px] sm:max-w-[110px]">
               {homeShort}
             </span>
             <span className="text-slate-400 text-[9px] font-medium">(H)</span>
             <span className="text-white font-extrabold text-xs ml-0.5">
-              {homeSot.toFixed(1)}
+              {homeSot === null ? 'N/A' : homeSot.toFixed(1)}
             </span>
             {homeMetrics.hasOutliersCleaned && (
               <OutlierIndicator
@@ -257,7 +248,7 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
                 id={`outlier-sot-home-${homeTeam.id || homeTeam.name}`}
               />
             )}
-            {showAdjusted && homeMetrics.shotsDelta !== 0 && (
+            {showAdjusted && homeMetrics.shotsDelta !== null && homeMetrics.shotsDelta !== 0 && (
               <span className={`text-[8.5px] font-bold ${homeMetrics.shotsDelta > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
                 ({homeMetrics.shotsDelta > 0 ? `+${homeMetrics.shotsDelta}` : homeMetrics.shotsDelta})
               </span>
@@ -272,8 +263,8 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
           </div>
 
           {/* AWAY TEAM ATTRIBUTION */}
-          <div className="flex items-center justify-end gap-1.5 min-w-0" title={`${awayTeam.name} (Away): ${awaySot.toFixed(1)} SOT`}>
-            {showAdjusted && awayMetrics.shotsDelta !== 0 && (
+          <div className="flex items-center justify-end gap-1.5 min-w-0" title={`${awayTeam.name} (Away): ${awaySot === null ? 'N/A' : `${awaySot === null ? 'N/A' : awaySot.toFixed(1)} SOT`}`}>
+            {showAdjusted && awayMetrics.shotsDelta !== null && awayMetrics.shotsDelta !== 0 && (
               <span className={`text-[8.5px] font-bold ${awayMetrics.shotsDelta > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
                 ({awayMetrics.shotsDelta > 0 ? `+${awayMetrics.shotsDelta}` : awayMetrics.shotsDelta})
               </span>
@@ -291,7 +282,7 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
               />
             )}
             <span className="text-white font-extrabold text-xs mr-0.5">
-              {awaySot.toFixed(1)}
+              {awaySot === null ? 'N/A' : awaySot.toFixed(1)}
             </span>
             <span className="text-slate-400 text-[9px] font-medium">(A)</span>
             <span className="text-rose-400 font-bold tracking-tight truncate max-w-[80px] sm:max-w-[110px]">
@@ -306,12 +297,12 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
           <div
             className="bg-emerald-500 h-full transition-all duration-300"
             style={{ width: `${homeSotWidth}%` }}
-            title={`${homeTeam.name}: ${homeSot.toFixed(1)} SOT (${homeSotWidth}% share)`}
+            title={`${homeTeam.name}: ${homeSot === null ? 'N/A' : homeSot.toFixed(1)} SOT (${homeSotWidth}% share)`}
           />
           <div
             className="bg-rose-500 h-full transition-all duration-300"
             style={{ width: `${awaySotWidth}%` }}
-            title={`${awayTeam.name}: ${awaySot.toFixed(1)} SOT (${awaySotWidth}% share)`}
+            title={`${awayTeam.name}: ${awaySot === null ? 'N/A' : awaySot.toFixed(1)} SOT (${awaySotWidth}% share)`}
           />
         </div>
       </div>
@@ -325,7 +316,7 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
               {homeShort}
             </span>
             <span className="text-white font-extrabold text-xs ml-0.5">
-              {formatSquadValue(homeSquadVal)}
+              {homeSquadVal === null ? 'N/A' : formatSquadValue(homeSquadVal)}
             </span>
           </div>
 
@@ -336,7 +327,7 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
 
           <div className="flex items-center gap-1.5 min-w-0 justify-end">
             <span className="text-white font-extrabold text-xs mr-0.5">
-              {formatSquadValue(awaySquadVal)}
+              {awaySquadVal === null ? 'N/A' : formatSquadValue(awaySquadVal)}
             </span>
             <span className="text-rose-400 font-bold tracking-tight truncate max-w-[90px] sm:max-w-[120px]">
               {awayShort}
@@ -350,12 +341,12 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
           <div
             className="bg-emerald-500 h-full transition-all duration-300"
             style={{ width: `${homeValWidth}%` }}
-            title={`${homeTeam.name}: ${formatSquadValue(homeSquadVal)} (${homeValWidth}%)`}
+            title={`${homeTeam.name}: ${homeSquadVal === null ? 'N/A' : formatSquadValue(homeSquadVal)} (${homeValWidth}%)`}
           />
           <div
             className="bg-rose-500 h-full transition-all duration-300"
             style={{ width: `${awayValWidth}%` }}
-            title={`${awayTeam.name}: ${formatSquadValue(awaySquadVal)} (${awayValWidth}%)`}
+            title={`${awayTeam.name}: ${awaySquadVal === null ? 'N/A' : formatSquadValue(awaySquadVal)} (${awayValWidth}%)`}
           />
         </div>
       </div>
@@ -369,7 +360,7 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
               {homeShort}
             </span>
             <span className="text-amber-300 font-extrabold text-xs ml-0.5">
-              {homeRating.toFixed(2)} ★
+              {homeRating === null ? 'N/A' : `${homeRating.toFixed(2)} ★`}
             </span>
           </div>
 
@@ -380,7 +371,7 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
 
           <div className="flex items-center gap-1.5 min-w-0 justify-end">
             <span className="text-amber-300 font-extrabold text-xs mr-0.5">
-              ★ {awayRating.toFixed(2)}
+              {awayRating === null ? 'N/A' : `★ ${awayRating.toFixed(2)}`}
             </span>
             <span className="text-rose-400 font-bold tracking-tight truncate max-w-[90px] sm:max-w-[120px]">
               {awayShort}
@@ -394,12 +385,12 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
           <div
             className="bg-emerald-500 h-full transition-all duration-300"
             style={{ width: `${homeRatingWidth}%` }}
-            title={`${homeTeam.name}: ${homeRating.toFixed(2)} (${homeRatingWidth}%)`}
+            title={`${homeTeam.name}: ${homeRating === null ? 'N/A' : homeRating.toFixed(2)} (${homeRatingWidth}%)`}
           />
           <div
             className="bg-rose-500 h-full transition-all duration-300"
             style={{ width: `${awayRatingWidth}%` }}
-            title={`${awayTeam.name}: ${awayRating.toFixed(2)} (${awayRatingWidth}%)`}
+            title={`${awayTeam.name}: ${awayRating === null ? 'N/A' : awayRating.toFixed(2)} (${awayRatingWidth}%)`}
           />
         </div>
       </div>
@@ -450,22 +441,22 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
           )}
           {showAdjusted && homeMetrics.schedule.scheduleType === 'soft_schedule' && (
             <span className="px-1.5 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/40">
-              {homeShort}: Faced lower-table (avg #{homeMetrics.schedule.avgOpponentRank})
+              {homeShort}: Faced lower-table (avg #{homeMetrics.schedule.avgOpponentRank ?? 'N/A'})
             </span>
           )}
           {showAdjusted && homeMetrics.schedule.scheduleType === 'tough_schedule' && (
             <span className="px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/40">
-              {homeShort}: Tested vs top-table (avg #{homeMetrics.schedule.avgOpponentRank})
+              {homeShort}: Tested vs top-table (avg #{homeMetrics.schedule.avgOpponentRank ?? 'N/A'})
             </span>
           )}
           {showAdjusted && awayMetrics.schedule.scheduleType === 'soft_schedule' && (
             <span className="px-1.5 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/40">
-              {awayShort}: Faced lower-table (avg #{awayMetrics.schedule.avgOpponentRank})
+              {awayShort}: Faced lower-table (avg #{awayMetrics.schedule.avgOpponentRank ?? 'N/A'})
             </span>
           )}
           {showAdjusted && awayMetrics.schedule.scheduleType === 'tough_schedule' && (
             <span className="px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/40">
-              {awayShort}: Tested vs top-table (avg #{awayMetrics.schedule.avgOpponentRank})
+              {awayShort}: Tested vs top-table (avg #{awayMetrics.schedule.avgOpponentRank ?? 'N/A'})
             </span>
           )}
         </div>
