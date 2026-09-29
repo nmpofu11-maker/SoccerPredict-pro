@@ -1,9 +1,9 @@
-import { LearningModelState, AITacticalSynthesis, BacktestEvaluation } from '../types/soccer';
+import { LearningModelState, AITacticalSynthesis, HistoricalEvaluation } from '../types/soccer';
 import { getAdminApiHeaders } from './adminAuthService';
 
 export async function requestAITacticalSynthesis(
   state: LearningModelState,
-  recentEvaluations: BacktestEvaluation[]
+  recentEvaluations: HistoricalEvaluation[]
 ): Promise<AITacticalSynthesis> {
   try {
     const res = await fetch('/api/ai/tactical-learning', {
