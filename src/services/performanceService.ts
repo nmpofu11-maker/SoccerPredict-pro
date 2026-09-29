@@ -135,30 +135,30 @@ export function calculateEnginePerformance(
   const yesterdayTotal = yesterdayEvaluations.length;
   const yesterdayCorrect = yesterdayEvaluations.filter((m) => m.isCorrect).length;
   const yesterdayWrong = yesterdayTotal - yesterdayCorrect;
-  const yesterdayAccuracyPct = yesterdayTotal > 0 ? (yesterdayCorrect / yesterdayTotal) * 100 : 0;
+  const yesterdayAccuracyPct = yesterdayTotal > 0 ? (yesterdayCorrect / yesterdayTotal) * 100 : null;
 
   const allTimeTotal = allEvaluations.length;
   const allTimeWrong = allTimeTotal - allCorrect;
-  const allTimeAccuracyPct = allTimeTotal > 0 ? (allCorrect / allTimeTotal) * 100 : 0;
+  const allTimeAccuracyPct = allTimeTotal > 0 ? (allCorrect / allTimeTotal) * 100 : null;
 
-  const homeWinAccuracyPct = homePickTotal > 0 ? (homePickCorrect / homePickTotal) * 100 : 0;
-  const awayWinAccuracyPct = awayPickTotal > 0 ? (awayPickCorrect / awayPickTotal) * 100 : 0;
-  const drawAccuracyPct = drawPickTotal > 0 ? (drawPickCorrect / drawPickTotal) * 100 : 0;
+  const homeWinAccuracyPct = homePickTotal > 0 ? (homePickCorrect / homePickTotal) * 100 : null;
+  const awayWinAccuracyPct = awayPickTotal > 0 ? (awayPickCorrect / awayPickTotal) * 100 : null;
+  const drawAccuracyPct = drawPickTotal > 0 ? (drawPickCorrect / drawPickTotal) * 100 : null;
 
   const summary: EnginePerformanceSummary = {
     yesterdayDate: yesterdayStr,
     yesterdayTotal,
     yesterdayCorrect,
     yesterdayWrong,
-    yesterdayAccuracyPct: Math.round(yesterdayAccuracyPct * 10) / 10,
+    yesterdayAccuracyPct: yesterdayAccuracyPct === null ? null : Math.round(yesterdayAccuracyPct * 10) / 10,
     allTimeTotal,
     allTimeCorrect: allCorrect,
     allTimeWrong,
-    allTimeAccuracyPct: Math.round(allTimeAccuracyPct * 10) / 10,
-    homeWinAccuracyPct: Math.round(homeWinAccuracyPct * 10) / 10,
-    awayWinAccuracyPct: Math.round(awayWinAccuracyPct * 10) / 10,
-    drawAccuracyPct: Math.round(drawAccuracyPct * 10) / 10,
-    brierLoss: allTimeTotal > 0 ? Math.round((totalBrier / allTimeTotal) * 1000) / 1000 : 0,
+    allTimeAccuracyPct: allTimeAccuracyPct === null ? null : Math.round(allTimeAccuracyPct * 10) / 10,
+    homeWinAccuracyPct: homeWinAccuracyPct === null ? null : Math.round(homeWinAccuracyPct * 10) / 10,
+    awayWinAccuracyPct: awayWinAccuracyPct === null ? null : Math.round(awayWinAccuracyPct * 10) / 10,
+    drawAccuracyPct: drawAccuracyPct === null ? null : Math.round(drawAccuracyPct * 10) / 10,
+    brierLoss: allTimeTotal > 0 ? Math.round((totalBrier / allTimeTotal) * 1000) / 1000 : null,
   };
 
   return {
