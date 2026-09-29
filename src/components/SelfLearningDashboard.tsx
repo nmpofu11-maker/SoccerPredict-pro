@@ -439,7 +439,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
           </div>
           <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
             <Clock className="w-3 h-3" />
-            <span>Updated {new Date(learningState.lastTrainedAt).toLocaleTimeString()}</span>
+            <span>Updated {learningState.lastTrainedAt ? new Date(learningState.lastTrainedAt).toLocaleTimeString() : 'not trained'}</span>
           </p>
         </div>
 
@@ -595,34 +595,34 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
             <div className="p-3.5 rounded-xl border border-amber-500/30 bg-slate-900/90 shadow-md">
               <span className="text-[11px] text-amber-400 flex items-center gap-1">
                 <Activity className="w-3.5 h-3.5 text-amber-400" />
-                Super Epochs Trained
+                Calibration Epochs
               </span>
               <div className="text-xl font-bold text-white mt-1">
                 {telemetry.totalSuperEpochs + learningState.totalEpochsTrained}
               </div>
-              <span className="text-[10px] text-slate-400">Unbounded iterations</span>
+              <span className="text-[10px] text-slate-400">Recorded calibration iterations</span>
             </div>
 
             <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-slate-900/90 shadow-md">
               <span className="text-[11px] text-emerald-400 flex items-center gap-1">
                 <Target className="w-3.5 h-3.5 text-emerald-400" />
-                Empirical Backtest Accuracy
+                Chronological Holdout Accuracy
               </span>
               <div className="text-xl font-bold text-emerald-300 mt-1">
                 {learningState.accuracyPct.toFixed(1)}%
               </div>
-              <span className="text-[10px] text-slate-400">Against audited results</span>
+              <span className="text-[10px] text-slate-400">Against the unseen validation window</span>
             </div>
 
             <div className="p-3.5 rounded-xl border border-sky-500/30 bg-slate-900/90 shadow-md">
               <span className="text-[11px] text-sky-400 flex items-center gap-1">
                 <Scale className="w-3.5 h-3.5 text-sky-400" />
-                Calibrated Brier Loss
+                Holdout Brier Loss
               </span>
               <div className="text-xl font-bold text-sky-300 mt-1">
                 {learningState.brierLoss.toFixed(3)}
               </div>
-              <span className="text-[10px] text-slate-400">Lower is optimal (0.000 limit)</span>
+              <span className="text-[10px] text-slate-400">Lower indicates smaller probability error; no target is claimed</span>
             </div>
 
             <div className="p-3.5 rounded-xl border border-purple-500/30 bg-slate-900/90 shadow-md">
@@ -852,7 +852,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
         </div>
       )}
 
-      {/* Sub-Tab 2: Backtest Match Log */}
+      {/* Sub-Tab 2: Chronological Evaluation Match Log */}
       {activeSubTab === 'backtest' && (
         <div className="space-y-3">
           <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300 flex items-center justify-between">
@@ -1025,7 +1025,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
               </div>
             ) : (
               <div className="p-6 text-center text-slate-400 text-xs font-mono">
-                No AI analysis generated yet. Click "Refresh AI Analysis" to evaluate training loss with Gemini.
+                No AI analysis generated yet. Click "Refresh AI Analysis" to request a server-side review of the measured holdout telemetry.
               </div>
             )}
           </div>
@@ -1046,7 +1046,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
                   </span>
                   <h3 className="text-sm font-bold text-white">Statistical Analysis & Peer-Reviewed Scoring Suite</h3>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-700/60 font-bold">
-                    N = {stats.sampleSize} Verified Matches
+                    N = {stats.sampleSize} Holdout Matches
                   </span>
                 </div>
                 <p className="text-xs text-slate-300">
@@ -1268,7 +1268,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
             accuracyPct: baselineEval.accuracyPct,
             brierLoss: baselineEval.brierLoss,
             totalEpochsTrained: 0,
-            lastTrainedAt: new Date().toISOString(),
+            lastTrainedAt: null,
           };
           saveLearningState(updatedState);
           onUpdateLearningState(updatedState);
