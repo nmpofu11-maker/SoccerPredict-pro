@@ -1674,49 +1674,17 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
         });
       }
 
-      // If all live model calls were temporarily throttled by upstream 503 spikes, use empirical synthesis
-      console.info('Tactical learning: Using empirical calibrated synthesis fallback (upstream Gemini at capacity).');
-      return res.status(200).json({
+      return res.status(503).json({
         status: 'unavailable',
-        synthesis: {
-          summary: `Super-Learning Protocol active: Online calibration converged with ${accuracyPct?.toFixed(1) || '81.3'}% accuracy and Brier score ${brierLoss?.toFixed(3) || '0.174'}. Home fortress dominance and shot delta remain primary deciders.`,
-          recommendations: [
-            'Maintain shot-on-target differential above 0.40.',
-            'Dampen volatility spikes in secondary leagues with learned coefficients.',
-            'Keep 55% win floor for Tier 1 elite favourites.',
-          ],
-          ruleEfficiency: [
-            { rule: 'Rule 1: Stakes & Motivation', impact: `+${weights?.stakesMotivationBoost?.toFixed(1) || '2.5'} pts`, status: 'recalibrating' },
-            { rule: 'Rule 3: Home Fortress', impact: `+${Math.round((weights?.homeDominanceBonus || 0.15) * 100)}% boost`, status: 'recalibrating' },
-            { rule: 'Rule 5: Shot Dominance', impact: `Weight ${weights?.tacticalShotsWeight?.toFixed(2) || '0.45'}`, status: 'recalibrating' },
-            { rule: 'Rule 8: Favourite Floor', impact: 'Active 55% Floor', status: 'recalibrating' },
-            { rule: '⚡ Super-Learned Team Matrix', impact: 'Club-specific coefficients active', status: 'recalibrating' },
-          ],
-          timestamp: new Date().toISOString(),
-        },
+        message: 'Gemini synthesis did not return a valid result.',
+        detail: lastSynthesisErr instanceof Error ? lastSynthesisErr.message : undefined,
       });
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown server error';
-      console.warn('AI tactical learning request handled with fallback:', errorMsg);
-      // Return fallback gracefully
-      return res.status(200).json({
-        status: 'fallback',
-        synthesis: {
-          summary: 'Chronological model calibration is active only when measured training data is available.',
-          recommendations: [
-            'Maintain shot-on-target differential above 0.40.',
-            'Dampen volatility spikes in secondary leagues with learned coefficients.',
-            'Keep 55% win floor for Tier 1 elite favourites.',
-          ],
-          ruleEfficiency: [
-            { rule: 'Rule 1: Stakes & Motivation', impact: 'Optimized', status: 'recalibrating' },
-            { rule: 'Rule 3: Home Fortress', impact: 'High conviction', status: 'recalibrating' },
-            { rule: 'Rule 5: Shot Dominance', impact: 'Primary decider', status: 'recalibrating' },
-            { rule: 'Rule 8: Favourite Floor', impact: 'Active 55%', status: 'recalibrating' },
-            { rule: '⚡ Super-Learned Team Matrix', impact: 'Club-specific coefficients active', status: 'recalibrating' },
-          ],
-          timestamp: new Date().toISOString(),
-        },
+      console.warn('AI tactical learning unavailable:', errorMsg);
+      return res.status(503).json({
+        status: 'unavailable',
+        message: 'AI tactical synthesis could not be completed.',
       });
     }
   });
