@@ -59,7 +59,7 @@ export interface OptimalValueReport {
   generatedAt: string;
   bundleTitle: string;
   aiConfidenceRating: number; // 0 - 100
-  confidenceGrade: 'AAA+ Elite Value' | 'AA High Value' | 'A Strong Value' | 'B+ Moderate Value';
+  confidenceGrade: 'AAA+ Elite Value' | 'AA High Value' | 'A Strong Value' | 'B+ Moderate Value' | 'No Qualifying Value';
   strategyMode: 'optimal' | 'conservative' | 'high_alpha';
   combinedOdds: number;
   expectedValueAlpha: number; // percentage e.g. +24.8%
