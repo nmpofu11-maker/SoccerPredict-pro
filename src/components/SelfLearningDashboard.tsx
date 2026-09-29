@@ -490,9 +490,9 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
 
         <button
           type="button"
-          onClick={() => setActiveSubTab('backtest')}
+          onClick={() => setActiveSubTab('evaluation')}
           className={`px-3 py-1.5 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors ${
-            activeSubTab === 'backtest'
+            activeSubTab === 'evaluation'
               ? 'bg-sky-600 text-white'
               : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
           }`}
@@ -854,7 +854,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
       )}
 
       {/* Sub-Tab 2: Chronological Evaluation Match Log */}
-      {activeSubTab === 'backtest' && (
+      {activeSubTab === 'evaluation' && (
         <div className="space-y-3">
           <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300 flex items-center justify-between">
             <span className="text-emerald-400 font-bold">
