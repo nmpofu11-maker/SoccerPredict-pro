@@ -1,5 +1,6 @@
 import { MatchFixture, DataIntegrityAuditReport } from '../types/soccer';
 import { saveCustomFixtures } from './storage';
+import { getAdminApiHeaders } from './adminAuthService';
 
 export interface LiveApiResponse {
   status: 'success' | 'error';
@@ -103,7 +104,7 @@ export async function fetchPersistedFixtures(): Promise<LiveApiResponse> {
 export async function ingestSlateToServer(payload: { rawText?: string; fixtures?: MatchFixture[] }): Promise<IngestSlateResponse> {
   const response = await fetch('/api/fixtures/ingest-slate', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAdminApiHeaders() },
     body: JSON.stringify(payload),
   });
 
