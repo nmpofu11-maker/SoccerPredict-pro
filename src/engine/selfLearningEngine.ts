@@ -292,7 +292,7 @@ export function trainMultipleEpochs(
 
   for (let i = 0; i < epochs; i++) {
     const lr = Math.max(0.02, 0.06 * (1 - i / (epochs + 1)));
-    const epochResult = trainSingleEpoch(currentWeights, fitResults, lr, fitMatrices);
+    const epochResult = trainSingleEpoch(currentWeights, results, lr, fitMatrices);
     currentWeights = epochResult.updatedWeights;
     lossHistory.push(epochResult.newLoss);
   }
@@ -486,7 +486,7 @@ export function getInitialLearningState(): LearningModelState {
       ],
       ruleEfficiency: [
         { rule: 'Rule 1: Motivation Stakes', impact: '+2.5 pts boost', status: 'recalibrating' },
-        { rule: 'Rule 3: Home Dominance', impact: '+15% home multiplier', status: 'optimal' },
+        { rule: 'Rule 3: Home Dominance', impact: '+15% home multiplier', status: 'recalibrating' },
         { rule: 'Rule 5: Shot/Possession', impact: '+3.5 pts modifier', status: 'optimal' },
         { rule: 'Rule 7: Volatility Cap', impact: '0.68 compression', status: 'optimal' },
         { rule: 'Rule 8: Favourite Floor', impact: '55% win floor', status: 'optimal' },
