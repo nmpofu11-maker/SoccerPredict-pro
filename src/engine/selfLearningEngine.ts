@@ -413,12 +413,12 @@ export function loadSuperLearningTelemetry(): SuperLearningTelemetry {
   return {
     protocolActive: false,
     totalSuperEpochs: 0,
-    unboundedLearningRate: 0,
-    lossVelocity: 0,
+    learningRate: null,
+    lossVelocity: null,
     convergencesAchieved: 0,
-    bestBrierLoss: 0,
-    peakAccuracyPct: 0,
-    lastOptimizationTimestamp: '',
+    bestBrierLoss: null,
+    peakAccuracyPct: null,
+    lastOptimizationTimestamp: null,
     activeOptimizers: [],
   };
 }
@@ -475,7 +475,7 @@ export function getInitialLearningState(): LearningModelState {
     baselineAccuracyPct: baselineEval.accuracyPct,
     brierLoss: baselineEval.brierLoss,
     baselineBrierLoss: baselineEval.brierLoss,
-    lastTrainedAt: new Date().toISOString(),
+    lastTrainedAt: null,
     isAutoLearningEnabled: false,
     recentLossHistory: [baselineEval.brierLoss],
     aiTacticalSynthesis: {
@@ -533,7 +533,7 @@ export function sanitizeLearningState(state?: Partial<LearningModelState> | null
     baselineAccuracyPct: baselineEval.accuracyPct,
     brierLoss,
     baselineBrierLoss: baselineEval.brierLoss,
-    lastTrainedAt: typeof state.lastTrainedAt === 'string' && state.lastTrainedAt ? state.lastTrainedAt : new Date().toISOString(),
+    lastTrainedAt: typeof state.lastTrainedAt === 'string' && state.lastTrainedAt ? state.lastTrainedAt : null,
     isAutoLearningEnabled: false,
     recentLossHistory: recentLossHistory.length > 0 ? recentLossHistory : [initial.brierLoss],
     aiTacticalSynthesis: state.aiTacticalSynthesis && typeof state.aiTacticalSynthesis === 'object'
