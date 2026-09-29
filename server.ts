@@ -631,14 +631,23 @@ function writeCronStatus(status: CronStatus): void {
   }
 }
 
+function parseProviderKickoff(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().replace(' ', 'T');
+  if (!normalized || !/(Z|[+-]\d{2}:?\d{2})$/i.test(normalized)) return null;
+  const parsed = new Date(normalized);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
 function normalizeTeamName(name: string): string {
   return (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 /** Build an internal fixture record from a SportAPI.ai fixture. */
 function mapSportApiAiToInternalFixture(f: any): any {
-  const homeName = f.home_team?.name || f.homeTeam?.name || (typeof f.home_team === 'string' ? f.home_team : 'Home Team');
-  const awayName = f.away_team?.name || f.awayTeam?.name || (typeof f.away_team === 'string' ? f.away_team : 'Away Team');
+  const homeName = f.home_team?.name || f.homeTeam?.name || (typeof f.home_team === 'string' ? f.home_team : '');
+  const awayName = f.away_team?.name || f.awayTeam?.name || (typeof f.away_team === 'string' ? f.away_team : '');
+  if (!homeName || !awayName) return null;
   const idStr = String(f.id || `${homeName}_${awayName}`);
 
   let kickoffTime = new Date().toISOString();
@@ -664,14 +673,6 @@ function mapSportApiAiToInternalFixture(f: any): any {
   const drawOdds = Number(f.draw_odds || f.odds?.draw || f.drawOdds);
 
   // Neutral, odds-independent placeholder stats. Real rankings & form are resolved via verified standings.
-  const homeRank = 10;
-  const awayRank = 10;
-  const homePoss = 50;
-  const awayPoss = 50;
-  const homeSot = 4.5;
-  const awaySot = 4.5;
-  const isHomeDom = false;
-  const hasAwayForm = false;
 
   return {
     id: `sportapiai_${idStr}`,
@@ -700,7 +701,7 @@ function mapSportApiAiToInternalFixture(f: any): any {
       form: [],
       avgPossession: 50,
       avgShotsOnTarget: 4.5,
-      isHomeDominant: isHomeDom,
+      isHomeDominant: false,
       badgeColor: '#2563eb',
     },
     awayTeam: {
@@ -712,7 +713,7 @@ function mapSportApiAiToInternalFixture(f: any): any {
       form: [],
       avgPossession: 50,
       avgShotsOnTarget: 4.5,
-      hasTopTierAwayForm: hasAwayForm,
+      hasTopTierAwayForm: false,
       badgeColor: '#dc2626',
     },
     h2h: { homeWins: 0, draws: 0, awayWins: 0, totalLast5: 0, scoresLast5: [] },
@@ -729,12 +730,14 @@ function mapSportApiAiToInternalFixture(f: any): any {
 /** Build an internal fixture record from a TheRundown soccer event. */
 function mapTheRundownToInternalFixture(ev: any): any {
   const teams = ev.teams_normalized || ev.teams || [];
-  const home = teams.find((t: any) => t.is_home) || teams[0] || { name: 'Home Team', team_id: 1 };
-  const away = teams.find((t: any) => t.is_away) || teams[1] || { name: 'Away Team', team_id: 2 };
-  const homeName = home.name || 'Home Team';
-  const awayName = away.name || 'Away Team';
+  const home = teams.find((t: any) => t.is_home) || teams[0];
+  const away = teams.find((t: any) => t.is_away) || teams[1];
+  const homeName = home?.name || '';
+  const awayName = away?.name || '';
+  if (!home || !away || !homeName || !awayName) return null;
   const idStr = String(ev.event_id || `${homeName}_${awayName}`);
-  const kickoffTime = ev.event_date || new Date().toISOString();
+  const kickoffTime = parseProviderKickoff(ev.event_date);
+  if (!kickoffTime) return null;
   const leagueName = ev.country ? `${ev.country} • ${ev.leagueName}` : (ev.leagueName || 'Premier Soccer');
 
   return {
@@ -800,7 +803,7 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     try {
       const rawFixtures = await fetchSportApiAiFixturesByDate(dateStr);
       if (rawFixtures && rawFixtures.length > 0) {
-        mapped = rawFixtures.map(mapSportApiAiToInternalFixture);
+        mapped = rawFixtures.map(mapSportApiAiToInternalFixture).filter(Boolean);
         sourceUsed = 'SPORTAPI_AI';
       }
     } catch (err: unknown) {
@@ -816,7 +819,7 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     try {
       const rundownEvents = await fetchAllTheRundownSoccerEvents(dateStr);
       if (rundownEvents && rundownEvents.length > 0) {
-        mapped = rundownEvents.map(mapTheRundownToInternalFixture);
+        mapped = rundownEvents.map(mapTheRundownToInternalFixture).filter(Boolean);
         sourceUsed = 'THERUNDOWN';
       }
     } catch (err: unknown) {
@@ -1439,7 +1442,7 @@ async function startServer() {
   // Shared merge-into-manifest logic, extracted so every ingestion path (paste-text,
   // PDF upload, URL fetch) goes through the exact same real, working pipeline —
   // rather than each having its own parallel, partially-broken implementation.
-  const ingestFixturesIntoManifest = async (incomingFixtures: any[]) => {
+  const ingestFixturesIntoManifest = async (incomingFixtures: any[], sourceIsVerifiedBookmaker = false) => {
     const diskFixtures = readDiskManifest();
 
     const normalizeKey = (f: any) => {
@@ -1456,7 +1459,7 @@ async function startServer() {
     }
     for (const hf of incomingFixtures) {
       if (!hf || !hf.id || !hf.homeTeam || !hf.awayTeam) continue;
-      const protectedFixture = { ...hf, isBookmakerProtected: true };
+      const protectedFixture = { ...hf, isBookmakerProtected: sourceIsVerifiedBookmaker };
       mergedMap.set(normalizeKey(hf), protectedFixture);
     }
 
@@ -1500,7 +1503,7 @@ async function startServer() {
         });
       }
 
-      const { validatedFixtures, auditReport } = await ingestFixturesIntoManifest(incomingFixtures);
+      const { validatedFixtures, auditReport } = await ingestFixturesIntoManifest(incomingFixtures, Boolean(rawText && typeof rawText === 'string'));
 
       return res.json({
         status: 'success',
@@ -1949,7 +1952,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       }
 
       const rawResults = parseRawResults(rawData);
-      const manifest = readDiskManifest();
+      const manifest = readRawDiskManifest();
       const existingLog = readResultsLog();
       const settledIds = new Set(existingLog.map((e) => e.id));
       const newEntries: SettledResultEntry[] = [];
@@ -2022,7 +2025,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
         return res.status(400).json({ error: 'No fixtures could be parsed from this PDF. Make sure it contains a Hollywoodbets-format fixture list.' });
       }
 
-      const { validatedFixtures } = await ingestFixturesIntoManifest(incomingFixtures);
+      const { validatedFixtures } = await ingestFixturesIntoManifest(incomingFixtures, true);
       res.json({ success: true, count: incomingFixtures.length, totalCount: validatedFixtures.length });
     } catch (error) {
       console.error('Error uploading fixture file:', error);
