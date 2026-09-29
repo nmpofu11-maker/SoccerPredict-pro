@@ -32,7 +32,6 @@ import { evaluateAllFixtures } from './engine/rulesEngine';
 import {
   loadLearningState,
   saveLearningState,
-  trainSingleEpoch,
   loadLearningStateWithServerFallback,
   evaluateHistoricalBacktest,
 } from './engine/selfLearningEngine';
@@ -489,23 +488,6 @@ export default function App() {
           });
           return updated;
         });
-
-        // Auto-learning is strictly disabled by default to prevent gradient drift
-        // or unauthorized training passes.
-        if (false && learningState.isAutoLearningEnabled) {
-          const tuned = trainSingleEpoch(learningState.weights, combinedHistoricalResults, 0.02);
-          const updatedState: LearningModelState = {
-            ...learningState,
-            weights: tuned.updatedWeights,
-            accuracyPct: tuned.newAccuracy,
-            brierLoss: tuned.newLoss,
-            totalEpochsTrained: learningState.totalEpochsTrained + 1,
-            lastTrainedAt: new Date().toISOString(),
-            recentLossHistory: [...learningState.recentLossHistory, tuned.newLoss].slice(-15),
-          };
-          saveLearningState(updatedState);
-          setLearningState(updatedState);
-        }
 
         setIsScrapingNow(false);
         setSecondsUntilNextScrape(autoScrapeConfig.intervalSeconds);
