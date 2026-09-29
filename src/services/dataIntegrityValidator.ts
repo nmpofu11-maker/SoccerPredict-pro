@@ -260,34 +260,25 @@ export function verifyAndSanitizeFixture(
   let cleanHome = homeResult.team;
   let cleanAway = awayResult.team;
 
-  // Check 3: Standings Monotonicity & Inversion Detection
-  // In a single domestic competition, if team A has better rank than team B (e.g. 2nd vs 14th),
-  // team A should not have lower points without an official point deduction.
-  let passedMonotonicity = true;
-  if (Number.isFinite(cleanHome.leagueRank) && Number.isFinite(cleanAway.leagueRank) && Number.isFinite(cleanHome.points) && Number.isFinite(cleanAway.points) && cleanHome.leagueRank < cleanAway.leagueRank && cleanHome.points < cleanAway.points) {
-    passedMonotonicity = false;
-    // Do not infer points from rank ordering; retain the observed values and flag the inconsistency.
-  } else if (Number.isFinite(cleanHome.leagueRank) && Number.isFinite(cleanAway.leagueRank) && Number.isFinite(cleanHome.points) && Number.isFinite(cleanAway.points) && cleanAway.leagueRank < cleanHome.leagueRank && cleanAway.points < cleanHome.points) {
-    passedMonotonicity = false;
-    if (!homeResult.matchedOfficialTable && !awayResult.matchedOfficialTable) {
-      const repairedAwayPts = cleanHome.points + Math.min(3, Math.max(1, cleanHome.leagueRank - cleanAway.leagueRank));
-      repairs.push({
-        field: `${cleanHome.name} vs ${cleanAway.name} (points inversion)`,
-        originalValue: `Away: ${cleanAway.points}pts (Rank #${cleanAway.leagueRank}) vs Home: ${cleanHome.points}pts (Rank #${cleanHome.leagueRank})`,
-        repairedValue: `Away: ${repairedAwayPts}pts vs Home: ${cleanHome.points}pts`,
-        reason: 'Inverted standings detected; calibrated to preserve table monotonicity',
-      });
-      cleanAway.points = repairedAwayPts;
-    }
-  }
+  // Check 3: Standings Monotonicity & Inversion Detection.
+  // This is diagnostic only: rank ordering is never used to invent or repair points.
+  const ranksKnown = Number.isFinite(cleanHome.leagueRank) && Number.isFinite(cleanAway.leagueRank);
+  const pointsKnown = Number.isFinite(cleanHome.points) && Number.isFinite(cleanAway.points);
+  const inverted =
+    ranksKnown &&
+    pointsKnown &&
+    ((cleanHome.leagueRank as number) < (cleanAway.leagueRank as number) && (cleanHome.points as number) < (cleanAway.points as number) ||
+      (cleanAway.leagueRank as number) < (cleanHome.leagueRank as number) && (cleanAway.points as number) < (cleanHome.points as number));
 
   checks.push({
     checkName: 'Standings Monotonicity Check',
-    passed: passedMonotonicity,
-    details: passedMonotonicity
-      ? `Points and rank are consistent for the observed values (${cleanHome.leagueRank ?? 'N/A'} vs ${cleanAway.leagueRank ?? 'N/A'})`
-      : `Observed standings contain an inversion; no synthetic correction was applied`,
-    severity: 'warning',
+    passed: !inverted,
+    details: inverted
+      ? 'Observed standings contain an inversion; no synthetic correction was applied.'
+      : ranksKnown && pointsKnown
+      ? 'Observed ranks and points are internally consistent.'
+      : 'Insufficient rank/points evidence for a monotonicity conclusion.',
+    severity: inverted ? 'warning' : 'info',
   });
 
   // Check 4: Official Table Cross-Reference (Requires BOTH teams to match official standings)
@@ -300,7 +291,7 @@ export function verifyAndSanitizeFixture(
       ? `Both teams cross-referenced against verified official standings table`
       : isPartiallyCrossReferenced
       ? `Partial match: only one team verified in official standings table`
-      : `Calibrated with mathematical division bounds`,
+      : `No official standings match was available.`,
     severity: bothTeamsCrossReferenced ? 'info' : 'warning',
   });
 
