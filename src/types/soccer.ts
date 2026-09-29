@@ -6,8 +6,8 @@ export interface TeamStats {
   id: string;
   name: string;
   shortName: string;
-  leagueRank: number;
-  points: number;
+  leagueRank: number | null;
+  points: number | null;
   form: ('W' | 'D' | 'L')[];
   formScores?: string[]; // FT scores for last 5 matches e.g. ["2-1", "3-0", "1-1", "2-0", "1-0"]
   formDetails?: {
@@ -17,8 +17,8 @@ export interface TeamStats {
     venue?: 'H' | 'A';
     date?: string;
   }[];
-  avgPossession: number; // e.g. 58.4 (%)
-  avgShotsOnTarget: number; // e.g. 6.8
+  avgPossession: number | null; // percentage when observed
+  avgShotsOnTarget: number | null; // observed shots on target per match
   isHomeDominant?: boolean; // For Home team: record at home is dominant
   hasTopTierAwayForm?: boolean; // For Away team: top-tier away form
   hasMidweekFatigue72h?: boolean; // Played cup/continental match within 72h
