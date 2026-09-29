@@ -137,16 +137,15 @@ export function sanitizeLiveIncomingFixtures(rawItems: any[]): LiveSanitizationR
       warnings.push(`Auto-derived missing awayTeam.id: ${awayTeamId}`);
     }
 
-    // Sanitize kickoff timestamp
-    let cleanKickoff = item.kickoffTime;
-    if (
-      !cleanKickoff ||
-      typeof cleanKickoff !== 'string' ||
-      isNaN(new Date(cleanKickoff).getTime())
-    ) {
-      cleanKickoff = new Date().toISOString();
-      warnings.push('Missing or unparseable kickoffTime; defaulted to current timestamp');
+    // Sanitize kickoff timestamp without inventing a time.
+    const parsedKickoff = typeof item.kickoffTime === 'string' && Number.isFinite(new Date(item.kickoffTime).getTime())
+      ? new Date(item.kickoffTime).toISOString()
+      : null;
+    if (!parsedKickoff) {
+      droppedMatches.push({ index, reason: 'Fixture dropped because kickoffTime is missing or unparseable', itemSnippet: 'id=' + cleanId });
+      return;
     }
+    const cleanKickoff = parsedKickoff;
 
     // 5. Strict Temporal Sanity Check: Ghost match detection
     // Upcoming fixtures must not have kickoff times older than 48 hours
@@ -239,14 +238,13 @@ export function sanitizeLiveIncomingFixtures(rawItems: any[]): LiveSanitizationR
 
     // Build fully compliant H2H Record
     const rawH2H = item.h2h || {};
+    const scoresLast5 = Array.isArray(rawH2H.scoresLast5) ? rawH2H.scoresLast5 : [];
     const cleanH2H: H2HRecord = {
-      homeWins: typeof rawH2H.homeWins === 'number' ? rawH2H.homeWins : 2,
-      draws: typeof rawH2H.draws === 'number' ? rawH2H.draws : 1,
-      awayWins: typeof rawH2H.awayWins === 'number' ? rawH2H.awayWins : 2,
-      totalLast5: 5,
-      scoresLast5: Array.isArray(rawH2H.scoresLast5)
-        ? rawH2H.scoresLast5
-        : ['1-0', '1-1', '0-2', '2-1', '1-2'],
+      homeWins: typeof rawH2H.homeWins === 'number' ? rawH2H.homeWins : 0,
+      draws: typeof rawH2H.draws === 'number' ? rawH2H.draws : 0,
+      awayWins: typeof rawH2H.awayWins === 'number' ? rawH2H.awayWins : 0,
+      totalLast5: scoresLast5.length,
+      scoresLast5,
     };
 
     // Build compliant Motivation
@@ -268,8 +266,8 @@ export function sanitizeLiveIncomingFixtures(rawItems: any[]): LiveSanitizationR
       id: cleanId,
       kickoffTime: cleanKickoff,
       league: cleanLeague.trim(),
-      venue: item.venue || `${cleanHomeTeam.name} Stadium`,
-      round: item.round || 'Regular Season',
+      venue: item.venue || 'Unknown Venue',
+      round: item.round || 'Unknown Round',
       isHighStakes: Boolean(item.isHighStakes),
       motivation: cleanMotivation,
       homeTeam: cleanHomeTeam,
