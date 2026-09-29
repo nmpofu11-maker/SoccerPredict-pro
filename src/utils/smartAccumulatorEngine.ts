@@ -195,7 +195,7 @@ export function generateSmartAccumulator(
   const combinedOdds = selectedLegs.length > 0 ? selectedLegs.reduce((acc, l) => acc * Math.max(1.05, l.odds), 1.0) : null;
   const avgConf = selectedLegs.length > 0 ? selectedLegs.reduce((acc, l) => acc + l.confidenceScore, 0) / selectedLegs.length : null;
 
-  let riskLevel: 'Conservative Value' | 'Balanced Sweet-Spot' | 'High Yield Aggressive' = 'Balanced Sweet-Spot';
+  let riskLevel: 'Conservative Value' | 'Balanced Sweet-Spot' | 'High Yield Aggressive' | 'No Qualifying Bundle' = 'Balanced Sweet-Spot';
   if (combinedOdds === null) riskLevel = 'No Qualifying Bundle';
   else if (combinedOdds < 4.0) riskLevel = 'Conservative Value';
   else if (combinedOdds > 15.0) riskLevel = 'High Yield Aggressive';
