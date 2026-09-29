@@ -73,7 +73,7 @@ export interface OptimalValueReport {
   riskMitigationAdvice: string;
   confidenceBreakdown: {
     modelCertainty: number; // 0-100
-    historicalBacktestFit: number; // 0-100
+    historicalCohortFit: number; // 0-100
     marketOddsAlpha: number; // 0-100
     formStability: number | null;
   };
