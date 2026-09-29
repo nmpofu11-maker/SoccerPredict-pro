@@ -390,20 +390,8 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
 
               const homeFormParsed = parseForm(homeComp.form);
               const awayFormParsed = parseForm(awayComp.form);
-              const homeFormPts = homeFormParsed.reduce((sum, res) => sum + (res === 'W' ? 3 : res === 'D' ? 1 : 0), 0);
-              const awayFormPts = awayFormParsed.reduce((sum, res) => sum + (res === 'W' ? 3 : res === 'D' ? 1 : 0), 0);
-
               const homePoints = homeStanding?.points ?? parsePoints(homeComp.records?.[0]?.summary);
               const awayPoints = awayStanding?.points ?? parsePoints(awayComp.records?.[0]?.summary);
-
-              const finalHomePoints = homePoints;
-              const finalAwayPoints = awayPoints;
-
-              if (homeRank < awayRank && finalHomePoints < finalAwayPoints) {
-                finalHomePoints = finalAwayPoints + Math.min(3, Math.max(1, awayRank - homeRank));
-              } else if (awayRank < homeRank && finalAwayPoints < finalHomePoints) {
-                finalAwayPoints = finalHomePoints + Math.min(3, Math.max(1, homeRank - awayRank));
-              }
 
               const homeColor = homeTeam.color ? `#${homeTeam.color}` : '#0284c7';
               const awayColor = awayTeam.color ? `#${awayTeam.color}` : '#dc2626';
