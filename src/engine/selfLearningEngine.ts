@@ -424,7 +424,8 @@ export function loadSuperLearningTelemetry(): SuperLearningTelemetry {
   };
 }
 
-
+/**
+ * Updates measured calibration telemetry.
  */
 export function updateSuperLearningTelemetry(params: {
   totalSuperEpochsIncrement?: number;
@@ -465,8 +466,7 @@ export function updateSuperLearningTelemetry(params: {
  * Generates default initial state with computed baselines
  */
 export function getInitialLearningState(): LearningModelState {
-  const matrices = loadTeamIntelligenceMatrices();
-  const baselineEval = evaluateHistoricalBacktest(HISTORICAL_MATCH_RESULTS, DEFAULT_ENGINE_WEIGHTS, matrices);
+  const baselineEval = evaluateOutOfSampleValidation(HISTORICAL_MATCH_RESULTS, DEFAULT_ENGINE_WEIGHTS);
 
   return {
     weights: { ...DEFAULT_ENGINE_WEIGHTS },
