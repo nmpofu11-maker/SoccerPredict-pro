@@ -21,7 +21,7 @@ export interface AccumulatorLeg {
 export interface SmartAccumulatorResult {
   legs: AccumulatorLeg[];
   combinedOdds: number;
-  averageConfidence: number;
+  averageHeuristicScore: number | null;
   expectedYieldScore: number; // 0 - 100 rating
   riskLevel: 'Conservative Value' | 'Balanced Sweet-Spot' | 'High Yield Aggressive';
   strategicAdvice: string;
@@ -192,7 +192,7 @@ export function generateSmartAccumulator(
   const selectedLegs = legs.slice(0, 4);
 
   const combinedOdds = selectedLegs.reduce((acc, l) => acc * Math.max(1.05, l.odds), 1.0);
-  const avgConf = selectedLegs.length > 0 ? selectedLegs.reduce((acc, l) => acc + l.confidenceScore, 0) / selectedLegs.length : 0;
+  const avgConf = selectedLegs.length > 0 ? selectedLegs.reduce((acc, l) => acc + l.confidenceScore, 0) / selectedLegs.length : null;
 
   let riskLevel: 'Conservative Value' | 'Balanced Sweet-Spot' | 'High Yield Aggressive' = 'Balanced Sweet-Spot';
   if (combinedOdds < 4.0) riskLevel = 'Conservative Value';
@@ -279,7 +279,7 @@ export function analyzeUserCoachingPatterns(
     tips.push(`Guidance: Manual overrides override all model rules. Ensure you review verified team news and starting lineups before locking in overrides.`);
   }
 
-  tips.push(`Yield Strategy: For optimal accumulator performance, limit legs to 3-4 matches with combined odds between 4.00 and 10.00.`);
+  tips.push(`Yield Strategy: For evidence-gated accumulator construction, limit legs to 3-4 matches with combined odds between 4.00 and 10.00.`);
 
   return {
     totalOverridesCount: overrideCount,
@@ -291,7 +291,7 @@ export function analyzeUserCoachingPatterns(
 
 /**
  * Generates an Automated 'Optimal Value' Accumulator Intelligence Report.
- * Cross-references real match odds against model probabilities, historical backtest performance,
+ * Cross-references real match odds against model probabilities, observed historical cohort results,
  * and empirical failure matrices to synthesize an evidence-gated bundle with a heuristic score.
  */
 export function generateOptimalValueAccumulatorReport(
@@ -490,7 +490,7 @@ export function generateOptimalValueAccumulatorReport(
 
   const expectedValueAlpha = Number(((avgEV) * 100).toFixed(1));
 
-  // Compute AI Confidence Rating (0 - 100)
+  // Compute AI Heuristic Evidence Score (0 - 100)
   const modelCertainty = Math.min(100, Math.round(avgModelConfidence));
   const historicalCohortFit = avgHistWinRate === null ? 0 : Math.min(99, Math.round(avgHistWinRate));
   const marketOddsAlpha = Math.min(99, Math.max(0, Math.round(50 + expectedValueAlpha * 1.8)));
