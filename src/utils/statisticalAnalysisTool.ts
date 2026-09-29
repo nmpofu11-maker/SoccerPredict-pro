@@ -167,10 +167,15 @@ export function runStatisticalEvaluation(
     away: { home: 0, draw: 0, away: 0, total: 0 },
   };
 
-  // Empirical counts
+  // Empirical baseline distribution is estimated only from the training window.
   let countHome = 0;
   let countDraw = 0;
   let countAway = 0;
+  for (const m of trainingDataset) {
+    if (m.actualOutcome === 'home') countHome++;
+    else if (m.actualOutcome === 'draw') countDraw++;
+    else if (m.actualOutcome === 'away') countAway++;
+  }
 
   // Calibration Bins: 5 standard decile/quintile ranges
   const rawBins: Array<{ min: number; max: number; range: string; count: number; correct: number; sumProb: number }> = [
@@ -290,9 +295,10 @@ export function runStatisticalEvaluation(
   }
 
   // Benchmark Baselines
-  const empH = countHome / total;
-  const empD = countDraw / total;
-  const empA = countAway / total;
+  const trainingTotal = trainingDataset.length;
+  const empH = trainingTotal > 0 ? countHome / trainingTotal : 0;
+  const empD = trainingTotal > 0 ? countDraw / trainingTotal : 0;
+  const empA = trainingTotal > 0 ? countAway / trainingTotal : 0;
 
   let rpsRandom = 0;
   let brierRandom = 0;
@@ -301,11 +307,12 @@ export function runStatisticalEvaluation(
   let brierEmp = 0;
   let logLossEmp = 0;
   let correctStandings = 0;
+  let standingsSupport = 0;
   let rpsStandings = 0;
   let brierStandings = 0;
   let logLossStandings = 0;
 
-  for (const m of validDataset) {
+  for (const m of holdoutDataset) {
     const actual = m.actualOutcome || 'draw';
     const eh = actual === 'home' ? 1 : 0;
     const ed = actual === 'draw' ? 1 : 0;
@@ -324,15 +331,19 @@ export function runStatisticalEvaluation(
     logLossEmp += -Math.log(Math.max(1e-6, pEmpActual));
 
     // Naive Standings Baseline (Picks better rank team, or home if tied)
-    const homeRank = m.fixture?.homeTeam?.leagueRank ?? 10;
-    const awayRank = m.fixture?.awayTeam?.leagueRank ?? 10;
-    const standingPick = homeRank < awayRank ? 'home' : awayRank < homeRank ? 'away' : 'home';
-    if (standingPick === actual) correctStandings++;
+    const homeRank = m.fixture?.homeTeam?.leagueRank ?? 0;
+    const awayRank = m.fixture?.awayTeam?.leagueRank ?? 0;
+    const hasRanks = homeRank > 0 && awayRank > 0;
+    const standingPick = hasRanks ? (homeRank < awayRank ? 'home' : awayRank < homeRank ? 'away' : 'home') : null;
+    if (hasRanks) {
+      standingsSupport++;
+      if (standingPick === actual) correctStandings++;
+    }
     // Standing naive probability distribution: 55% favourite, 25% draw, 20% underdog
-    const isHomeFav = homeRank <= awayRank;
-    const psH = isHomeFav ? 0.55 : 0.20;
-    const psD = 0.25;
-    const psA = isHomeFav ? 0.20 : 0.55;
+    const isHomeFav = hasRanks ? homeRank <= awayRank : true;
+    const psH = hasRanks ? (isHomeFav ? 0.55 : 0.20) : 1 / 3;
+    const psD = 1 / 3;
+    const psA = hasRanks ? (isHomeFav ? 0.20 : 0.55) : 1 / 3;
     brierStandings += calculateMatchBrier(psH, psD, psA, actual);
     rpsStandings += calculateMatchRPS(psH, psD, psA, actual);
     const pStandActual = actual === 'home' ? psH : actual === 'draw' ? psD : psA;
@@ -520,7 +531,7 @@ export function runStatisticalEvaluation(
       },
       naiveStandings: {
         name: 'League Table Rank Heuristic',
-        accuracy: Number(((correctStandings / total) * 100).toFixed(1)),
+        accuracy: standingsSupport > 0 ? Number(((correctStandings / standingsSupport) * 100).toFixed(1)) : 0,
         meanRPS: Number(meanRPSStandings.toFixed(4)),
         meanBrierScore: Number(meanBrierStandings.toFixed(4)),
         meanLogLoss: Number(meanLogLossStandings.toFixed(4)),
