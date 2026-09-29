@@ -1,6 +1,6 @@
 /**
- * Verified Official Standings & Market Value Patch Table
- * Cross-referenced directly against official SofaScore / ESPN tables to prevent discrepancies.
+ * Bundled reference team snapshot.
+ * Historical/reference data only; not a current official standings feed.
  */
 
 export interface VerifiedTeamData {
@@ -10,6 +10,14 @@ export interface VerifiedTeamData {
   formScores?: string[];
   squadValueEur?: number; // in millions e.g. 109 = €109M
 }
+
+export const VERIFIED_TEAM_STANDINGS_METADATA = {
+  status: 'REFERENCE_SNAPSHOT' as const,
+  source: 'Bundled reference data',
+  asOfDate: null as string | null,
+  season: null as string | null,
+  currentOfficiallyVerified: false,
+};
 
 export const VERIFIED_TEAM_STANDINGS: Record<string, VerifiedTeamData> = {
   // Brazilian Serie A
