@@ -77,11 +77,12 @@ export interface OptimalValueReport {
     marketOddsAlpha: number; // 0-100
     formStability: number; // 0-100
   };
-  backtestSimulation: {
-    totalSimulatedRounds: number;
+  historicalCohort: {
+    sampleSize: number;
     historicalHitRate: number | null;
-    simulatedROI: number; // percentage ROI e.g. +34.2%
-    maxDrawdownPct: number;
+    observedHitRate: number | null;
+    simulatedROI: null;
+    maxDrawdownPct: null;
   };
 }
 
@@ -104,8 +105,8 @@ export interface UserCoachingAudit {
 }
 
 /**
- * Computes the best possible risk-adjusted maximum yield accumulator selections for the day.
- * Avoids reckless long-shots by targeting Expected Value (EV > 0) and high confidence (>= 68%).
+ * Computes evidence-gated accumulator candidates for the day.
+ * Candidates require non-negative model EV and a sufficiently sized historical outcome cohort.
  */
 export function generateSmartAccumulator(
   fixtures: MatchFixture[],
@@ -526,10 +527,10 @@ export function generateOptimalValueAccumulatorReport(
     : 0;
 
   const modeTitle = strategyMode === 'conservative'
-    ? 'Conservative Historical Anchor Bundle'
+    ? 'Conservative Evidence-Gated Bundle'
     : strategyMode === 'high_alpha'
-    ? 'High-Alpha Asymmetric EV Bundle'
-    : 'Optimal Value Mathematical Bundle';
+    ? 'High-Alpha Evidence-Gated Bundle'
+    : 'Balanced Positive-EV Bundle';
 
   const executiveSummary = selectedLegs.length > 0
     ? `The AI Optimal Value Engine analyzed today's fixture matrix and identified a ${selectedLegs.length}-leg accumulator bundle exhibiting Expected Value (${expectedValueAlpha >= 0 ? '+' : ''}${expectedValueAlpha}% EV Alpha). Combined odds: ${combinedOdds.toFixed(2)}x with a model confidence score of ${aiConfidenceRating}%.`
@@ -567,11 +568,11 @@ export function generateOptimalValueAccumulatorReport(
       marketOddsAlpha,
       formStability,
     },
-    backtestSimulation: {
-      totalSimulatedRounds: 0,
-      historicalHitRate: avgHistWinRate === null ? null : Number(avgHistWinRate.toFixed(1)),
-      simulatedROI: 0,
-      maxDrawdownPct: 0,
+    historicalCohort: {
+      sampleSize: selectedLegs.reduce((acc, l) => acc + l.historicalSampleSize, 0),
+      observedHitRate: avgHistWinRate === null ? null : Number(avgHistWinRate.toFixed(1)),
+      simulatedROI: null,
+      maxDrawdownPct: null,
     },
   };
 }
