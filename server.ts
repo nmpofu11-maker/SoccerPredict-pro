@@ -912,27 +912,27 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
       return { success: true, message: msg, count: 0 };
     }
 
-    // Group all past fixtures by kickoff date
+    const settlementLookbackDays = Math.max(7, Number(process.env.SETTLEMENT_LOOKBACK_DAYS || 30));
+    const cutoffMs = now - settlementLookbackDays * 24 * 60 * 60 * 1000;
+    const eligiblePastFixtures = pastFixtures.filter((f: any) => {
+      const kickoffMs = new Date(f.kickoffTime).getTime();
+      return Number.isFinite(kickoffMs) && kickoffMs >= cutoffMs;
+    });
+
+    // Group eligible past fixtures by kickoff date.
     const dateGroups = new Map<string, any[]>();
-    for (const f of pastFixtures) {
+    for (const f of eligiblePastFixtures) {
       const d = (f.kickoffTime || '').slice(0, 10);
       if (!d) continue;
       if (!dateGroups.has(d)) dateGroups.set(d, []);
       dateGroups.get(d)!.push(f);
     }
 
-    const settlementLookbackDays = Math.max(7, Number(process.env.SETTLEMENT_LOOKBACK_DAYS || 30));
-    const cutoffMs = now - settlementLookbackDays * 24 * 60 * 60 * 1000;
     const allowedDates = new Set(
       Array.from({ length: settlementLookbackDays + 1 }, (_, i) =>
         new Date(now - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
       )
     );
-    const eligiblePastFixtures = pastFixtures.filter((f: any) => {
-      const kickoffMs = new Date(f.kickoffTime).getTime();
-      return Number.isFinite(kickoffMs) && kickoffMs >= cutoffMs;
-    });
-
     let settledCount = 0;
     const newEntries: SettledResultEntry[] = [];
 
