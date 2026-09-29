@@ -398,19 +398,7 @@ export function runAggressiveSuperLearningProtocol(
   };
 }
 
-/**
- * Loads Super-Learning Protocol Telemetry
- */
-export function loadSuperLearningTelemetry(): SuperLearningTelemetry {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_SUPER_TELEMETRY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') return parsed;
-    }
-  } catch {
-    // ignore
-  }
+function emptySuperLearningTelemetry(): SuperLearningTelemetry {
   return {
     protocolActive: false,
     totalSuperEpochs: 0,
@@ -422,6 +410,41 @@ export function loadSuperLearningTelemetry(): SuperLearningTelemetry {
     lastOptimizationTimestamp: null,
     activeOptimizers: [],
   };
+}
+
+/**
+ * Loads Super-Learning Protocol Telemetry.
+ * Legacy telemetry is discarded because its provenance cannot be demonstrated.
+ */
+export function loadSuperLearningTelemetry(): SuperLearningTelemetry {
+  const empty = emptySuperLearningTelemetry();
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SUPER_TELEMETRY);
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return empty;
+
+    if (Object.prototype.hasOwnProperty.call(parsed, 'unboundedLearningRate')) {
+      localStorage.removeItem(STORAGE_KEY_SUPER_TELEMETRY);
+      return empty;
+    }
+
+    return {
+      protocolActive: parsed.protocolActive === true,
+      totalSuperEpochs: Number.isFinite(parsed.totalSuperEpochs) ? Math.max(0, Math.floor(parsed.totalSuperEpochs)) : 0,
+      learningRate: Number.isFinite(parsed.learningRate) ? parsed.learningRate : null,
+      lossVelocity: Number.isFinite(parsed.lossVelocity) ? parsed.lossVelocity : null,
+      convergencesAchieved: Number.isFinite(parsed.convergencesAchieved) ? Math.max(0, Math.floor(parsed.convergencesAchieved)) : 0,
+      bestBrierLoss: Number.isFinite(parsed.bestBrierLoss) ? parsed.bestBrierLoss : null,
+      peakAccuracyPct: Number.isFinite(parsed.peakAccuracyPct) ? parsed.peakAccuracyPct : null,
+      lastOptimizationTimestamp: typeof parsed.lastOptimizationTimestamp === 'string' && parsed.lastOptimizationTimestamp ? parsed.lastOptimizationTimestamp : null,
+      activeOptimizers: Array.isArray(parsed.activeOptimizers)
+        ? parsed.activeOptimizers.filter((v: unknown): v is string => typeof v === 'string')
+        : [],
+    };
+  } catch {
+    return empty;
+  }
 }
 
 /**
