@@ -86,25 +86,9 @@ export function generateDualQuadGroupsForMatchDay(
 
   const candidateFixtures = dayFixtures.length >= 8 ? dayFixtures : validFixtures;
 
-  // Daily rotation seed to ensure fresh automatic population every single day
-  const dayEpochIndex = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
-
-  const scored = candidateFixtures.map((fix, idx) => {
-    const pred = predictions[fix.id] || {
-      matchId: fix.id,
-      homeWinPct: 45,
-      awayWinPct: 35,
-      drawPct: 20,
-      predictedWinner: 'home',
-      confidenceScore: 50,
-      appliedRules: [],
-      rawPoints: { home: 1, away: 1, draw: 1 },
-      finalPoints: { home: 1, away: 1, draw: 1 },
-      isFavouriteMatch: false,
-      favouriteTeams: [],
-      manualOverride: 'none',
-      isVolatilityCompressed: false,
-    };
+  const scored = candidateFixtures.map((fix) => {
+    const pred = predictions[fix.id];
+    if (!pred) return null;
 
     const maxProb = Math.max(pred.homeWinPct, pred.awayWinPct, pred.drawPct);
     const selection =
@@ -123,19 +107,17 @@ export function generateDualQuadGroupsForMatchDay(
 
     const isFav = isFavouriteTeam(fix.homeTeam.name) || isFavouriteTeam(fix.awayTeam.name);
 
-    // Apply daily pseudo-random rotation offset so selections refresh daily
-    const rotationWeight = ((idx * 37 + dayEpochIndex * 13) % 15) / 100;
-    const adjustedProb = Math.min(99, maxProb + rotationWeight);
-
     return {
       fixture: fix,
       prediction: pred,
-      maxProb: adjustedProb,
+      maxProb,
       selection,
       recommendedTeam,
       isFavourite: isFav,
     };
   });
+
+  }).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
 
   scored.sort((a, b) => b.maxProb - a.maxProb);
 
@@ -163,7 +145,7 @@ export function generateDualQuadGroupsForMatchDay(
         globalUsedTeams.add(aTeam);
 
         targetList.push({
-          id: `${cand.fixture.id}-${groupKey}-${dayEpochIndex}`,
+          id: `${cand.fixture.id}-${groupKey}`,
           groupName,
           groupKey,
           fixture: cand.fixture,
@@ -274,19 +256,19 @@ export function loadQuadGroupTrackerStats(): QuadGroupTrackerStats {
   }
 
   return {
-    totalSelections: 96,
-    totalWins: 82,
-    totalLosses: 14,
-    overallWinRatePct: 85.4,
+    totalSelections: 0,
+    totalWins: 0,
+    totalLosses: 0,
+    overallWinRatePct: 0,
     groupBreakdown: {
-      A: { wins: 11, total: 12, winRate: 91.7 },
-      B: { wins: 10, total: 12, winRate: 83.3 },
-      C: { wins: 10, total: 12, winRate: 83.3 },
-      D: { wins: 10, total: 12, winRate: 83.3 },
-      E: { wins: 10, total: 12, winRate: 83.3 },
-      F: { wins: 10, total: 12, winRate: 83.3 },
-      G: { wins: 11, total: 12, winRate: 91.7 },
-      H: { wins: 10, total: 12, winRate: 83.3 },
+      A: { wins: 0, total: 0, winRate: 0 },
+      B: { wins: 0, total: 0, winRate: 0 },
+      C: { wins: 0, total: 0, winRate: 0 },
+      D: { wins: 0, total: 0, winRate: 0 },
+      E: { wins: 0, total: 0, winRate: 0 },
+      F: { wins: 0, total: 0, winRate: 0 },
+      G: { wins: 0, total: 0, winRate: 0 },
+      H: { wins: 0, total: 0, winRate: 0 },
     },
   };
 }
@@ -309,22 +291,7 @@ export function loadTeamDisappointmentLedger(): TeamDisappointmentRecord[] {
     console.warn('Failed to load team disappointment ledger', e);
   }
 
-  return [
-    {
-      teamName: 'Colchester United',
-      disappointmentCount: 3,
-      lastFailedDate: '2026-09-08',
-      volatilityIndex: 82.5,
-      aiWarningNotes: ['Concedes late equalizers in 70%+ of away fixtures', 'High defensive error frequency under pressing'],
-    },
-    {
-      teamName: 'Stenungsunds IF',
-      disappointmentCount: 2,
-      lastFailedDate: '2026-09-06',
-      volatilityIndex: 78.0,
-      aiWarningNotes: ['Unpredictable goal conversion rate', 'Underperforms against low-block defenses'],
-    },
-  ];
+  return [];
 }
 
 export function saveTeamDisappointmentLedger(ledger: TeamDisappointmentRecord[]): void {
