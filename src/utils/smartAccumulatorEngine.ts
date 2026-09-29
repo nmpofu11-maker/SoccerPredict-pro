@@ -1,7 +1,7 @@
 import { MatchFixture, PredictionResult, HistoricalMatchResult } from '../types/soccer';
 import { evaluateFixturePrediction } from '../engine/rulesEngine';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
-import { getTodayDateString } from './dateFilterUtils';
+import { getTodayDateString, getFixtureLocalDateString } from './dateFilterUtils';
 
 export interface AccumulatorLeg {
   fixtureId: string;
@@ -22,8 +22,8 @@ export interface SmartAccumulatorResult {
   legs: AccumulatorLeg[];
   combinedOdds: number | null;
   averageHeuristicScore: number | null;
-  expectedYieldScore: number; // 0 - 100 rating
-  riskLevel: 'Conservative Value' | 'Balanced Sweet-Spot' | 'High Yield Aggressive';
+  expectedYieldScore: number | null; // derived only when a qualifying bundle exists
+  riskLevel: 'Conservative Value' | 'Balanced Sweet-Spot' | 'High Yield Aggressive' | 'No Qualifying Bundle';
   strategicAdvice: string;
 }
 
@@ -61,7 +61,7 @@ export interface OptimalValueReport {
   heuristicEvidenceScore: number; // 0 - 100
   evidenceLabel: 'High Evidence' | 'Moderate Evidence' | 'Limited Evidence' | 'Insufficient Evidence';
   strategyMode: 'balanced' | 'conservative' | 'high_alpha';
-  combinedOdds: number;
+  combinedOdds: number | null;
   expectedValueAlpha: number | null; // percentage e.g. +24.8%
   historicalValidationRate: number | null; // null when no qualifying historical cohort exists
   bundleWinProbability: number | null; // joint probability percentage
@@ -116,10 +116,10 @@ export function generateSmartAccumulator(
   if (!Array.isArray(fixtures)) {
     return {
       legs: [],
-      combinedOdds: 1.0,
+      combinedOdds: null,
       averageHeuristicScore: null,
-      expectedYieldScore: 50,
-      riskLevel: 'Conservative Value',
+      expectedYieldScore: null,
+      riskLevel: 'No Qualifying Bundle',
       strategicAdvice: 'No valid fixtures available for accumulator generation.',
     };
   }
@@ -127,7 +127,8 @@ export function generateSmartAccumulator(
   const todayIso = getTodayDateString();
   let activeFixtures = (fixtures || []).filter((f) => {
     if (!f || !f.id || !f.homeTeam || !f.awayTeam || !f.kickoffTime) return false;
-    return f.kickoffTime.slice(0, 10) >= todayIso;
+    const localDate = getFixtureLocalDateString(f.kickoffTime);
+    return localDate !== '' && localDate >= todayIso;
   });
   if (activeFixtures.length < 3) {
     activeFixtures = (fixtures || []).filter((f) => Boolean(f && f.id && f.homeTeam && f.awayTeam));
@@ -191,25 +192,26 @@ export function generateSmartAccumulator(
   legs.sort((a, b) => b.confidenceScore * b.expectedValue - a.confidenceScore * a.expectedValue);
   const selectedLegs = legs.slice(0, 4);
 
-  const combinedOdds = selectedLegs.reduce((acc, l) => acc * Math.max(1.05, l.odds), 1.0);
+  const combinedOdds = selectedLegs.length > 0 ? selectedLegs.reduce((acc, l) => acc * Math.max(1.05, l.odds), 1.0) : null;
   const avgConf = selectedLegs.length > 0 ? selectedLegs.reduce((acc, l) => acc + l.confidenceScore, 0) / selectedLegs.length : null;
 
   let riskLevel: 'Conservative Value' | 'Balanced Sweet-Spot' | 'High Yield Aggressive' = 'Balanced Sweet-Spot';
-  if (combinedOdds < 4.0) riskLevel = 'Conservative Value';
+  if (combinedOdds === null) riskLevel = 'No Qualifying Bundle';
+  else if (combinedOdds < 4.0) riskLevel = 'Conservative Value';
   else if (combinedOdds > 15.0) riskLevel = 'High Yield Aggressive';
 
-  const expectedYieldScore = selectedLegs.length > 0
-    ? Math.min(98, Math.max(0, Math.round(avgConf * 0.9 + (combinedOdds > 8 ? 15 : 5))))
-    : 0;
+  const expectedYieldScore = selectedLegs.length > 0 && combinedOdds !== null
+    ? Math.min(98, Math.max(0, Math.round((avgConf as number) * 0.9 + (combinedOdds > 8 ? 15 : 5))))
+    : null;
 
-  let strategicAdvice = `AI has selected ${selectedLegs.length} high-certainty sweet-spot legs with positive Expected Value. This balances maximum yield without taking reckless long-shot risks.`;
+  let strategicAdvice = `The model identified ${selectedLegs.length} qualifying evidence-gated legs with non-negative Expected Value. This is a mathematical screening result, not a validated guarantee.`;
   if (selectedLegs.length < 3) {
-    strategicAdvice = `Limited high-confidence fixtures detected today. Consider playing single bets or waiting for full slate availability.`;
+    strategicAdvice = `Fewer than three qualifying evidence-gated fixtures were identified. Historical evidence, current odds, and team data should be reviewed before use.`;
   }
 
   return {
     legs: selectedLegs,
-    combinedOdds: Number(combinedOdds.toFixed(2)),
+    combinedOdds: combinedOdds === null ? null : Number(combinedOdds.toFixed(2)),
     averageHeuristicScore: avgConf === null ? null : Math.round(avgConf),
     expectedYieldScore,
     riskLevel,
