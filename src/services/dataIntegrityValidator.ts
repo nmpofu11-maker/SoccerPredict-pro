@@ -174,10 +174,10 @@ function sanitizeTeamStats(
       // Unknown standings must remain unknown; do not derive a league rank or points
       // from a synthetic baseline because those values feed the prediction model.
       if (!Number.isFinite(cleanTeam.leagueRank) || cleanTeam.leagueRank < 1 || cleanTeam.leagueRank > 24) {
-        cleanTeam.leagueRank = 0;
+        cleanTeam.leagueRank = null;
       }
       if (!Number.isFinite(cleanTeam.points) || cleanTeam.points < 0) {
-        cleanTeam.points = 0;
+        cleanTeam.points = null;
       }
     }
   }
@@ -196,21 +196,19 @@ function sanitizeTeamStats(
     cleanTeam.formScores = [];
   }
 
-  // 3. Tactical possession is unavailable unless supplied by a trusted source.
-  // Keep a neutral value rather than deriving it from rank.
+  // 3. Tactical possession and shots remain unknown unless supplied by a trusted source.
   if (!Number.isFinite(cleanTeam.avgPossession) || cleanTeam.avgPossession < 0 || cleanTeam.avgPossession > 100) {
-    cleanTeam.avgPossession = 50;
+    cleanTeam.avgPossession = null;
   }
-
-  // 4. Shots on target are unavailable unless supplied by a trusted source.
-  // Keep a neutral league-average placeholder used only when the engine has no source value.
   if (!Number.isFinite(cleanTeam.avgShotsOnTarget) || cleanTeam.avgShotsOnTarget < 0 || cleanTeam.avgShotsOnTarget > 20) {
-    cleanTeam.avgShotsOnTarget = 4.5;
+    cleanTeam.avgShotsOnTarget = null;
   }
 
-  // 5. Behavioral flags alignment
-  cleanTeam.isHomeDominant = isHome && cleanTeam.leagueRank <= 6;
-  cleanTeam.hasTopTierAwayForm = !isHome && cleanTeam.leagueRank <= 5;
+  // 5. Behavioural flags are evidence fields; do not derive them from rank.
+  if (cleanTeam.leagueRank === null) {
+    cleanTeam.isHomeDominant = false;
+    cleanTeam.hasTopTierAwayForm = false;
+  }
 
   return { team: cleanTeam, matchedOfficialTable };
 }
@@ -256,8 +254,8 @@ export function verifyAndSanitizeFixture(
   });
 
   // Sanitize Home and Away stats
-  const homeResult = sanitizeTeamStats(rawHome, rawAway.leagueRank || 10, true, standingsMap, repairs);
-  const awayResult = sanitizeTeamStats(rawAway, rawHome.leagueRank || 8, false, standingsMap, repairs);
+  const homeResult = sanitizeTeamStats(rawHome, Number.isFinite(rawAway.leagueRank) ? (rawAway.leagueRank as number) : 0, true, standingsMap, repairs);
+  const awayResult = sanitizeTeamStats(rawAway, Number.isFinite(rawHome.leagueRank) ? (rawHome.leagueRank as number) : 0, false, standingsMap, repairs);
 
   let cleanHome = homeResult.team;
   let cleanAway = awayResult.team;
@@ -266,20 +264,10 @@ export function verifyAndSanitizeFixture(
   // In a single domestic competition, if team A has better rank than team B (e.g. 2nd vs 14th),
   // team A should not have lower points without an official point deduction.
   let passedMonotonicity = true;
-  if (cleanHome.leagueRank < cleanAway.leagueRank && cleanHome.points < cleanAway.points) {
+  if (Number.isFinite(cleanHome.leagueRank) && Number.isFinite(cleanAway.leagueRank) && Number.isFinite(cleanHome.points) && Number.isFinite(cleanAway.points) && cleanHome.leagueRank < cleanAway.leagueRank && cleanHome.points < cleanAway.points) {
     passedMonotonicity = false;
-    // Auto-heal inverted points if official standings are not locked
-    if (!homeResult.matchedOfficialTable && !awayResult.matchedOfficialTable) {
-      const repairedHomePts = cleanAway.points + Math.min(3, Math.max(1, cleanAway.leagueRank - cleanHome.leagueRank));
-      repairs.push({
-        field: `${cleanHome.name} vs ${cleanAway.name} (points inversion)`,
-        originalValue: `Home: ${cleanHome.points}pts (Rank #${cleanHome.leagueRank}) vs Away: ${cleanAway.points}pts (Rank #${cleanAway.leagueRank})`,
-        repairedValue: `Home: ${repairedHomePts}pts vs Away: ${cleanAway.points}pts`,
-        reason: 'Inverted standings detected; calibrated to preserve table monotonicity',
-      });
-      cleanHome.points = repairedHomePts;
-    }
-  } else if (cleanAway.leagueRank < cleanHome.leagueRank && cleanAway.points < cleanHome.points) {
+    // Do not infer points from rank ordering; retain the observed values and flag the inconsistency.
+  } else if (Number.isFinite(cleanHome.leagueRank) && Number.isFinite(cleanAway.leagueRank) && Number.isFinite(cleanHome.points) && Number.isFinite(cleanAway.points) && cleanAway.leagueRank < cleanHome.leagueRank && cleanAway.points < cleanHome.points) {
     passedMonotonicity = false;
     if (!homeResult.matchedOfficialTable && !awayResult.matchedOfficialTable) {
       const repairedAwayPts = cleanHome.points + Math.min(3, Math.max(1, cleanHome.leagueRank - cleanAway.leagueRank));
@@ -297,8 +285,8 @@ export function verifyAndSanitizeFixture(
     checkName: 'Standings Monotonicity Check',
     passed: passedMonotonicity,
     details: passedMonotonicity
-      ? `Points and rank distribution are mathematically monotonic (#${cleanHome.leagueRank} [${cleanHome.points}pts] vs #${cleanAway.leagueRank} [${cleanAway.points}pts])`
-      : `Inverted standings identified and automatically reconciled for AI calculations`,
+      ? `Points and rank are consistent for the observed values (${cleanHome.leagueRank ?? 'N/A'} vs ${cleanAway.leagueRank ?? 'N/A'})`
+      : `Observed standings contain an inversion; no synthetic correction was applied`,
     severity: 'warning',
   });
 
