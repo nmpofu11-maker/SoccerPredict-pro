@@ -182,8 +182,7 @@ export function evaluateHistoricalBacktest(
 }
 
 /**
- * Runs 1 training epoch across the historical results dataset using coordinate gradient descent.
- * Adjusts rule weights in the direction of minimizing Brier loss and maximizing outcome accuracy.
+ * Runs one calibration epoch on the chronological training window and reports performance on the unseen holdout.
  */
 export function trainSingleEpoch(
   currentWeights: EngineWeights,
@@ -268,7 +267,7 @@ export function trainSingleEpoch(
 }
 
 /**
- * Runs multiple epochs sequentially to converge on optimal weights
+ * Runs multiple calibration epochs on the chronological training window.
  */
 export function trainMultipleEpochs(
   startWeights: EngineWeights,
@@ -285,17 +284,22 @@ export function trainMultipleEpochs(
   lossHistory: number[];
 } {
   let currentWeights = { ...startWeights };
-  const initialEval = evaluateHistoricalBacktest(results, currentWeights, teamMatrices);
+  const { training, validation } = splitHistoricalResults(results);
+  const fitResults = training.length > 0 ? training : results;
+  const fitMatrices = teamMatrices || synthesizeTeamIntelligenceMatrices(fitResults, loadTeamIntelligenceMatrices());
+  const initialEval = evaluateOutOfSampleValidation(results, currentWeights);
   const lossHistory: number[] = [initialEval.brierLoss];
 
   for (let i = 0; i < epochs; i++) {
     const lr = Math.max(0.02, 0.06 * (1 - i / (epochs + 1)));
-    const epochResult = trainSingleEpoch(currentWeights, results, lr, teamMatrices);
+    const epochResult = trainSingleEpoch(currentWeights, fitResults, lr, fitMatrices);
     currentWeights = epochResult.updatedWeights;
     lossHistory.push(epochResult.newLoss);
   }
 
-  const finalEval = evaluateHistoricalBacktest(results, currentWeights, teamMatrices);
+  const finalEval = validation.length > 0
+    ? evaluateHistoricalBacktest(validation, currentWeights, fitMatrices)
+    : evaluateHistoricalBacktest(fitResults, currentWeights, fitMatrices);
 
   return {
     finalWeights: currentWeights,
@@ -309,12 +313,8 @@ export function trainMultipleEpochs(
 }
 
 /**
- * ============================================================================
- * AGGRESSIVE SUPER-LEARNING PROTOCOL: UNBOUNDED HYPER-OPTIMIZATION ENGINE
- * ============================================================================
- * Continuously learns and adapts with zero arbitrary constraints.
- * Runs multi-pass coordinate descent, momentum gradient optimization, and
- * dynamic club coefficient convergence until empirical global minima are reached.
+ * Chronological model calibration protocol.
+ * Parameters are fit on the training window and evaluated on an unseen holdout.
  */
 export function runAggressiveSuperLearningProtocol(
   startWeights: EngineWeights,
@@ -340,7 +340,9 @@ export function runAggressiveSuperLearningProtocol(
   let matrices = synthesizeTeamIntelligenceMatrices(fitResults, loadTeamIntelligenceMatrices());
   saveTeamIntelligenceMatrices(matrices);
 
-  const initialEval = evaluateHistoricalBacktest(results, currentWeights, matrices);
+  const initialEval = validation.length > 0
+    ? evaluateHistoricalBacktest(validation, currentWeights, matrices)
+    : evaluateHistoricalBacktest(fitResults, currentWeights, matrices);
   const lossHistory: number[] = [initialEval.brierLoss];
   let convergencesCount = 0;
   let bestLoss = initialEval.brierLoss;
@@ -429,13 +431,22 @@ export function updateSuperLearningTelemetry(params: {
   peakAccuracyPct?: number;
 }): SuperLearningTelemetry {
   const current = loadSuperLearningTelemetry();
+  const hasPriorBrier = current.totalSuperEpochs > 0 && Number.isFinite(current.bestBrierLoss) && current.bestBrierLoss > 0;
+  const hasPriorAccuracy = current.totalSuperEpochs > 0 && Number.isFinite(current.peakAccuracyPct) && current.peakAccuracyPct > 0;
+  const candidateBrier = params.bestBrierLoss;
+  const candidateAccuracy = params.peakAccuracyPct;
+
   const updated: SuperLearningTelemetry = {
     ...current,
     protocolActive: true,
     totalSuperEpochs: current.totalSuperEpochs + (params.totalSuperEpochsIncrement || 0),
     convergencesAchieved: current.convergencesAchieved + (params.convergencesIncrement || 0),
-    bestBrierLoss: Math.min(current.bestBrierLoss, params.bestBrierLoss ?? current.bestBrierLoss),
-    peakAccuracyPct: Math.max(current.peakAccuracyPct, params.peakAccuracyPct ?? current.peakAccuracyPct),
+    bestBrierLoss: Number.isFinite(candidateBrier)
+      ? (hasPriorBrier ? Math.min(current.bestBrierLoss, candidateBrier as number) : (candidateBrier as number))
+      : current.bestBrierLoss,
+    peakAccuracyPct: Number.isFinite(candidateAccuracy)
+      ? (hasPriorAccuracy ? Math.max(current.peakAccuracyPct, candidateAccuracy as number) : (candidateAccuracy as number))
+      : current.peakAccuracyPct,
     lastOptimizationTimestamp: new Date().toISOString(),
   };
 
@@ -474,7 +485,7 @@ export function getInitialLearningState(): LearningModelState {
         'Fatigue parameters are calibrated from observed training-window outcomes when available.',
       ],
       ruleEfficiency: [
-        { rule: 'Rule 1: Motivation Stakes', impact: '+2.5 pts boost', status: 'optimal' },
+        { rule: 'Rule 1: Motivation Stakes', impact: '+2.5 pts boost', status: 'recalibrating' },
         { rule: 'Rule 3: Home Dominance', impact: '+15% home multiplier', status: 'optimal' },
         { rule: 'Rule 5: Shot/Possession', impact: '+3.5 pts modifier', status: 'optimal' },
         { rule: 'Rule 7: Volatility Cap', impact: '0.68 compression', status: 'optimal' },
