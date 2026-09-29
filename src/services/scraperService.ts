@@ -294,7 +294,7 @@ const STORAGE_KEYS = {
 export const DEFAULT_AUTO_SCRAPE_CONFIG: AutoScrapeConfig = {
   enabled: true,
   intervalSeconds: 30, // 30 seconds default automatic cadence
-  lastScrapedAt: new Date().toISOString(),
+  lastScrapedAt: '',
   totalScrapesCount: 0,
 };
 
