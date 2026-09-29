@@ -177,6 +177,8 @@ export function runStatisticalEvaluation(
     else if (m.actualOutcome === 'away') countAway++;
   }
 
+  let empiricalCorrect = 0;
+
   // Calibration Bins: 5 standard decile/quintile ranges
   const rawBins: Array<{ min: number; max: number; range: string; count: number; correct: number; sumProb: number }> = [
     { range: '25% - 40%', min: 0.25, max: 0.40, count: 0, correct: 0, sumProb: 0 },
