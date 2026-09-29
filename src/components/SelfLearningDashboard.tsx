@@ -23,6 +23,7 @@ import { DEFAULT_ENGINE_WEIGHTS } from '../engine/rulesEngine';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
 import { getLeagueMeta } from '../constants/leagues';
 import { requestAITacticalSynthesis } from '../services/aiLearningService';
+import { getAdminApiHeaders } from '../services/adminAuthService';
 import {
   Brain,
   Zap,
@@ -88,7 +89,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
       const payload = generateAggressiveSuperLearningPayload(teamMatrices);
       const res = await fetch('/api/ai/super-learning/sync', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAdminApiHeaders() },
         body: JSON.stringify(payload),
       });
       if (res.ok) {
