@@ -2012,6 +2012,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
   // Upload fixture PDF — extracts text, then runs it through the same real
   // Hollywoodbets-format parser and manifest pipeline as the paste-text flow.
   app.post('/api/admin/upload-fixture-file', requireAdmin, upload.single('file'), async (req, res) => {
+    const uploadedPath = req.file?.path;
     try {
       if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
       const text = await extractTextFromPDF(req.file.path);
@@ -2026,6 +2027,10 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
     } catch (error) {
       console.error('Error uploading fixture file:', error);
       res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to upload fixture file' });
+    } finally {
+      if (uploadedPath) {
+        try { fs.unlinkSync(uploadedPath); } catch {}
+      }
     }
   });
 
