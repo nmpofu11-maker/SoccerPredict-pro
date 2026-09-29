@@ -308,7 +308,6 @@ export function runStatisticalEvaluation(
   let logLossEmp = 0;
   let correctStandings = 0;
   let standingsSupport = 0;
-  let empiricalCorrect = 0;
   let rpsStandings = 0;
   let brierStandings = 0;
   let logLossStandings = 0;
