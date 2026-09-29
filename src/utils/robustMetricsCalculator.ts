@@ -101,11 +101,13 @@ export function evaluateOpponentSchedule(
 
   const avgOpponentRank = matchesCounted > 0
     ? Math.round((totalOpponentRank / matchesCounted) * 10) / 10
-    : DEFAULT_LEAGUE_MEDIAN_RANK;
+    : null;
 
   // Positive delta = opponents ranked lower down the table (e.g. #16 vs team #3 = +13 -> easier)
   // Negative delta = opponents ranked higher up the table (e.g. #2 vs team #10 = -8 -> tougher)
-  const rankDelta = Math.round((avgOpponentRank - teamRank) * 10) / 10;
+  const rankDelta = avgOpponentRank !== null && teamRank !== null
+    ? Math.round((avgOpponentRank - teamRank) * 10) / 10
+    : null;
 
   let scheduleType: 'soft_schedule' | 'tough_schedule' | 'neutral' = 'neutral';
   let scheduleDescription = '';
@@ -118,7 +120,7 @@ export function evaluateOpponentSchedule(
     scheduleDescription = `Tested against top-table opposition (avg opponent rank #${avgOpponentRank}).`;
   } else {
     scheduleType = 'neutral';
-    scheduleDescription = `Balanced schedule against peer-ranked clubs (avg opponent #${avgOpponentRank}).`;
+    scheduleDescription = avgOpponentRank !== null ? `Balanced schedule against peer-ranked clubs (avg opponent #${avgOpponentRank}).` : 'Insufficient opponent-rank evidence for schedule classification';
   }
 
   return {
