@@ -397,12 +397,12 @@ export function verifyAndSanitizeFixture(
       ? 'VERIFIED_AUTHENTIC'
       : repairs.length > 0
       ? 'AUTO_REPAIRED'
-      : 'VERIFIED_AUTHENTIC';
+      : 'UNVERIFIED';
 
   const stamp: MatchAuthenticityStamp = {
     status,
     authenticityScore,
-    isAuthentic: true,
+    isAuthentic: status === 'VERIFIED_AUTHENTIC',
     verifiedAt: new Date().toISOString(),
     source: bothTeamsCrossReferenced ? 'OFFICIAL_ESPN_STANDINGS' : 'CANONICAL_AUDITED_DATASET',
     checks,
