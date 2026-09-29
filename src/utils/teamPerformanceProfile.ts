@@ -1291,21 +1291,8 @@ export function resolveTeamPerformanceProfile(
   if (totalSquadValueEur === undefined) {
     if (profile) {
       totalSquadValueEur = profile.totalSquadValueEur;
-    } else if (isWomen) {
-      // Realistic top-tier women's team baseline (€0.5M - €2.5M)
-      const baseValuation = 2.0;
-      const rankDecay = Math.max(0.25, 1 - (currentRank - 1) * 0.06);
-      totalSquadValueEur = Math.round(baseValuation * rankDecay * 100) / 100;
-    } else if (isYouthOrReserve) {
-      // Realistic youth / reserve squad baseline (€0.8M - €4.0M)
-      const baseValuation = 3.5;
-      const rankDecay = Math.max(0.25, 1 - (currentRank - 1) * 0.05);
-      totalSquadValueEur = Math.round(baseValuation * rankDecay * 10) / 10;
-    } else if (isAmateurOrLowerTier) {
-      // Realistic regional / amateur baseline (€0.2M - €1.2M)
-      const baseValuation = 0.9;
-      const rankDecay = Math.max(0.20, 1 - (currentRank - 1) * 0.055);
-      totalSquadValueEur = Math.round(baseValuation * rankDecay * 100) / 100;
+    } else if (isWomen || isYouthOrReserve || isAmateurOrLowerTier) {
+      totalSquadValueEur = undefined;
     } else {
       // Senior professional leagues
       const isEnglishPremierLeague =
@@ -1331,20 +1318,9 @@ export function resolveTeamPerformanceProfile(
         league &&
         /championship|serie b|2\. bundesliga|ligue 2|eerste|segunda|challenge league/i.test(league);
 
-      let baseValuation = 95;
-      if (isTop5League) {
-        baseValuation = 450;
-      } else if (isAfricanOrRegionalLeague) {
-        baseValuation = 3.5;
-      } else if (isMinorTier) {
-        baseValuation = 6.0;
-      } else if (isSecondTier) {
-        baseValuation = 35;
-      }
+      // No observed market-value source was supplied. Leave value unknown.
 
-      const rankDecay = Math.max(0.18, 1 - (currentRank - 1) * 0.045);
-      const calculatedVal = baseValuation * rankDecay;
-      totalSquadValueEur = calculatedVal >= 10 ? Math.round(calculatedVal) : Math.round(calculatedVal * 100) / 100;
+      totalSquadValueEur = undefined;
     }
   }
 
@@ -1354,11 +1330,7 @@ export function resolveTeamPerformanceProfile(
     if (profile) {
       avgMatchRating = profile.avgMatchRating;
     } else {
-      const posContribution = (currentPossession / 100) * 0.45;
-      const sotContribution = Math.min(0.40, (currentSot / 10) * 0.45);
-      const rankContribution = Math.max(0, (20 - currentRank) * 0.015);
-      const calculated = 6.45 + posContribution + sotContribution + rankContribution;
-      avgMatchRating = Math.round(Math.min(7.35, Math.max(6.45, calculated)) * 100) / 100;
+      avgMatchRating = undefined;
     }
   }
 
