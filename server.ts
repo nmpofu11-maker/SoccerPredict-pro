@@ -654,8 +654,8 @@ function mapSportApiAiToInternalFixture(f: any): any {
     automationSource: 'SPORTAPI_AI',
     kickoffTime,
     league: leagueName,
-    venue: f.venue?.name || f.venue || `${homeName} Stadium`,
-    round: f.stage || f.league?.round || f.round || 'Regular Season',
+    venue: f.venue?.name || f.venue || 'Unknown Venue',
+    round: f.stage || f.league?.round || f.round || 'Unknown Round',
     isHighStakes: false,
     motivation: 'regular',
     odds: (Number.isFinite(homeOdds) && Number.isFinite(awayOdds) && homeOdds > 1.05 && awayOdds > 1.05)
@@ -670,11 +670,11 @@ function mapSportApiAiToInternalFixture(f: any): any {
       id: `sportapiai_team_${f.home_id || f.home_team?.id || f.homeTeam?.id || normalizeTeamName(homeName)}`,
       name: homeName,
       shortName: (f.home_short || homeName).slice(0, 3).toUpperCase(),
-      leagueRank: 0,
-      points: 0,
+      leagueRank: null,
+      points: null,
       form: [],
-      avgPossession: 50,
-      avgShotsOnTarget: 4.5,
+      avgPossession: null,
+      avgShotsOnTarget: null,
       isHomeDominant: false,
       badgeColor: '#2563eb',
     },
@@ -691,13 +691,7 @@ function mapSportApiAiToInternalFixture(f: any): any {
       badgeColor: '#dc2626',
     },
     h2h: { homeWins: 0, draws: 0, awayWins: 0, totalLast5: 0, scoresLast5: [] },
-    authenticity: {
-      status: 'UNVERIFIED',
-      authenticityScore: 30,
-      isAuthentic: false,
-      verifiedAt: new Date().toISOString(),
-      source: 'UNVERIFIED_PROVIDER_INGESTION',
-    },
+
   };
 }
 
@@ -720,8 +714,8 @@ function mapTheRundownToInternalFixture(ev: any): any {
     automationSource: 'THERUNDOWN',
     kickoffTime,
     league: leagueName,
-    venue: `${homeName} Arena`,
-    round: 'Regular Season',
+    venue: 'Unknown Venue',
+    round: 'Unknown Round',
     isHighStakes: false,
     motivation: 'regular',
     homeTeam: {
@@ -1175,8 +1169,7 @@ async function startServer() {
       state.weights = sanitizeServerWeights(state.weights);
       state.baselineWeights = sanitizeServerWeights(state.baselineWeights);
       if (!allowTraining) state.isAutoLearningEnabled = false;
-      if (!Number.isFinite(state.accuracyPct)) state.accuracyPct = 76.7;
-      if (!Number.isFinite(state.brierLoss)) state.brierLoss = 0.201;
+      // Never synthesize performance metrics during persistence. Invalid metrics remain unavailable.
 
       // Only snapshot when the write actually changes something material,
       // so routine identical saves don't flood data/backups.
