@@ -254,11 +254,11 @@ export function computeScheduleAdjustedMetrics(
       anomalousMatches: [],
       outlierNotes: [],
       schedule: {
-        avgOpponentRank: 10,
+        avgOpponentRank: null,
         matchesEvaluated: 0,
-        rankDelta: 0,
+        rankDelta: null,
         scheduleType: 'neutral',
-        scheduleDescription: 'Standard schedule',
+        scheduleDescription: 'Insufficient schedule evidence',
       },
     };
   }
