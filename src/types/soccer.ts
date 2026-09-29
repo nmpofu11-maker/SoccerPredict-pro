@@ -227,15 +227,15 @@ export interface EnginePerformanceSummary {
   yesterdayTotal: number;
   yesterdayCorrect: number;
   yesterdayWrong: number;
-  yesterdayAccuracyPct: number;
+  yesterdayAccuracyPct: number | null;
   allTimeTotal: number;
   allTimeCorrect: number;
   allTimeWrong: number;
-  allTimeAccuracyPct: number;
-  homeWinAccuracyPct: number;
-  awayWinAccuracyPct: number;
-  drawAccuracyPct: number;
-  brierLoss: number;
+  allTimeAccuracyPct: number | null;
+  homeWinAccuracyPct: number | null;
+  awayWinAccuracyPct: number | null;
+  drawAccuracyPct: number | null;
+  brierLoss: number | null;
 }
 
 export type DataAuthenticityStatus =
