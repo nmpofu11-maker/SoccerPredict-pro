@@ -23,6 +23,10 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
 
   const homeShort = homeTeam.shortName || homeTeam.name || 'Home';
   const awayShort = awayTeam.shortName || awayTeam.name || 'Away';
+  const lastSeasonRankHome = homeTeam.lastSeasonRank;
+  const lastSeasonRankAway = awayTeam.lastSeasonRank;
+  const lastSeasonStandingHome = homeTeam.lastSeasonStanding ?? 'Unknown';
+  const lastSeasonStandingAway = awayTeam.lastSeasonStanding ?? 'Unknown';
 
   const homeSquadVal = Number.isFinite(homeTeam.totalSquadValueEur) ? homeTeam.totalSquadValueEur : null;
   const awaySquadVal = Number.isFinite(awayTeam.totalSquadValueEur) ? awayTeam.totalSquadValueEur : null;
@@ -401,13 +405,13 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
           <Award className="w-3 h-3 text-sky-400 flex-shrink-0" />
           <span className="text-slate-400 text-[9px] uppercase tracking-wider font-semibold">Last Season:</span>
           <span className="text-emerald-300 font-bold">
-            {homeShort} (#{lastSeasonRankHome} - {lastSeasonStandingHome})
+            {homeShort} (#{lastSeasonRankHome ?? 'N/A'} - {lastSeasonStandingHome})
           </span>
         </div>
         <div className="text-slate-500 text-[9px] font-bold">vs</div>
         <div className="flex items-center gap-1.5">
           <span className="text-rose-300 font-bold">
-            {awayShort} (#{lastSeasonRankAway} - {lastSeasonStandingAway})
+            {awayShort} (#{lastSeasonRankAway ?? 'N/A'} - {lastSeasonStandingAway})
           </span>
         </div>
       </div>
