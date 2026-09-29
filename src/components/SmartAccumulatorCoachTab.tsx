@@ -132,7 +132,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
 
         const valueMarginPct = Number((((outcome.odds - fairOdds) / fairOdds) * 100).toFixed(1));
 
-        // Balanced composite score: primary weight on win probability, capped EV alpha, and model confidence
+        // Balanced composite score: primary weight on win probability, capped EV alpha, and model heuristic score
         // Prevents artificial theoretical EV on longshots from drowning out genuine high-probability winners
         const cappedEv = Math.min(0.40, Math.max(0, ev));
         const score = (outcome.prob * 1.0) + (cappedEv * 75) + (pred.confidenceScore * 0.25) + (isPredictedWinner ? 12 : 0);
@@ -295,11 +295,11 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
   const handleCopyReport = () => {
     const text = [
       `====================================================`,
-      `📊 AI AUTOMATED OPTIMAL VALUE REPORT`,
+      `📊 AI AUTOMATED EVIDENCE-GATED VALUE REPORT`,
       `Bundle: ${optimalReport.bundleTitle}`,
       `Heuristic Evidence Score: ${optimalReport.heuristicEvidenceScore}% (${optimalReport.evidenceLabel})`,
       `Combined Match Odds: ${optimalReport.combinedOdds}x`,
-      `Historical Cohort Hit Rate: ${optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.historicalValidationRate}%`}`}`,
+      `Historical Cohort Hit Rate: ${optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.historicalValidationRate}%`}`,
       `Expected Value Alpha: +${optimalReport.expectedValueAlpha}%`,
       `Recommended Stake: ${optimalReport.recommendedStakeUnits} Units`,
       `Generated: ${new Date(optimalReport.generatedAt).toLocaleString()}`,
@@ -522,7 +522,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
 
           {/* Heuristic Evidence Score & Key Value Matrix */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-            {/* AI Confidence Rating Hero Card */}
+            {/* Heuristic Evidence Score Card */}
             <div className="md:col-span-4 bg-gradient-to-br from-slate-900 via-slate-900/90 to-emerald-950/40 border border-emerald-500/40 rounded-2xl p-6 flex flex-col justify-between space-y-4 shadow-xl relative overflow-hidden">
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
@@ -551,7 +551,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                     />
                     <path
                       className="text-emerald-400"
-                      strokeDasharray={`${optimalReport.aiConfidenceRating}, 100`}
+                      strokeDasharray={`${optimalReport.heuristicEvidenceScore}, 100`}
                       strokeWidth="3.8"
                       strokeLinecap="round"
                       stroke="currentColor"
