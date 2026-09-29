@@ -7,7 +7,7 @@ export const DEFAULT_DATE_RANGE: DateRangeFilter = {
 };
 
 /**
- * Format a Date object to YYYY-MM-DD in UTC / local representation
+ * Format a Date object to YYYY-MM-DD using the host application's local calendar.
  */
 export function toIsoDateString(d: Date): string {
   const year = d.getFullYear();
@@ -92,11 +92,17 @@ export function calculatePresetDates(
 /**
  * Filter check: returns true if fixture kickoff falls within the date range
  */
+export function getFixtureLocalDateString(kickoffTime: string): string {
+  const date = new Date(kickoffTime);
+  return Number.isNaN(date.getTime()) ? '' : toIsoDateString(date);
+}
+
 export function isFixtureInDateRange(fixture: MatchFixture, range: DateRangeFilter): boolean {
   if (!fixture || !fixture.kickoffTime || typeof fixture.kickoffTime !== 'string') {
     return false;
   }
-  const fixtureDate = fixture.kickoffTime.slice(0, 10);
+  const fixtureDate = getFixtureLocalDateString(fixture.kickoffTime);
+  if (!fixtureDate) return false;
 
   if (range.presetId === 'today') {
     const todayStr = range.startDate || getTodayDateString();
