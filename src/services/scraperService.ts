@@ -333,7 +333,6 @@ export function loadScrapeLogs(): ScrapeLogItem[] {
   }
   return [];
 }
-}
 
 export function saveScrapeLog(log: ScrapeLogItem): ScrapeLogItem[] {
   const current = loadScrapeLogs();
