@@ -457,8 +457,8 @@ export function updateSuperLearningTelemetry(params: {
   peakAccuracyPct?: number;
 }): SuperLearningTelemetry {
   const current = loadSuperLearningTelemetry();
-  const hasPriorBrier = current.totalSuperEpochs > 0 && Number.isFinite(current.bestBrierLoss) && current.bestBrierLoss > 0;
-  const hasPriorAccuracy = current.totalSuperEpochs > 0 && Number.isFinite(current.peakAccuracyPct) && current.peakAccuracyPct > 0;
+  const hasPriorBrier = current.totalSuperEpochs > 0 && Number.isFinite(current.bestBrierLoss);
+  const hasPriorAccuracy = current.totalSuperEpochs > 0 && Number.isFinite(current.peakAccuracyPct);
   const candidateBrier = params.bestBrierLoss;
   const candidateAccuracy = params.peakAccuracyPct;
 
