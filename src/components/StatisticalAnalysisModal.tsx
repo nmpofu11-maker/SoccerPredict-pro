@@ -333,7 +333,7 @@ export const StatisticalAnalysisModal: React.FC<StatisticalAnalysisModalProps> =
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 font-sans">
                     {stats.ruleAblations.map((item) => {
-                      const isHighImpact = item.significanceRank <= 3;
+                      const isHighImpact = item.descriptiveRank <= 3;
                       return (
                         <tr
                           key={item.ruleId}
@@ -344,16 +344,16 @@ export const StatisticalAnalysisModal: React.FC<StatisticalAnalysisModalProps> =
                           <td className="p-3 font-mono font-bold text-center">
                             <span
                               className={`w-6 h-6 rounded-full inline-flex items-center justify-center text-[10px] ${
-                                item.significanceRank === 1
+                                item.descriptiveRank === 1
                                   ? 'bg-rose-950 text-rose-300 border border-rose-700'
-                                  : item.significanceRank === 2
+                                  : item.descriptiveRank === 2
                                   ? 'bg-amber-950 text-amber-300 border border-amber-700'
-                                  : item.significanceRank === 3
+                                  : item.descriptiveRank === 3
                                   ? 'bg-sky-950 text-sky-300 border border-sky-700'
                                   : 'bg-slate-800 text-slate-400'
                               }`}
                             >
-                              #{item.significanceRank}
+                              #{item.descriptiveRank}
                             </span>
                           </td>
                           <td className="p-3 font-semibold text-slate-200">
