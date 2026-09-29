@@ -36,11 +36,7 @@ const ADMIN_API_KEY = process.env.ADMIN_API_KEY?.trim() || '';
 
 function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction): void {
   if (!ADMIN_API_KEY) {
-    if (process.env.NODE_ENV === 'production') {
-      res.status(503).json({ error: 'Administrative API is not configured.' });
-      return;
-    }
-    next();
+    res.status(503).json({ error: 'Administrative API is not configured.' });
     return;
   }
 
