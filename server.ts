@@ -1024,6 +1024,11 @@ async function startServer() {
     lastSeasonStandingWeight: 0.30,
     squadValueWeight: 0.40,
     matchRatingWeight: 4.50,
+    lowTotalDrawBoost: 1.25,
+    defensiveSynergyDrawWeight: 0.35,
+    leagueClusterWeight: 0.40,
+    xgWeight: 0.50,
+    absencePenaltyRate: 0.12,
   };
 
   function sanitizeServerWeights(weights: any): Record<string, number> {
@@ -1069,8 +1074,15 @@ async function startServer() {
         return res.status(400).json({ status: 'error', message: 'Invalid learning state provided' });
       }
 
+      // If auto-learning is disabled, ignore stale client overwrites attempting to push drifted epochs
+      if (state.totalEpochsTrained > 0 && state.isAutoLearningEnabled !== false) {
+        console.warn('Rejected client attempt to push drifted learning state to server');
+        return res.json({ status: 'rejected', message: 'Auto-learning is paused' });
+      }
+
       state.weights = sanitizeServerWeights(state.weights);
       state.baselineWeights = sanitizeServerWeights(state.baselineWeights);
+      state.isAutoLearningEnabled = false;
       if (!Number.isFinite(state.accuracyPct)) state.accuracyPct = 76.7;
       if (!Number.isFinite(state.brierLoss)) state.brierLoss = 0.201;
 

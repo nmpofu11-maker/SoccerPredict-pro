@@ -490,8 +490,9 @@ export default function App() {
           return updated;
         });
 
-        // If background auto-learning is enabled, run an incremental gradient calibration epoch
-        if (learningState.isAutoLearningEnabled) {
+        // Auto-learning is strictly disabled by default to prevent gradient drift
+        // or unauthorized training passes.
+        if (false && learningState.isAutoLearningEnabled) {
           const tuned = trainSingleEpoch(learningState.weights, combinedHistoricalResults, 0.02);
           const updatedState: LearningModelState = {
             ...learningState,

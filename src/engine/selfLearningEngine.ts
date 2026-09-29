@@ -402,11 +402,11 @@ export function getInitialLearningState(): LearningModelState {
     isAutoLearningEnabled: false,
     recentLossHistory: [baselineEval.brierLoss],
     aiTacticalSynthesis: {
-      summary: `Aggressive Super-Learning Protocol active: Continuous unbounded calibration engaged against ${HISTORICAL_MATCH_RESULTS.length} historical match results and club coefficient matrices.`,
+      summary: `Autonomous Learning Engine initialized: Operating under strict empirical calibration against ${HISTORICAL_MATCH_RESULTS.length} verified historical match results and club coefficient matrices.`,
       recommendations: [
-        'Unbounded coordinate gradient optimization actively dampens cross-league variance.',
-        'Team intelligence fortress multipliers accurately adjust for elite home pitch records.',
-        'Midweek travel fatigue penalty parameters converged at high statistical conviction.',
+        'Coordinate gradient optimization calibrates weights against verified scorelines.',
+        'Team intelligence multipliers adjust for club home/away performance records.',
+        'Fatigue and congestion penalty parameters tuned to canonical match intervals.',
       ],
       ruleEfficiency: [
         { rule: 'Rule 1: Motivation Stakes', impact: '+2.5 pts boost', status: 'optimal' },
@@ -458,7 +458,7 @@ export function sanitizeLearningState(state?: Partial<LearningModelState> | null
     brierLoss,
     baselineBrierLoss: baselineEval.brierLoss,
     lastTrainedAt: typeof state.lastTrainedAt === 'string' && state.lastTrainedAt ? state.lastTrainedAt : new Date().toISOString(),
-    isAutoLearningEnabled: Boolean(state.isAutoLearningEnabled),
+    isAutoLearningEnabled: false,
     recentLossHistory: recentLossHistory.length > 0 ? recentLossHistory : [initial.brierLoss],
     aiTacticalSynthesis: state.aiTacticalSynthesis && typeof state.aiTacticalSynthesis === 'object'
       ? state.aiTacticalSynthesis
