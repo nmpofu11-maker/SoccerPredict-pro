@@ -577,7 +577,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-slate-300 gap-4">
-                    <span className="text-slate-400">Historical Fit:</span>
+                    <span className="text-slate-400">Historical Cohort:</span>
                     <span className="font-bold text-emerald-400">
                       {optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.confidenceBreakdown.historicalCohortFit}%`}
                     </span>
