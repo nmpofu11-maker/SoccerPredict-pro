@@ -70,7 +70,7 @@ export function evaluateFixturePrediction(
   const w: EngineWeights = sanitizeEngineWeights(weights);
   const appliedRules: RuleAppliedItem[] = [];
 
-  // Retrieve Aggressive Super-Learning Protocol dynamic coefficients
+  // Retrieve observed team coefficients when sufficient training data exists; otherwise use neutral engine defaults.
   const homeLearned = getTeamLearnedCoefficients(fixture.homeTeam.name, teamMatrices);
   const awayLearned = getTeamLearnedCoefficients(fixture.awayTeam.name, teamMatrices);
 
@@ -188,16 +188,18 @@ export function evaluateFixturePrediction(
   }
 
   // Part B: Previous Season Final Standing in Same Competition
+  // Previous-season pedigree is used only when the fixture itself carries an explicit
+  // same-competition prior-season standing. Static profile fallbacks are not treated as current evidence.
   const lastSeasonRankHome = Number.isFinite(fixture.homeTeam.lastSeasonRank)
     ? (fixture.homeTeam.lastSeasonRank as number)
-    : (homeProfile.lastSeasonRank || 10);
+    : 0;
   const lastSeasonRankAway = Number.isFinite(fixture.awayTeam.lastSeasonRank)
     ? (fixture.awayTeam.lastSeasonRank as number)
-    : (awayProfile.lastSeasonRank || 10);
-  const lastSeasonStandingHome = fixture.homeTeam.lastSeasonStanding ?? homeProfile.lastSeasonStanding;
-  const lastSeasonStandingAway = fixture.awayTeam.lastSeasonStanding ?? awayProfile.lastSeasonStanding;
+    : 0;
+  const lastSeasonStandingHome = fixture.homeTeam.lastSeasonStanding ?? 'Unknown';
+  const lastSeasonStandingAway = fixture.awayTeam.lastSeasonStanding ?? 'Unknown';
 
-  const lastSeasonGap = lastSeasonRankAway - lastSeasonRankHome;
+  const lastSeasonGap = lastSeasonRankHome > 0 && lastSeasonRankAway > 0 ? lastSeasonRankAway - lastSeasonRankHome : 0;
   const pedigreeWeight = Number.isFinite(w.lastSeasonStandingWeight) ? w.lastSeasonStandingWeight : 0.30;
   const pedigreeRaw = Math.abs(lastSeasonGap) * pedigreeWeight;
   const pedigreePts = Number.isFinite(pedigreeRaw)
