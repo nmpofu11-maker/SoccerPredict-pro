@@ -79,7 +79,6 @@ export interface OptimalValueReport {
   };
   historicalCohort: {
     sampleSize: number;
-    historicalHitRate: number | null;
     observedHitRate: number | null;
     simulatedROI: null;
     maxDrawdownPct: null;
