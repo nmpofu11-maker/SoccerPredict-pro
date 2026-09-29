@@ -1100,7 +1100,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-2">
               <div className="text-slate-400 text-xs font-mono uppercase tracking-wider">Combined Odds</div>
-              <div className="text-2xl font-black text-amber-400 font-mono">{smartAccy.combinedOdds}x</div>
+              <div className="text-2xl font-black text-amber-400 font-mono">{smartAccy.combinedOdds === null ? 'N/A' : `${smartAccy.combinedOdds}x`}</div>
               <div className="text-[11px] text-slate-500">{smartAccy.legs.length} Sweet-Spot Legs Combined</div>
             </div>
 
