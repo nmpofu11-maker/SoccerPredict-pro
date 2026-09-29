@@ -1044,6 +1044,47 @@ async function startServer() {
     return sanitized;
   }
 
+  // ---- Learning-state write guard -------------------------------------
+  // The server is the sole authority over persisted_learning_state.json.
+  // Clients may not raise the epoch count (i.e. train) unless the operator
+  // has explicitly started the server with ALLOW_LEARNING_TRAINING=1.
+  const LEARNING_STATE_PATH = path.join(process.cwd(), 'data', 'persisted_learning_state.json');
+  const LEARNING_BACKUP_DIR = path.join(process.cwd(), 'data', 'backups');
+
+  function readDiskLearningState(): any | null {
+    try {
+      if (!fs.existsSync(LEARNING_STATE_PATH)) return null;
+      return JSON.parse(fs.readFileSync(LEARNING_STATE_PATH, 'utf-8'));
+    } catch {
+      return null;
+    }
+  }
+
+  // Copy the current file aside BEFORE any overwrite, so nothing under
+  // audit can silently disappear.
+  function snapshotLearningState(reason: string): string | null {
+    try {
+      if (!fs.existsSync(LEARNING_STATE_PATH)) return null;
+      fs.mkdirSync(LEARNING_BACKUP_DIR, { recursive: true });
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const tag = reason.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const name = `prewrite_${tag}_${ts}.json`;
+      fs.copyFileSync(LEARNING_STATE_PATH, path.join(LEARNING_BACKUP_DIR, name));
+      return name;
+    } catch (err) {
+      console.error('Snapshot before learning-state write failed:', err);
+      return null;
+    }
+  }
+
+  // Temp file + rename so a crash never leaves a half-written state file.
+  function writeLearningStateAtomic(state: unknown): void {
+    fs.mkdirSync(path.dirname(LEARNING_STATE_PATH), { recursive: true });
+    const tmp = `${LEARNING_STATE_PATH}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf-8');
+    fs.renameSync(tmp, LEARNING_STATE_PATH);
+  }
+
   // Durable Persistence: Get Learned Model State
   app.get('/api/learning-state', (_req, res) => {
     try {
@@ -1074,25 +1115,43 @@ async function startServer() {
         return res.status(400).json({ status: 'error', message: 'Invalid learning state provided' });
       }
 
-      // If auto-learning is disabled, ignore stale client overwrites attempting to push drifted epochs
-      if (state.totalEpochsTrained > 0 && state.isAutoLearningEnabled !== false) {
-        console.warn('Rejected client attempt to push drifted learning state to server');
-        return res.json({ status: 'rejected', message: 'Auto-learning is paused' });
+      const allowTraining = process.env.ALLOW_LEARNING_TRAINING === '1';
+      const disk = readDiskLearningState();
+      const diskEpochs = Number.isFinite(disk?.totalEpochsTrained) ? disk.totalEpochsTrained : 0;
+      const incomingEpochs = Number(state.totalEpochsTrained);
+
+      if (!Number.isFinite(incomingEpochs) || incomingEpochs < 0) {
+        return res.status(400).json({ status: 'error', message: 'Invalid totalEpochsTrained' });
+      }
+
+      // Reject any client write that would advance training past what the
+      // server has on disk (stale tabs, old bundles, manual dashboard runs).
+      if (!allowTraining && incomingEpochs > diskEpochs) {
+        console.warn(
+          `Rejected learning-state write: incoming epochs ${incomingEpochs} > disk ${diskEpochs}`
+        );
+        return res.status(409).json({
+          status: 'rejected',
+          message: 'Server-owned learning state: training writes are disabled',
+          diskEpochs,
+          incomingEpochs,
+        });
       }
 
       state.weights = sanitizeServerWeights(state.weights);
       state.baselineWeights = sanitizeServerWeights(state.baselineWeights);
-      state.isAutoLearningEnabled = false;
+      if (!allowTraining) state.isAutoLearningEnabled = false;
       if (!Number.isFinite(state.accuracyPct)) state.accuracyPct = 76.7;
       if (!Number.isFinite(state.brierLoss)) state.brierLoss = 0.201;
 
-      const dataDir = path.join(process.cwd(), 'data');
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-      }
-
-      const filePath = path.join(dataDir, 'persisted_learning_state.json');
-      fs.writeFileSync(filePath, JSON.stringify(state, null, 2), 'utf-8');
+      // Only snapshot when the write actually changes something material,
+      // so routine identical saves don't flood data/backups.
+      const changed =
+        !disk ||
+        diskEpochs !== incomingEpochs ||
+        JSON.stringify(disk.weights) !== JSON.stringify(state.weights);
+      if (changed) snapshotLearningState('client_post');
+      writeLearningStateAtomic(state);
 
       return res.json({
         status: 'saved',
@@ -1182,8 +1241,15 @@ async function startServer() {
       const parsed = JSON.parse(raw);
       const stateToRestore = parsed.state || parsed;
 
-      const mainFilePath = path.join(process.cwd(), 'data', 'persisted_learning_state.json');
-      fs.writeFileSync(mainFilePath, JSON.stringify(stateToRestore, null, 2), 'utf-8');
+      if (!stateToRestore || !stateToRestore.weights) {
+        return res.status(400).json({ status: 'error', message: 'Backup contains no learning state' });
+      }
+      stateToRestore.weights = sanitizeServerWeights(stateToRestore.weights);
+      stateToRestore.baselineWeights = sanitizeServerWeights(stateToRestore.baselineWeights);
+      if (process.env.ALLOW_LEARNING_TRAINING !== '1') stateToRestore.isAutoLearningEnabled = false;
+
+      snapshotLearningState('pre_restore');
+      writeLearningStateAtomic(stateToRestore);
 
       return res.json({
         status: 'restored',
