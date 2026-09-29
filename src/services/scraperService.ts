@@ -177,8 +177,8 @@ export function sanitizeLiveIncomingFixtures(rawItems: any[]): LiveSanitizationR
     // Sanitize league competition name
     let cleanLeague = item.league;
     if (!cleanLeague || typeof cleanLeague !== 'string' || cleanLeague.trim().length === 0) {
-      cleanLeague = 'International • General Fixtures';
-      warnings.push('Missing league name; defaulted to general category');
+      cleanLeague = 'Unknown Competition';
+      warnings.push('Missing league name; competition remains unknown');
     }
 
     // Build fully compliant Home TeamStats
@@ -190,23 +190,23 @@ export function sanitizeLiveIncomingFixtures(rawItems: any[]): LiveSanitizationR
       leagueRank:
         typeof rawHome.leagueRank === 'number' && rawHome.leagueRank > 0
           ? rawHome.leagueRank
-          : 10,
+          : null,
       points:
         typeof rawHome.points === 'number' && rawHome.points >= 0
           ? rawHome.points
-          : 20,
+          : null,
       form:
         Array.isArray(rawHome.form) && rawHome.form.length > 0
           ? rawHome.form
-          : ['W', 'D', 'W', 'W', 'D'],
+          : [],
       avgPossession:
         typeof rawHome.avgPossession === 'number' && !isNaN(rawHome.avgPossession)
           ? rawHome.avgPossession
-          : 50,
+          : null,
       avgShotsOnTarget:
         typeof rawHome.avgShotsOnTarget === 'number' && !isNaN(rawHome.avgShotsOnTarget)
           ? rawHome.avgShotsOnTarget
-          : 4.5,
+          : null,
     };
 
     // Build fully compliant Away TeamStats
@@ -218,23 +218,23 @@ export function sanitizeLiveIncomingFixtures(rawItems: any[]): LiveSanitizationR
       leagueRank:
         typeof rawAway.leagueRank === 'number' && rawAway.leagueRank > 0
           ? rawAway.leagueRank
-          : 12,
+          : null,
       points:
         typeof rawAway.points === 'number' && rawAway.points >= 0
           ? rawAway.points
-          : 18,
+          : null,
       form:
         Array.isArray(rawAway.form) && rawAway.form.length > 0
           ? rawAway.form
-          : ['L', 'D', 'W', 'L', 'D'],
+          : [],
       avgPossession:
         typeof rawAway.avgPossession === 'number' && !isNaN(rawAway.avgPossession)
           ? rawAway.avgPossession
-          : 46,
+          : null,
       avgShotsOnTarget:
         typeof rawAway.avgShotsOnTarget === 'number' && !isNaN(rawAway.avgShotsOnTarget)
           ? rawAway.avgShotsOnTarget
-          : 3.8,
+          : null,
     };
 
     // Build fully compliant H2H Record
