@@ -653,7 +653,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                     <BarChart3 className="w-3.5 h-3.5 text-teal-400" />
                   </div>
                   <div className="text-2xl font-black text-teal-400 font-mono">
-                    {optimalReport.backtestSimulation.totalSimulatedRounds > 0 ? `${optimalReport.backtestSimulation.simulatedROI}%` : 'Not run'}
+                    {optimalReport.historicalCohort.sampleSize > 0 ? `${optimalReport.historicalCohort.simulatedROI}%` : 'Not run'}
                   </div>
                 </div>
                 <div className="text-[11px] text-slate-400 font-mono">
