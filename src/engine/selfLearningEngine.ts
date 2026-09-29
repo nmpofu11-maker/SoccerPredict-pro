@@ -11,6 +11,7 @@ import {
 } from '../types/superLearning';
 import { evaluateFixturePrediction, DEFAULT_ENGINE_WEIGHTS, sanitizeEngineWeights } from './rulesEngine';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
+import { getAdminApiHeaders } from '../services/adminAuthService';
 import {
   loadTeamIntelligenceMatrices,
   saveTeamIntelligenceMatrices,
@@ -571,7 +572,7 @@ export function saveLearningState(state: LearningModelState): void {
   if (typeof fetch !== 'undefined') {
     fetch('/api/learning-state', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAdminApiHeaders() },
       body: JSON.stringify({ state: safeState }),
     }).catch(() => {});
   }
