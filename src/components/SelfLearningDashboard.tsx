@@ -104,6 +104,58 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
     }
   };
 
+  const handleRequestAISynthesis = async () => {
+    setIsRequestingAI(true);
+    setStatusMessage('Calling Gemini AI server for tactical learning synthesis...');
+    try {
+      const synthesis = await requestAITacticalSynthesis(learningState, currentEval.evaluations);
+      const updatedState: LearningModelState = {
+        ...learningState,
+        aiTacticalSynthesis: synthesis,
+      };
+      saveLearningState(updatedState);
+      onUpdateLearningState(updatedState);
+      setStatusMessage('Gemini tactical synthesis updated successfully.');
+      setActiveSubTab('synthesis');
+    } catch {
+      setStatusMessage('Synthesis generated from offline empirical engine.');
+    } finally {
+      setIsRequestingAI(false);
+      setTimeout(() => setStatusMessage(null), 4000);
+    }
+  };
+
+  const handleResetToBaseline = () => {
+    const initialState = getInitialLearningState();
+    saveLearningState(initialState);
+    onUpdateLearningState(initialState);
+    setStatusMessage('Engine weights reset to factory default baseline.');
+    setTimeout(() => setStatusMessage(null), 3500);
+  };
+
+  const ruleWeightItems: {
+    key: keyof EngineWeights;
+    ruleNumber: number;
+    name: string;
+    description: string;
+    unit: string;
+  }[] = [
+    {
+      key: 'stakesMotivationBoost',
+      ruleNumber: 1,
+      name: 'Stakes Motivation Boost',
+      description: 'Urgency point surge applied to high-stakes title races & relegation matches',
+      unit: 'pts',
+    },
+    {
+      key: 'deadRubberPenalty',
+      ruleNumber: 1,
+      name: 'Dead-Rubber Penalty Rate',
+      description: 'Conviction variance reduction for end-of-season fixtures lacking stakes',
+      unit: '%',
+    },
+    {
+      key: 'rankPointsMultiplier',
       ruleNumber: 2,
       name: 'Rank Gap Multiplier',
       description: 'Point weighting per spot in the 8-place table ranking differential',

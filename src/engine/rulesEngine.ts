@@ -157,28 +157,34 @@ export function evaluateFixturePrediction(
   // RULE 2: Table Position & Previous Season Competition Standing Gap
   // ==========================================
   // Part A: Current Table Position Differential (Rank Difference ≥ 3 Places)
-  const rankDifference = fixture.awayTeam.leagueRank - fixture.homeTeam.leagueRank;
-  const rankPts = Math.round(Math.abs(rankDifference) * w.rankPointsMultiplier * 10) / 10;
-  if (rankDifference >= 3) {
-    homePoints += rankPts;
-    appliedRules.push({
-      ruleNumber: 2,
-      ruleName: 'Position Gap Edge',
-      tag: `Rule 2: Position Gap (+${rankPts} pts Home)`,
-      impact: `+${rankPts} baseline points to Home team`,
-      beneficiary: 'home',
-      description: `Home team rank (#${fixture.homeTeam.leagueRank}) is ${rankDifference} spots higher than Away (#${fixture.awayTeam.leagueRank}).`,
-    });
-  } else if (rankDifference <= -3) {
-    awayPoints += rankPts;
-    appliedRules.push({
-      ruleNumber: 2,
-      ruleName: 'Position Gap Edge',
-      tag: `Rule 2: Position Gap (+${rankPts} pts Away)`,
-      impact: `+${rankPts} baseline points to Away team`,
-      beneficiary: 'away',
-      description: `Away team rank (#${fixture.awayTeam.leagueRank}) is ${Math.abs(rankDifference)} spots higher than Home (#${fixture.homeTeam.leagueRank}).`,
-    });
+  // Only valid when both teams have authentic, verified league ranks (>= 1).
+  const homeRankValid = Number.isFinite(fixture.homeTeam.leagueRank) && fixture.homeTeam.leagueRank >= 1;
+  const awayRankValid = Number.isFinite(fixture.awayTeam.leagueRank) && fixture.awayTeam.leagueRank >= 1;
+
+  if (homeRankValid && awayRankValid) {
+    const rankDifference = fixture.awayTeam.leagueRank - fixture.homeTeam.leagueRank;
+    const rankPts = Math.round(Math.abs(rankDifference) * w.rankPointsMultiplier * 10) / 10;
+    if (rankDifference >= 3) {
+      homePoints += rankPts;
+      appliedRules.push({
+        ruleNumber: 2,
+        ruleName: 'Position Gap Edge',
+        tag: `Rule 2: Position Gap (+${rankPts} pts Home)`,
+        impact: `+${rankPts} baseline points to Home team`,
+        beneficiary: 'home',
+        description: `Home team rank (#${fixture.homeTeam.leagueRank}) is ${rankDifference} spots higher than Away (#${fixture.awayTeam.leagueRank}).`,
+      });
+    } else if (rankDifference <= -3) {
+      awayPoints += rankPts;
+      appliedRules.push({
+        ruleNumber: 2,
+        ruleName: 'Position Gap Edge',
+        tag: `Rule 2: Position Gap (+${rankPts} pts Away)`,
+        impact: `+${rankPts} baseline points to Away team`,
+        beneficiary: 'away',
+        description: `Away team rank (#${fixture.awayTeam.leagueRank}) is ${Math.abs(rankDifference)} spots higher than Home (#${fixture.homeTeam.leagueRank}).`,
+      });
+    }
   }
 
   // Part B: Previous Season Final Standing in Same Competition
@@ -225,8 +231,22 @@ export function evaluateFixturePrediction(
   }
 
   // ==========================================
-  // RULE 3: Home Dominance Bias & Away Road Form
+  // RULE 3: Form Trajectory, Home Dominance Bias & Away Road Form
   // ==========================================
+  // Part A: Recent 5-Game Form Trajectory (only applied when authentic form exists)
+  const homeForm = Array.isArray(fixture.homeTeam.form) ? fixture.homeTeam.form : [];
+  const awayForm = Array.isArray(fixture.awayTeam.form) ? fixture.awayTeam.form : [];
+
+  if (homeForm.length > 0) {
+    const homeFormPts = homeForm.reduce((acc, res) => acc + (res === 'W' ? (w.formWinPoints ?? 1.20) : res === 'D' ? (w.formDrawPoints ?? 0.40) : 0), 0);
+    homePoints += homeFormPts * (homeLearned.form_momentum_weight || 0.85);
+  }
+  if (awayForm.length > 0) {
+    const awayFormPts = awayForm.reduce((acc, res) => acc + (res === 'W' ? (w.formWinPoints ?? 1.20) : res === 'D' ? (w.formDrawPoints ?? 0.40) : 0), 0);
+    awayPoints += awayFormPts * (awayLearned.form_momentum_weight || 0.85);
+  }
+
+  // Part B: Elite Road Form & Home Fortress Dominance
   if (fixture.awayTeam.hasTopTierAwayForm) {
     awayPoints += w.awayFormBonus;
     appliedRules.push({

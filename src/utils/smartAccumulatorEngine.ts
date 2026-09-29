@@ -237,17 +237,12 @@ export function analyzePostMortemFailures(
     if (!pred) continue;
     const actual = m.actualOutcome || 'draw';
     const predicted = pred.predictedWinner || 'draw';
+    const margin = Math.abs(pred.homeWinPct - pred.awayWinPct).toFixed(1);
 
-    let failureReason = `Model predicted ${predicted.toUpperCase()} (${Math.round(predicted === 'home' ? pred.homeWinPct : predicted === 'away' ? pred.awayWinPct : pred.drawPct)}% prob), but actual result was ${actual.toUpperCase()} (${m.homeScore ?? 0}-${m.awayScore ?? 0}).`;
-    let ruleAdjustmentHint = `Recalibrated weight for H2H and tactical form synergy in similar matchups.`;
-
-    if (actual === 'draw' && predicted !== 'draw') {
-      failureReason = `Low-block defense resilience caused unexpected stalemate (Score: ${m.homeScore ?? 0}-${m.awayScore ?? 0}).`;
-      ruleAdjustmentHint = `Boosted tactical draw equilibrium margin by +0.35 to prevent over-projecting decisive winners in tight derbies.`;
-    } else if (actual === 'away' && predicted === 'home') {
-      failureReason = `Away counter-attack dominance overrode home baseline advantage.`;
-      ruleAdjustmentHint = `Increased away form bonus weight by +0.20 for counter-attacking away squads.`;
-    }
+    const failureReason = `Model forecast ${predicted.toUpperCase()} (${Math.round(predicted === 'home' ? pred.homeWinPct : predicted === 'away' ? pred.awayWinPct : pred.drawPct)}% prob, margin ${margin}%), actual outcome was ${actual.toUpperCase()} (${m.homeScore ?? 0}-${m.awayScore ?? 0}).`;
+    const ruleAdjustmentHint = pred.appliedRules.length > 0
+      ? `Contributing rules: ${pred.appliedRules.slice(0, 3).map(r => r.ruleName).join(', ')}.`
+      : `Model operated on baseline advantage due to lack of distinct team telemetry.`;
 
     analyses.push({
       matchId: m.id || 'unknown_id',
@@ -275,18 +270,18 @@ export function analyzeUserCoachingPatterns(
   const tips: string[] = [];
 
   if (overrideCount === 0) {
-    tips.push(`AI Coaching Tip: You are currently relying 100% on the AI's 9-rule tactical engine. This maximizes mathematical consistency and long-term Brier loss calibration.`);
+    tips.push(`AI Coaching Tip: You are currently relying 100% on the AI's 9-rule tactical engine. Predictions operate directly from factual team inputs and baseline weights.`);
   } else {
-    tips.push(`AI Coaching Tip: You have applied ${overrideCount} manual overrides. The engine has noted your preference shifts away from baseline probabilities.`);
-    tips.push(`Pattern Study: When overriding AI draw picks with home wins in high-stakes matches, historical volatility suggests a 22% higher upset risk. Consider combining AI confidence scores with your gut intuition.`);
+    tips.push(`AI Coaching Tip: You have applied ${overrideCount} manual overrides. The engine has adjusted match forecasts based on your explicit preferences.`);
+    tips.push(`Guidance: Manual overrides override all model rules. Ensure you review verified team news and starting lineups before locking in overrides.`);
   }
 
   tips.push(`Yield Strategy: For optimal accumulator performance, limit legs to 3-4 matches with combined odds between 4.00 and 10.00.`);
 
   return {
     totalOverridesCount: overrideCount,
-    userAccuracyPct: 68.5,
-    aiAccuracyPct: 71.2,
+    userAccuracyPct: 0,
+    aiAccuracyPct: 0,
     coachingTips: tips,
   };
 }
@@ -376,14 +371,14 @@ export function generateOptimalValueAccumulatorReport(
         return leagueMatch || probBandMatch;
       });
 
-      const sampleSize = matchingHistorical.length || 18;
+      const sampleSize = matchingHistorical.length;
       const matchingWins = matchingHistorical.filter(({ result: h, pred: hPred }) => {
         return hPred && hPred.predictedWinner === h.actualOutcome;
       }).length;
 
       const historicalWinRate = sampleSize > 0
         ? Number(((matchingWins / sampleSize) * 100).toFixed(1))
-        : 76.5;
+        : 0;
 
       // Fractional Kelly Criterion
       const b = outcome.odds - 1;
@@ -478,36 +473,37 @@ export function generateOptimalValueAccumulatorReport(
   
   const avgHistWinRate = selectedLegs.length > 0
     ? selectedLegs.reduce((acc, l) => acc + l.historicalWinRate, 0) / selectedLegs.length
-    : 78.4;
+    : 0;
 
   const avgModelConfidence = selectedLegs.length > 0
     ? selectedLegs.reduce((acc, l) => acc + l.confidenceScore, 0) / selectedLegs.length
-    : 74.0;
+    : 0;
 
   const avgEV = selectedLegs.length > 0
     ? selectedLegs.reduce((acc, l) => acc + l.expectedValue, 0) / selectedLegs.length
-    : 0.16;
+    : 0;
 
   const expectedValueAlpha = Number(((avgEV) * 100).toFixed(1));
 
   // Compute AI Confidence Rating (0 - 100)
   const modelCertainty = Math.min(99, Math.round(avgModelConfidence));
   const historicalBacktestFit = Math.min(99, Math.round(avgHistWinRate));
-  const marketOddsAlpha = Math.min(99, Math.max(40, Math.round(50 + expectedValueAlpha * 1.8)));
-  const formStability = 85;
+  const marketOddsAlpha = Math.min(99, Math.max(0, Math.round(50 + expectedValueAlpha * 1.8)));
+  const formStability = selectedLegs.length > 0 ? 75 : 0;
 
-  const aiConfidenceRating = Math.min(
-    98,
-    Math.max(
-      52,
-      Math.round(
-        modelCertainty * 0.38 +
-        historicalBacktestFit * 0.32 +
-        marketOddsAlpha * 0.20 +
-        formStability * 0.10
+  const aiConfidenceRating = selectedLegs.length > 0
+    ? Math.min(
+        98,
+        Math.max(
+          0,
+          Math.round(
+            modelCertainty * 0.40 +
+            historicalBacktestFit * 0.35 +
+            marketOddsAlpha * 0.25
+          )
+        )
       )
-    )
-  );
+    : 0;
 
   let confidenceGrade: 'AAA+ Elite Value' | 'AA High Value' | 'A Strong Value' | 'B+ Moderate Value' = 'A Strong Value';
   if (aiConfidenceRating >= 88) confidenceGrade = 'AAA+ Elite Value';
@@ -518,8 +514,10 @@ export function generateOptimalValueAccumulatorReport(
   // Bankroll unit sizing based on Kelly score
   const avgKelly = selectedLegs.length > 0
     ? selectedLegs.reduce((acc, l) => acc + l.kellyFraction, 0) / selectedLegs.length
-    : 2.0;
-  const recommendedStakeUnits = Number((Math.max(0.75, Math.min(3.0, avgKelly * 0.8))).toFixed(1));
+    : 0;
+  const recommendedStakeUnits = selectedLegs.length > 0
+    ? Number((Math.max(0.5, Math.min(3.0, avgKelly * 0.8))).toFixed(1))
+    : 0;
 
   const modeTitle = strategyMode === 'conservative'
     ? 'Conservative Historical Anchor Bundle'
@@ -527,11 +525,17 @@ export function generateOptimalValueAccumulatorReport(
     ? 'High-Alpha Asymmetric EV Bundle'
     : 'Optimal Value Mathematical Bundle';
 
-  const executiveSummary = `The AI Optimal Value Engine analyzed today's fixture matrix and identified a ${selectedLegs.length}-leg accumulator bundle exhibiting positive Expected Value (+${expectedValueAlpha}% EV Alpha). By filtering out over-priced public favorites and selecting matches where tactical model certainty exceeds current market odds, this bundle delivers a combined ${combinedOdds.toFixed(2)}x multiplier with an AI Confidence Rating of ${aiConfidenceRating}% (${confidenceGrade}).`;
+  const executiveSummary = selectedLegs.length > 0
+    ? `The AI Optimal Value Engine analyzed today's fixture matrix and identified a ${selectedLegs.length}-leg accumulator bundle exhibiting Expected Value (${expectedValueAlpha >= 0 ? '+' : ''}${expectedValueAlpha}% EV Alpha). Combined odds: ${combinedOdds.toFixed(2)}x with a model confidence score of ${aiConfidenceRating}%.`
+    : `No qualifying accumulator legs found matching the selected strategy criteria with positive Expected Value.`;
 
-  const historicalPrecedentSummary = `Cross-referencing similar historical match clusters in the empirical backtest database reveals an average validation hit rate of ${avgHistWinRate.toFixed(1)}% across ${selectedLegs.reduce((acc, l) => acc + l.historicalSampleSize, 0)} historical fixture profiles with zero synthetic inflation.`;
+  const historicalPrecedentSummary = selectedLegs.length > 0
+    ? `Matching historical match profiles demonstrate an empirical win rate of ${avgHistWinRate.toFixed(1)}% across ${selectedLegs.reduce((acc, l) => acc + l.historicalSampleSize, 0)} past fixtures.`
+    : `Insufficient historical matches matching current selection profiles.`;
 
-  const riskMitigationAdvice = `To maintain optimal long-term bankroll growth, stake at ${recommendedStakeUnits} units (Half-Kelly criterion). The primary volatility buffer relies on diversified leagues and distinct kickoff schedules to avoid correlated intraday variance.`;
+  const riskMitigationAdvice = selectedLegs.length > 0
+    ? `Staking recommendation: ${recommendedStakeUnits} units based on conservative fractional Kelly sizing.`
+    : `Hold bets until verified fixture slates meet value thresholds.`;
 
   return {
     generatedAt: new Date().toISOString(),
@@ -556,10 +560,10 @@ export function generateOptimalValueAccumulatorReport(
       formStability,
     },
     backtestSimulation: {
-      totalSimulatedRounds: 1000,
+      totalSimulatedRounds: selectedLegs.length > 0 ? selectedLegs.reduce((acc, l) => acc + l.historicalSampleSize, 0) : 0,
       historicalHitRate: Number(avgHistWinRate.toFixed(1)),
-      simulatedROI: Number((expectedValueAlpha * 1.42).toFixed(1)),
-      maxDrawdownPct: 14.8,
+      simulatedROI: expectedValueAlpha,
+      maxDrawdownPct: 0,
     },
   };
 }

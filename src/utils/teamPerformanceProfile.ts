@@ -9,10 +9,11 @@ export interface TeamPerformanceProfile {
 }
 
 /**
- * Verified canonical team profiles reflecting:
- * 1. Final standing in the same competition last season (2023-24 season)
- * 2. Total squad market valuation (Transfermarkt / Opta valuations in €M)
- * 3. Average match performance rating across the season
+ * Historical benchmark team profiles reflecting:
+ * 1. Historical final standings benchmark from the 2023-24 reference season
+ * 2. Squad market valuation benchmark (Transfermarkt / Opta valuations in €M)
+ * 3. Match performance ratings across the reference season
+ * Note: These provide baseline comparative strength when current season live standings are not yet published.
  */
 export const CANONICAL_TEAM_PROFILES: Record<string, TeamPerformanceProfile> = {
   // === ENGLISH PREMIER LEAGUE ===

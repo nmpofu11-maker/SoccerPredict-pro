@@ -115,8 +115,6 @@ export function generateDualQuadGroupsForMatchDay(
       recommendedTeam,
       isFavourite: isFav,
     };
-  });
-
   }).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
 
   scored.sort((a, b) => b.maxProb - a.maxProb);

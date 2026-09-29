@@ -183,7 +183,7 @@ export function synthesizeTeamIntelligenceMatrices(
     }
   > = {};
 
-  // Process historical results
+  // Process only genuine completed historical results
   for (const result of HISTORICAL_MATCH_RESULTS) {
     const f = result.fixture;
     if (!f || !f.homeTeam || !f.awayTeam) continue;
@@ -252,48 +252,15 @@ export function synthesizeTeamIntelligenceMatrices(
     }
   }
 
-  // Also ingest upcoming fixtures metadata
-  for (const f of fixtures) {
-    if (!f || !f.homeTeam || !f.awayTeam) continue;
-    const hName = normalizeTeamKey(f.homeTeam.name);
-    const aName = normalizeTeamKey(f.awayTeam.name);
-
-    if (!teamStats[hName]) {
-      teamStats[hName] = {
-        totalMatches: 6,
-        homeMatches: 3,
-        homeWins: 2,
-        awayMatches: 3,
-        awayWins: 1,
-        draws: 1,
-        pointsTotal: 10,
-        volatilityErrors: 1,
-        fatigueMatches: 1,
-        fatiguePointsLost: 1,
-      };
-    }
-    if (!teamStats[aName]) {
-      teamStats[aName] = {
-        totalMatches: 6,
-        homeMatches: 3,
-        homeWins: 1,
-        awayMatches: 3,
-        awayWins: 2,
-        draws: 1,
-        pointsTotal: 9,
-        volatilityErrors: 1,
-        fatigueMatches: 1,
-        fatiguePointsLost: 1,
-      };
-    }
-  }
-
   const updatedMatrices: TeamIntelligenceMatrices = { ...baseMatrices };
 
   for (const [teamName, stats] of Object.entries(teamStats)) {
-    const sampleSize = Math.max(stats.totalMatches, baseMatrices[teamName]?.sample_size_matches || 8);
-    const homeWinRate = stats.homeMatches > 0 ? stats.homeWins / stats.homeMatches : 0.5;
-    const awayWinRate = stats.awayMatches > 0 ? stats.awayWins / stats.awayMatches : 0.35;
+    // Only synthesize when we have at least 3 genuine completed matches
+    if (stats.totalMatches < 3) continue;
+
+    const sampleSize = stats.totalMatches;
+    const homeWinRate = stats.homeMatches > 0 ? stats.homeWins / stats.homeMatches : 0.45;
+    const awayWinRate = stats.awayMatches > 0 ? stats.awayWins / stats.awayMatches : 0.30;
 
     // Home advantage multiplier calibrated from 1.00 to 1.50
     const homeAdvantage = Math.min(1.50, Math.max(1.02, Number((1.05 + (homeWinRate - awayWinRate) * 0.45).toFixed(2))));
