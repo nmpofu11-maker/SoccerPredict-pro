@@ -1,6 +1,6 @@
 import {
   HistoricalMatchResult,
-  BacktestEvaluation,
+  HistoricalEvaluation,
   EngineWeights,
   EnginePerformanceSummary,
 } from '../types/soccer';
@@ -17,7 +17,7 @@ export function getYesterdayDateString(baseDate = new Date()): string {
   return toIsoDateString(d);
 }
 
-export interface DetailedMatchEvaluation extends BacktestEvaluation {
+export interface DetailedMatchEvaluation extends HistoricalEvaluation {
   date: string;
   notes?: string;
   predictedWinnerLabel: string;
