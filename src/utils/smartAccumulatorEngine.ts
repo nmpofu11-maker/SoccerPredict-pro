@@ -1,6 +1,7 @@
 import { MatchFixture, PredictionResult, HistoricalMatchResult } from '../types/soccer';
 import { evaluateFixturePrediction } from '../engine/rulesEngine';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
+import { getTodayDateString } from './dateFilterUtils';
 
 export interface AccumulatorLeg {
   fixtureId: string;
@@ -123,7 +124,7 @@ export function generateSmartAccumulator(
     };
   }
 
-  const todayIso = new Date().toISOString().split('T')[0];
+  const todayIso = getTodayDateString();
   let activeFixtures = (fixtures || []).filter((f) => {
     if (!f || !f.id || !f.homeTeam || !f.awayTeam || !f.kickoffTime) return false;
     return f.kickoffTime.slice(0, 10) >= todayIso;
@@ -165,7 +166,7 @@ export function generateSmartAccumulator(
     // Sweet spot filtering: probability >= 50% and odds between 1.35 and 3.50
     const ev = (bestProb / 100) * bestOdds - 1;
 
-    if (bestProb >= 50 && bestOdds >= 1.35 && bestOdds <= 3.50 && ev > -0.05) {
+    if (bestProb >= 50 && bestOdds >= 1.35 && bestOdds <= 3.50 && ev >= 0) {
       const teamName = bestSelection === 'home' ? fixture.homeTeam.name : bestSelection === 'away' ? fixture.awayTeam.name : 'Draw';
       const ruleTag = pred.appliedRules[0]?.tag || 'Tactical Balance';
 
@@ -181,7 +182,7 @@ export function generateSmartAccumulator(
         odds: bestOdds,
         expectedValue: Number(ev.toFixed(2)),
         confidenceScore: pred.confidenceScore,
-        reasoning: `Verified Standings. Supported by ${pred.appliedRules.length} rules (${ruleTag}). Prob: ${Math.round(bestProb)}% | EV: +${(ev * 100).toFixed(0)}%`,
+        reasoning: `Verified standings. Supported by ${pred.appliedRules.length} rules (${ruleTag}). Probability: ${Math.round(bestProb)}% | EV: ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(0)}%`,
       });
     }
   }
@@ -191,13 +192,15 @@ export function generateSmartAccumulator(
   const selectedLegs = legs.slice(0, 4);
 
   const combinedOdds = selectedLegs.reduce((acc, l) => acc * Math.max(1.05, l.odds), 1.0);
-  const avgConf = selectedLegs.length > 0 ? selectedLegs.reduce((acc, l) => acc + l.confidenceScore, 0) / selectedLegs.length : 70;
+  const avgConf = selectedLegs.length > 0 ? selectedLegs.reduce((acc, l) => acc + l.confidenceScore, 0) / selectedLegs.length : 0;
 
   let riskLevel: 'Conservative Value' | 'Balanced Sweet-Spot' | 'High Yield Aggressive' = 'Balanced Sweet-Spot';
   if (combinedOdds < 4.0) riskLevel = 'Conservative Value';
   else if (combinedOdds > 15.0) riskLevel = 'High Yield Aggressive';
 
-  const expectedYieldScore = Math.min(98, Math.max(45, Math.round(avgConf * 0.9 + (combinedOdds > 8 ? 15 : 5))));
+  const expectedYieldScore = selectedLegs.length > 0
+    ? Math.min(98, Math.max(0, Math.round(avgConf * 0.9 + (combinedOdds > 8 ? 15 : 5))))
+    : 0;
 
   let strategicAdvice = `AI has selected ${selectedLegs.length} high-certainty sweet-spot legs with positive Expected Value. This balances maximum yield without taking reckless long-shot risks.`;
   if (selectedLegs.length < 3) {
@@ -368,12 +371,13 @@ export function generateOptimalValueAccumulatorReport(
         const leagueMatch = h.fixture.league === fixture.league;
         const hProb = outcome.sel === 'home' ? hPred.homeWinPct : outcome.sel === 'away' ? hPred.awayWinPct : hPred.drawPct;
         const probBandMatch = Math.abs(hProb - outcome.prob) <= 12;
-        return leagueMatch || probBandMatch;
+        return leagueMatch && probBandMatch;
       });
 
       const sampleSize = matchingHistorical.length;
       const matchingWins = matchingHistorical.filter(({ result: h, pred: hPred }) => {
-        return hPred && hPred.predictedWinner === h.actualOutcome;
+        const selectedHistoricalProbability = outcome.sel === 'home' ? hPred?.homeWinPct : outcome.sel === 'away' ? hPred?.awayWinPct : hPred?.drawPct;
+        return selectedHistoricalProbability !== undefined && h.actualOutcome === outcome.sel;
       }).length;
 
       const historicalWinRate = sampleSize > 0
@@ -489,7 +493,7 @@ export function generateOptimalValueAccumulatorReport(
   const modelCertainty = Math.min(99, Math.round(avgModelConfidence));
   const historicalBacktestFit = Math.min(99, Math.round(avgHistWinRate));
   const marketOddsAlpha = Math.min(99, Math.max(0, Math.round(50 + expectedValueAlpha * 1.8)));
-  const formStability = selectedLegs.length > 0 ? 75 : 0;
+  const formStability = 0;
 
   const aiConfidenceRating = selectedLegs.length > 0
     ? Math.min(
@@ -505,8 +509,9 @@ export function generateOptimalValueAccumulatorReport(
       )
     : 0;
 
-  let confidenceGrade: 'AAA+ Elite Value' | 'AA High Value' | 'A Strong Value' | 'B+ Moderate Value' = 'A Strong Value';
-  if (aiConfidenceRating >= 88) confidenceGrade = 'AAA+ Elite Value';
+  let confidenceGrade: 'AAA+ Elite Value' | 'AA High Value' | 'A Strong Value' | 'B+ Moderate Value' | 'No Qualifying Value' = selectedLegs.length > 0 ? 'B+ Moderate Value' : 'No Qualifying Value';
+  if (selectedLegs.length === 0) confidenceGrade = 'No Qualifying Value';
+  else if (aiConfidenceRating >= 88) confidenceGrade = 'AAA+ Elite Value';
   else if (aiConfidenceRating >= 80) confidenceGrade = 'AA High Value';
   else if (aiConfidenceRating >= 72) confidenceGrade = 'A Strong Value';
   else confidenceGrade = 'B+ Moderate Value';
@@ -560,9 +565,9 @@ export function generateOptimalValueAccumulatorReport(
       formStability,
     },
     backtestSimulation: {
-      totalSimulatedRounds: selectedLegs.length > 0 ? selectedLegs.reduce((acc, l) => acc + l.historicalSampleSize, 0) : 0,
+      totalSimulatedRounds: 0,
       historicalHitRate: Number(avgHistWinRate.toFixed(1)),
-      simulatedROI: expectedValueAlpha,
+      simulatedROI: 0,
       maxDrawdownPct: 0,
     },
   };
