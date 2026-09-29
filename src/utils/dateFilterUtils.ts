@@ -207,11 +207,12 @@ export function getDatasetDateBounds(fixtures: MatchFixture[]): { minDate: strin
     return { minDate: today, maxDate: today };
   }
 
-  let min = fixtures[0].kickoffTime.slice(0, 10);
-  let max = fixtures[0].kickoffTime.slice(0, 10);
+  let min = getFixtureLocalDateString(fixtures[0].kickoffTime) || getTodayDateString();
+  let max = min;
 
   for (let i = 1; i < fixtures.length; i++) {
-    const d = fixtures[i].kickoffTime.slice(0, 10);
+    const d = getFixtureLocalDateString(fixtures[i].kickoffTime);
+    if (!d) continue;
     if (d < min) min = d;
     if (d > max) max = d;
   }
