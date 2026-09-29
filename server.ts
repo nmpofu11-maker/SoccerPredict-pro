@@ -1594,11 +1594,11 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
   "recommendations": ["3 concise bullet points with strategic recommendations for future weight tuning."],
   "ruleEfficiency": [
     { "rule": "Rule 1: Motivation Stakes", "impact": "description of impact", "status": "recalibrating" },
-    { "rule": "Rule 3: Home Dominance", "impact": "description of impact", "status": "optimal" },
+    { "rule": "Rule 3: Home Dominance", "impact": "description of impact", "status": "recalibrating" },
     { "rule": "Rule 5: Possession & Shots", "impact": "description of impact", "status": "recalibrating" },
-    { "rule": "Rule 6: Midweek Fatigue", "impact": "description of impact", "status": "optimal" },
-    { "rule": "Rule 7: Volatility Cap", "impact": "description of impact", "status": "optimal" },
-    { "rule": "Rule 8: Favourite Floor", "impact": "description of impact", "status": "optimal" }
+    { "rule": "Rule 6: Midweek Fatigue", "impact": "description of impact", "status": "recalibrating" },
+    { "rule": "Rule 7: Volatility Cap", "impact": "description of impact", "status": "recalibrating" },
+    { "rule": "Rule 8: Favourite Floor", "impact": "description of impact", "status": "recalibrating" }
   ]
 }`;
 
