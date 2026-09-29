@@ -6,10 +6,10 @@ interface StatsOverviewProps {
   fixtures: MatchFixture[];
   predictions: Record<string, PredictionResult>;
   overridesCount: number;
-  cumulativeSuccessRate?: number;
+  cumulativeSuccessRate?: number | null;
   correctPredictionsCount?: number;
   totalPredictionsCount?: number;
-  brierLoss?: number;
+  brierLoss?: number | null;
   yesterdayStats?: {
     total: number;
     correct: number;
@@ -24,10 +24,10 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
   fixtures,
   predictions,
   overridesCount,
-  cumulativeSuccessRate = 81.3,
-  correctPredictionsCount = 35,
-  totalPredictionsCount = 43,
-  brierLoss = 0.174,
+  cumulativeSuccessRate = null,
+  correctPredictionsCount = 0,
+  totalPredictionsCount = 0,
+  brierLoss = null,
   yesterdayStats,
   onOpenLearning,
   onOpenYesterday,
@@ -53,7 +53,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
         onClick={onOpenLearning}
         className="bg-slate-900/80 hover:bg-slate-900 border border-emerald-500/40 hover:border-emerald-500/70 rounded-xl px-3 py-2 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
         id="card-cumulative-success"
-        title="Verified prediction performance percentage so far across all backtested matches. Click to inspect AI Self-Learning."
+        title="Measured prediction performance from recorded settled results. Click to inspect Model Calibration."
       >
         <div className="min-w-0">
           <div className="flex items-center gap-1 text-[10px] font-mono text-emerald-400 font-bold uppercase tracking-wider">
@@ -62,16 +62,16 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
           </div>
           <div className="flex items-baseline gap-1.5 mt-0.5">
             <span className="text-xl sm:text-2xl font-black text-emerald-400 font-mono tracking-tight">
-              {cumulativeSuccessRate.toFixed(1)}%
+              {cumulativeSuccessRate === null ? 'N/A' : `${cumulativeSuccessRate.toFixed(1)}%`}
             </span>
             <span className="text-[10px] font-mono text-slate-300 font-semibold">
-              ({correctPredictionsCount}/{totalPredictionsCount} Correct)
+              ({totalPredictionsCount > 0 ? `${correctPredictionsCount}/${totalPredictionsCount} Correct` : 'No settled results'})
             </span>
           </div>
           <div className="text-[9.5px] font-mono text-slate-400 truncate flex items-center gap-1">
-            <span>Brier: {brierLoss.toFixed(3)}</span>
+            <span>Brier: {brierLoss === null ? 'N/A' : brierLoss.toFixed(3)}</span>
             <span className="text-slate-600">•</span>
-            <span className="text-emerald-300">All Predictions</span>
+            <span className="text-emerald-300">Recorded Settled Results</span>
           </div>
         </div>
       </div>
