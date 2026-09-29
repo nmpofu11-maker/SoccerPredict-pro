@@ -421,7 +421,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
         </div>
       </div>
 
-      {/* SUB-TAB 0: AUTOMATED OPTIMAL VALUE REPORT VIEW */}
+      {/* SUB-TAB 0: AUTOMATED EVIDENCE-GATED VALUE REPORT VIEW */}
       {activeSubTab === 'optimal_report' && (
         <div className="space-y-6 animate-fadeIn">
           {/* Report Top Control Bar */}
@@ -1105,8 +1105,8 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-2">
-              <div className="text-slate-400 text-xs font-mono uppercase tracking-wider">Average Confidence</div>
-              <div className="text-2xl font-black text-emerald-400 font-mono">{smartAccy.averageConfidence}%</div>
+              <div className="text-slate-400 text-xs font-mono uppercase tracking-wider">Average Heuristic Score</div>
+              <div className="text-2xl font-black text-emerald-400 font-mono">{smartAccy.averageHeuristicScore === null ? 'N/A' : `${smartAccy.averageHeuristicScore}%`}</div>
               <div className="text-[11px] text-slate-500">High-Certainty Tactical Matrix Filter</div>
             </div>
 
@@ -1323,7 +1323,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                 Top Upcoming Value Picks (Next 12 Hours)
               </h2>
               <p className="text-xs text-slate-400">
-                Sorted strictly by composite Expected Value, model confidence, and observed historical cohort hit-rate for matches kicking off within the next 12 hours. Color-coded with progressive shades of green where rank #1 is the darkest green.
+                Sorted strictly by composite Expected Value, model probability, and observed historical cohort hit-rate for matches kicking off within the next 12 hours. Color-coded with progressive shades of green where rank #1 is the darkest green.
               </p>
             </div>
           </div>
