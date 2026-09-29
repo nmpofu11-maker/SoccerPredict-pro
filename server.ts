@@ -381,12 +381,12 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
               const awayTeam = awayComp.team;
               if (!homeTeam?.displayName || !awayTeam?.displayName) continue;
 
-              // Query authentic standings map first, falling back to curatedRank or sensible default
+              // Query authentic standings map first; provider curated ranks are accepted only when present, otherwise rank remains unknown.
               const homeStanding = standingsMap.get(String(homeTeam.id)) || standingsMap.get(homeTeam.displayName.toLowerCase());
               const awayStanding = standingsMap.get(String(awayTeam.id)) || standingsMap.get(awayTeam.displayName.toLowerCase());
 
-              const homeRank = homeStanding?.rank ?? (parseInt(homeComp.curatedRank?.current || '0', 10) || 8);
-              const awayRank = awayStanding?.rank ?? (parseInt(awayComp.curatedRank?.current || '0', 10) || 10);
+              const homeRank = homeStanding?.rank ?? (parseInt(homeComp.curatedRank?.current || '0', 10) || 0);
+              const awayRank = awayStanding?.rank ?? (parseInt(awayComp.curatedRank?.current || '0', 10) || 0);
 
               const homeFormParsed = parseForm(homeComp.form);
               const awayFormParsed = parseForm(awayComp.form);
@@ -408,14 +408,14 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
               const homeColor = homeTeam.color ? `#${homeTeam.color}` : '#0284c7';
               const awayColor = awayTeam.color ? `#${awayTeam.color}` : '#dc2626';
 
-              // Neutral, balanced placeholder for H2H when actual head-to-head records are not provided
-              const homeWins = 1;
-              const awayWins = 1;
-              const draws = 3;
+              // No H2H data was supplied by this provider event; keep it unknown/empty.
+              const homeWins = 0;
+              const awayWins = 0;
+              const draws = 0;
 
               const fixture = {
                 id: `match_${ev.id || `${homeTeam.displayName}_${awayTeam.displayName}`.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
-                kickoffTime: comp.date || ev.date || new Date().toISOString(),
+                kickoffTime: parseProviderKickoff(comp.date || ev.date) || null,
                 league: item.name,
                 venue: comp.venue?.fullName || `${homeTeam.displayName} Stadium`,
                 round: ev.status?.type?.detail || comp.status?.type?.detail || undefined,
@@ -426,10 +426,10 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
                   name: homeTeam.displayName,
                   shortName: homeTeam.abbreviation || homeTeam.displayName.slice(0, 3).toUpperCase(),
                   leagueRank: homeRank,
-                  points: finalHomePoints,
+                  points: Number.isFinite(finalHomePoints) ? finalHomePoints : 0,
                   form: homeFormParsed,
-                  avgPossession: 50,
-                  avgShotsOnTarget: 4.5,
+                  avgPossession: 0,
+                  avgShotsOnTarget: 0,
                   isHomeDominant: false,
                   badgeColor: homeColor,
                 },
@@ -438,10 +438,10 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
                   name: awayTeam.displayName,
                   shortName: awayTeam.abbreviation || awayTeam.displayName.slice(0, 3).toUpperCase(),
                   leagueRank: awayRank,
-                  points: finalAwayPoints,
+                  points: Number.isFinite(finalAwayPoints) ? finalAwayPoints : 0,
                   form: awayFormParsed,
-                  avgPossession: 50,
-                  avgShotsOnTarget: 4.5,
+                  avgPossession: 0,
+                  avgShotsOnTarget: 0,
                   isHomeDominant: false,
                   hasTopTierAwayForm: false,
                   badgeColor: awayColor,
@@ -1612,26 +1612,9 @@ async function startServer() {
       const ai = getGeminiClient();
 
       if (!ai) {
-        // High-fidelity fallback synthesis when API key is not set
-        return res.json({
-          status: 'simulated',
-          synthesis: {
-            summary: `Empirical loss evaluated at ${brierLoss?.toFixed(3) || '0.184'} across ${totalEpochs || 0} training epochs with ${accuracyPct?.toFixed(1) || '81.3'}% accuracy convergence. Strong home dominance and shot volume differential remain decisive.`,
-            recommendations: [
-              'Shot differential weight proves most reliable in top-5 leagues; maintain high weighting (>0.40).',
-              'High-volatility leagues (Japan J1, Brazil Serie A) require strict damping to mitigate away underdog variance.',
-              'Midweek fatigue within 72 hours reliably dampens attacking output on the road by 12-18%.',
-            ],
-            ruleEfficiency: [
-              { rule: 'Rule 1: Stakes & Motivation', impact: `+${weights?.stakesMotivationBoost?.toFixed(1) || '2.5'} pts`, status: 'optimal' },
-              { rule: 'Rule 3: Fortress Dominance', impact: `+${Math.round((weights?.homeDominanceBonus || 0.15) * 100)}% boost`, status: 'optimal' },
-              { rule: 'Rule 5: Shot Dominance', impact: `Weight ${weights?.tacticalShotsWeight?.toFixed(2) || '0.45'}`, status: 'optimal' },
-              { rule: 'Rule 6: 72h Midweek Fatigue', impact: `-${Math.round((weights?.fatiguePenaltyRate || 0.15) * 100)}% penalty`, status: 'optimal' },
-              { rule: 'Rule 7: Volatility Dampener', impact: `Compression ${weights?.volatilityDrawBoost?.toFixed(2) || '0.68'}`, status: 'optimal' },
-              { rule: 'Rule 8: Priority Favourite Floor', impact: `${weights?.favouriteWinFloor || 55}% floor`, status: 'optimal' },
-            ],
-            timestamp: new Date().toISOString(),
-          },
+        return res.status(503).json({
+          status: 'unavailable',
+          message: 'AI tactical synthesis is not configured on the server.',
         });
       }
 
@@ -1648,7 +1631,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
   "summary": "1-2 sentences on the model's convergence, predictive calibration, and notable tactical biases.",
   "recommendations": ["3 concise bullet points with strategic recommendations for future weight tuning."],
   "ruleEfficiency": [
-    { "rule": "Rule 1: Motivation Stakes", "impact": "description of impact", "status": "optimal" },
+    { "rule": "Rule 1: Motivation Stakes", "impact": "description of impact", "status": "recalibrating" },
     { "rule": "Rule 3: Home Dominance", "impact": "description of impact", "status": "optimal" },
     { "rule": "Rule 5: Possession & Shots", "impact": "description of impact", "status": "recalibrating" },
     { "rule": "Rule 6: Midweek Fatigue", "impact": "description of impact", "status": "optimal" },
@@ -1705,7 +1688,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       // If all live model calls were temporarily throttled by upstream 503 spikes, use empirical synthesis
       console.info('Tactical learning: Using empirical calibrated synthesis fallback (upstream Gemini at capacity).');
       return res.status(200).json({
-        status: 'fallback',
+        status: 'unavailable',
         synthesis: {
           summary: `Super-Learning Protocol active: Online calibration converged with ${accuracyPct?.toFixed(1) || '81.3'}% accuracy and Brier score ${brierLoss?.toFixed(3) || '0.174'}. Home fortress dominance and shot delta remain primary deciders.`,
           recommendations: [
@@ -1714,11 +1697,11 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
             'Keep 55% win floor for Tier 1 elite favourites.',
           ],
           ruleEfficiency: [
-            { rule: 'Rule 1: Stakes & Motivation', impact: `+${weights?.stakesMotivationBoost?.toFixed(1) || '2.5'} pts`, status: 'optimal' },
-            { rule: 'Rule 3: Home Fortress', impact: `+${Math.round((weights?.homeDominanceBonus || 0.15) * 100)}% boost`, status: 'optimal' },
-            { rule: 'Rule 5: Shot Dominance', impact: `Weight ${weights?.tacticalShotsWeight?.toFixed(2) || '0.45'}`, status: 'optimal' },
-            { rule: 'Rule 8: Favourite Floor', impact: 'Active 55% Floor', status: 'optimal' },
-            { rule: '⚡ Super-Learned Team Matrix', impact: 'Club-specific coefficients active', status: 'optimal' },
+            { rule: 'Rule 1: Stakes & Motivation', impact: `+${weights?.stakesMotivationBoost?.toFixed(1) || '2.5'} pts`, status: 'recalibrating' },
+            { rule: 'Rule 3: Home Fortress', impact: `+${Math.round((weights?.homeDominanceBonus || 0.15) * 100)}% boost`, status: 'recalibrating' },
+            { rule: 'Rule 5: Shot Dominance', impact: `Weight ${weights?.tacticalShotsWeight?.toFixed(2) || '0.45'}`, status: 'recalibrating' },
+            { rule: 'Rule 8: Favourite Floor', impact: 'Active 55% Floor', status: 'recalibrating' },
+            { rule: '⚡ Super-Learned Team Matrix', impact: 'Club-specific coefficients active', status: 'recalibrating' },
           ],
           timestamp: new Date().toISOString(),
         },
@@ -1730,18 +1713,18 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       return res.status(200).json({
         status: 'fallback',
         synthesis: {
-          summary: 'Aggressive Super-Learning Protocol operational: Continuous unbounded calibration engaged against match results and club coefficient matrices without limits.',
+          summary: 'Chronological model calibration is active only when measured training data is available.',
           recommendations: [
             'Maintain shot-on-target differential above 0.40.',
             'Dampen volatility spikes in secondary leagues with learned coefficients.',
             'Keep 55% win floor for Tier 1 elite favourites.',
           ],
           ruleEfficiency: [
-            { rule: 'Rule 1: Stakes & Motivation', impact: 'Optimized', status: 'optimal' },
-            { rule: 'Rule 3: Home Fortress', impact: 'High conviction', status: 'optimal' },
-            { rule: 'Rule 5: Shot Dominance', impact: 'Primary decider', status: 'optimal' },
-            { rule: 'Rule 8: Favourite Floor', impact: 'Active 55%', status: 'optimal' },
-            { rule: '⚡ Super-Learned Team Matrix', impact: 'Club-specific coefficients active', status: 'optimal' },
+            { rule: 'Rule 1: Stakes & Motivation', impact: 'Optimized', status: 'recalibrating' },
+            { rule: 'Rule 3: Home Fortress', impact: 'High conviction', status: 'recalibrating' },
+            { rule: 'Rule 5: Shot Dominance', impact: 'Primary decider', status: 'recalibrating' },
+            { rule: 'Rule 8: Favourite Floor', impact: 'Active 55%', status: 'recalibrating' },
+            { rule: '⚡ Super-Learned Team Matrix', impact: 'Club-specific coefficients active', status: 'recalibrating' },
           ],
           timestamp: new Date().toISOString(),
         },
@@ -1749,121 +1732,13 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
     }
   });
 
-  // Aggressive Super-Learning Protocol In-Memory State
+  // In-memory sync state contains only measured coefficients received from the operator pipeline.
+  // No pre-seeded sample sizes or learned coefficients are assumed.
   let superLearningSyncState = {
-    sync_timestamp: new Date().toISOString(),
-    model_engine: 'Aggressive Super-Learning Autonomous Protocol v5.0 (Unbounded Optimization)',
-    meta_improvement_notes: 'Aggressive Super-Learning Protocol active: Continuous unbounded calibration engaged against match results and club coefficient matrices without limits.',
-    team_intelligence_matrices: {
-      "Manchester City": {
-        "sample_size_matches": 48,
-        "learned_coefficients": {
-          "home_advantage_multiplier": 1.34,
-          "form_momentum_weight": 0.92,
-          "volatility_index": 0.08,
-          "fatigue_penalty_modifier": 0.10
-        }
-      },
-      "Arsenal": {
-        "sample_size_matches": 44,
-        "learned_coefficients": {
-          "home_advantage_multiplier": 1.29,
-          "form_momentum_weight": 0.88,
-          "volatility_index": 0.11,
-          "fatigue_penalty_modifier": 0.12
-        }
-      },
-      "Liverpool": {
-        "sample_size_matches": 46,
-        "learned_coefficients": {
-          "home_advantage_multiplier": 1.35,
-          "form_momentum_weight": 0.89,
-          "volatility_index": 0.14,
-          "fatigue_penalty_modifier": 0.13
-        }
-      },
-      "Real Madrid": {
-        "sample_size_matches": 52,
-        "learned_coefficients": {
-          "home_advantage_multiplier": 1.38,
-          "form_momentum_weight": 0.94,
-          "volatility_index": 0.09,
-          "fatigue_penalty_modifier": 0.11
-        }
-      },
-      "Barcelona": {
-        "sample_size_matches": 46,
-        "learned_coefficients": {
-          "home_advantage_multiplier": 1.31,
-          "form_momentum_weight": 0.89,
-          "volatility_index": 0.15,
-          "fatigue_penalty_modifier": 0.13
-        }
-      },
-      "Bayern Munich": {
-        "sample_size_matches": 42,
-        "learned_coefficients": {
-          "home_advantage_multiplier": 1.36,
-          "form_momentum_weight": 0.91,
-          "volatility_index": 0.12,
-          "fatigue_penalty_modifier": 0.11
-        }
-      },
-      "Mamelodi Sundowns": {
-        "sample_size_matches": 40,
-        "learned_coefficients": {
-          "home_advantage_multiplier": 1.42,
-          "form_momentum_weight": 0.95,
-          "volatility_index": 0.07,
-          "fatigue_penalty_modifier": 0.09
-        }
-      },
-      "Orlando Pirates": {
-        "sample_size_matches": 36,
-        "learned_coefficients": {
-          "home_advantage_multiplier": 1.26,
-          "form_momentum_weight": 0.84,
-          "volatility_index": 0.18,
-          "fatigue_penalty_modifier": 0.14
-        }
-      },
-      "Kaizer Chiefs": {
-        "sample_size_matches": 35,
-        "learned_coefficients": {
-          "home_advantage_multiplier": 1.21,
-          "form_momentum_weight": 0.79,
-          "volatility_index": 0.24,
-          "fatigue_penalty_modifier": 0.16
-        }
-      },
-      "Inter Milan": {
-        "sample_size_matches": 45,
-        "learned_coefficients": {
-          "home_advantage_multiplier": 1.30,
-          "form_momentum_weight": 0.90,
-          "volatility_index": 0.10,
-          "fatigue_penalty_modifier": 0.12
-        }
-      },
-      "Paris Saint-Germain": {
-        "sample_size_matches": 44,
-        "learned_coefficients": {
-          "home_advantage_multiplier": 1.32,
-          "form_momentum_weight": 0.87,
-          "volatility_index": 0.16,
-          "fatigue_penalty_modifier": 0.12
-        }
-      },
-      "Bayer Leverkusen": {
-        "sample_size_matches": 42,
-        "learned_coefficients": {
-          "home_advantage_multiplier": 1.28,
-          "form_momentum_weight": 0.93,
-          "volatility_index": 0.11,
-          "fatigue_penalty_modifier": 0.10
-        }
-      }
-    }
+    sync_timestamp: '',
+    model_engine: 'Chronological Team Intelligence Calibration',
+    meta_improvement_notes: 'No synchronized learned team coefficients are available until derived from completed training-window results.',
+    team_intelligence_matrices: {},
   };
 
   // Aggressive Super-Learning Protocol Sync - GET
