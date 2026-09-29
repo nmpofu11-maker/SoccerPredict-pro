@@ -242,7 +242,7 @@ export default function App() {
     // with narrower ESPN coverage on every single app load.
     fetchDailySlate()
       .then((serverFixtures) => {
-        if (serverFixtures && serverFixtures.length > 0) {
+        if (serverFixtures !== null) {
           setFixtures(serverFixtures);
           saveCustomFixtures(serverFixtures);
         }
@@ -463,7 +463,7 @@ export default function App() {
     setIsScrapingNow(true);
     fetchDailySlate()
       .then((serverFixtures) => {
-        const updatedFixtures = serverFixtures && serverFixtures.length > 0 ? serverFixtures : fixtures;
+        const updatedFixtures = serverFixtures !== null ? serverFixtures : fixtures;
         setFixtures(updatedFixtures);
         saveCustomFixtures(updatedFixtures);
 
@@ -473,9 +473,9 @@ export default function App() {
           fixturesCount: updatedFixtures.length,
           favouritesCount: updatedFixtures.filter((f) => isFavouriteTeam(f.homeTeam.name) || isFavouriteTeam(f.awayTeam.name)).length,
           status: 'SYNCED',
-          details: serverFixtures && serverFixtures.length > 0
-            ? `Synced ${serverFixtures.length} fixtures from the automated server pipeline.`
-            : 'Server pipeline returned no fixtures; kept existing dataset.',
+          details: serverFixtures !== null
+            ? `Synced authoritative server slate (${serverFixtures.length} fixtures).`
+            : 'Server pipeline request failed; kept existing dataset as an offline fallback.',
         };
         const newLogs = saveScrapeLog(log);
         setScrapeLogs(newLogs);
