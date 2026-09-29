@@ -35,11 +35,11 @@ export interface AggressiveSuperLearningSyncPayload {
 export interface SuperLearningTelemetry {
   protocolActive: boolean;
   totalSuperEpochs: number;
-  unboundedLearningRate: number;
-  lossVelocity: number;
+  learningRate: number | null;
+  lossVelocity: number | null;
   convergencesAchieved: number;
-  bestBrierLoss: number;
-  peakAccuracyPct: number;
-  lastOptimizationTimestamp: string;
+  bestBrierLoss: number | null;
+  peakAccuracyPct: number | null;
+  lastOptimizationTimestamp: string | null;
   activeOptimizers: string[];
 }
