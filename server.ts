@@ -646,8 +646,6 @@ function mapSportApiAiToInternalFixture(f: any): any {
   const awayOdds = Number(f.away_odds || f.odds?.away || f.odds?.away_win || f.awayOdds);
   const drawOdds = Number(f.draw_odds || f.odds?.draw || f.drawOdds);
 
-  // Neutral, odds-independent placeholder stats. Real rankings & form are resolved via verified standings.
-
   return {
     id: `sportapiai_${idStr}`,
     sportApiAiFixtureId: idStr,
@@ -722,11 +720,11 @@ function mapTheRundownToInternalFixture(ev: any): any {
       id: `rundown_team_${home.team_id || normalizeTeamName(homeName)}`,
       name: homeName,
       shortName: homeName.slice(0, 3).toUpperCase(),
-      leagueRank: 0,
-      points: 0,
+      leagueRank: null,
+      points: null,
       form: [],
-      avgPossession: 50,
-      avgShotsOnTarget: 4.5,
+      avgPossession: null,
+      avgShotsOnTarget: null,
       isHomeDominant: false,
       badgeColor: '#2563eb',
     },
