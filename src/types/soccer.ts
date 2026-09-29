@@ -169,7 +169,7 @@ export interface HistoricalMatchResult {
   notes?: string;
 }
 
-export interface BacktestEvaluation {
+export interface HistoricalEvaluation {
   matchId: string;
   fixture: MatchFixture;
   actualOutcome: 'home' | 'draw' | 'away';
