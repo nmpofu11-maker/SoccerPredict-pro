@@ -82,18 +82,6 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
       return !isNaN(kTime) && kTime >= nowMs && kTime <= deadlineMs;
     });
 
-    if (activeFixtures.length < 5) {
-      activeFixtures = (fixtures || []).filter((f) => {
-        if (!f || !f.id || !f.homeTeam || !f.awayTeam || !f.kickoffTime) return false;
-        const kTime = new Date(f.kickoffTime).getTime();
-        return !isNaN(kTime) && kTime >= nowMs;
-      });
-    }
-
-    if (activeFixtures.length < 5) {
-      activeFixtures = (fixtures || []).filter((f) => Boolean(f && f.id && f.homeTeam && f.awayTeam));
-    }
-
     for (const fixture of activeFixtures) {
       // DATA-QUALITY GATE: Only fixtures with verified official standings may enter EV / value ranking
       const isStandingsVerified = Boolean(fixture.isStandingsVerified || fixture.authenticity?.source === 'OFFICIAL_ESPN_STANDINGS');
