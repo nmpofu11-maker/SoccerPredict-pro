@@ -8,9 +8,7 @@ import {
   saveLearningState,
   getInitialLearningState,
   evaluateHistoricalBacktest,
-  autoRetrainOnCompletedMatches,
   BOUNDS_ENGINE_WEIGHTS,
-  runAggressiveSuperLearningProtocol,
   loadSuperLearningTelemetry,
   updateSuperLearningTelemetry,
 } from '../engine/selfLearningEngine';
@@ -83,37 +81,6 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
   const baselineWeights = DEFAULT_ENGINE_WEIGHTS;
   const baselineEval = evaluateHistoricalBacktest(HISTORICAL_MATCH_RESULTS, baselineWeights, teamMatrices);
 
-  const handleRunSuperLearningPass = (epochs: number = 25) => {
-    setIsTraining(true);
-    setStatusMessage(`⚡ Executing Aggressive Super-Learning Protocol (${epochs} Unbounded Epochs)...`);
-
-    setTimeout(() => {
-      const result = runAggressiveSuperLearningProtocol(learningState.weights, epochs, HISTORICAL_MATCH_RESULTS);
-      const newHistory = [...learningState.recentLossHistory, ...result.lossHistory.slice(1)].slice(-30);
-
-      const updatedState: LearningModelState = {
-        ...learningState,
-        weights: result.finalWeights,
-        accuracyPct: result.finalAccuracy,
-        brierLoss: result.finalLoss,
-        totalEpochsTrained: learningState.totalEpochsTrained + epochs,
-        lastTrainedAt: new Date().toISOString(),
-        recentLossHistory: newHistory,
-      };
-
-      saveLearningState(updatedState);
-      saveTeamIntelligenceMatrices(result.updatedTeamMatrices);
-      setTeamMatrices(result.updatedTeamMatrices);
-      setTelemetry(loadSuperLearningTelemetry());
-      onUpdateLearningState(updatedState);
-      setIsTraining(false);
-      setStatusMessage(
-        `⚡ Aggressive Super-Learning Complete! Converged across ${epochs} epochs. Loss: ${result.finalLoss.toFixed(3)} (${result.lossDelta >= 0 ? '-' : '+'}${Math.abs(result.lossDelta)}), Accuracy: ${result.finalAccuracy}% (+${result.accuracyGain}%)`
-      );
-      setTimeout(() => setStatusMessage(null), 6000);
-    }, 850);
-  };
-
   const handleSyncSuperLearningToServer = async () => {
     setIsSyncingServer(true);
     setStatusMessage('Syncing Aggressive Super-Learning matrix & coefficients to persistent server API...');
@@ -137,137 +104,6 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
     }
   };
 
-  const handleAutoRetrain = () => {
-    setIsTraining(true);
-    setStatusMessage('Executing automated post-match retraining pipeline (5 epochs optimization)...');
-
-    setTimeout(() => {
-      const { updatedState, accuracyGain, lossDelta, epochsCompleted } = autoRetrainOnCompletedMatches(
-        learningState,
-        HISTORICAL_MATCH_RESULTS,
-        5
-      );
-      onUpdateLearningState(updatedState);
-      setIsTraining(false);
-      setAutoRetrainFeedback({ gain: accuracyGain, lossDelta, epochs: epochsCompleted });
-      setStatusMessage(`Auto-Retraining complete! Trained on ${HISTORICAL_MATCH_RESULTS.length} matches. Accuracy: ${updatedState.accuracyPct}% (${accuracyGain >= 0 ? '+' : ''}${accuracyGain}% gain)`);
-      setTimeout(() => setStatusMessage(null), 5000);
-    }, 600);
-  };
-
-  const handleTrainOneEpoch = () => {
-    setIsTraining(true);
-    setStatusMessage('Running online gradient step across historical dataset...');
-
-    setTimeout(() => {
-      const result = trainSingleEpoch(learningState.weights, HISTORICAL_MATCH_RESULTS, 0.04);
-      const newHistory = [...learningState.recentLossHistory, result.newLoss].slice(-15);
-
-      const updatedState: LearningModelState = {
-        ...learningState,
-        weights: result.updatedWeights,
-        accuracyPct: result.newAccuracy,
-        brierLoss: result.newLoss,
-        totalEpochsTrained: learningState.totalEpochsTrained + 1,
-        lastTrainedAt: new Date().toISOString(),
-        recentLossHistory: newHistory,
-      };
-
-      saveLearningState(updatedState);
-      onUpdateLearningState(updatedState);
-      setIsTraining(false);
-      setStatusMessage(`Epoch completed! Accuracy: ${result.newAccuracy}% (Loss: ${result.newLoss.toFixed(3)})`);
-      setTimeout(() => setStatusMessage(null), 4000);
-    }, 450);
-  };
-
-  const handleTrainMultipleEpochs = (count: number) => {
-    setIsTraining(true);
-    setStatusMessage(`Running deep multi-epoch optimization (${count} epochs)...`);
-
-    setTimeout(() => {
-      const result = trainMultipleEpochs(learningState.weights, count, HISTORICAL_MATCH_RESULTS);
-      const newHistory = [...learningState.recentLossHistory, ...result.lossHistory.slice(1)].slice(-20);
-
-      const updatedState: LearningModelState = {
-        ...learningState,
-        weights: result.finalWeights,
-        accuracyPct: result.finalAccuracy,
-        brierLoss: result.finalLoss,
-        totalEpochsTrained: learningState.totalEpochsTrained + count,
-        lastTrainedAt: new Date().toISOString(),
-        recentLossHistory: newHistory,
-      };
-
-      saveLearningState(updatedState);
-      onUpdateLearningState(updatedState);
-      setIsTraining(false);
-      setStatusMessage(`Completed ${count} optimization epochs! Loss improved from ${result.initialLoss.toFixed(3)} to ${result.finalLoss.toFixed(3)}.`);
-      setTimeout(() => setStatusMessage(null), 5000);
-    }, 650);
-  };
-
-  const handleRequestAISynthesis = async () => {
-    setIsRequestingAI(true);
-    setStatusMessage('Calling Gemini AI server for tactical learning synthesis...');
-    try {
-      const synthesis = await requestAITacticalSynthesis(learningState, currentEval.evaluations);
-      const updatedState: LearningModelState = {
-        ...learningState,
-        aiTacticalSynthesis: synthesis,
-      };
-      saveLearningState(updatedState);
-      onUpdateLearningState(updatedState);
-      setStatusMessage('Gemini tactical synthesis updated successfully.');
-      setActiveSubTab('synthesis');
-    } catch {
-      setStatusMessage('Synthesis generated from offline empirical engine.');
-    } finally {
-      setIsRequestingAI(false);
-      setTimeout(() => setStatusMessage(null), 4000);
-    }
-  };
-
-  const handleResetToBaseline = () => {
-    const initialState = getInitialLearningState();
-    saveLearningState(initialState);
-    onUpdateLearningState(initialState);
-    setStatusMessage('Engine weights reset to factory default baseline.');
-    setTimeout(() => setStatusMessage(null), 3500);
-  };
-
-  const handleToggleAutoLearn = () => {
-    const updated: LearningModelState = {
-      ...learningState,
-      isAutoLearningEnabled: !learningState.isAutoLearningEnabled,
-    };
-    saveLearningState(updated);
-    onUpdateLearningState(updated);
-  };
-
-  const ruleWeightItems: {
-    key: keyof EngineWeights;
-    ruleNumber: number;
-    name: string;
-    description: string;
-    unit: string;
-  }[] = [
-    {
-      key: 'stakesMotivationBoost',
-      ruleNumber: 1,
-      name: 'Stakes Motivation Boost',
-      description: 'Urgency point surge applied to high-stakes title races & relegation matches',
-      unit: 'pts',
-    },
-    {
-      key: 'deadRubberPenalty',
-      ruleNumber: 1,
-      name: 'Dead-Rubber Penalty Rate',
-      description: 'Conviction variance reduction for end-of-season fixtures lacking stakes',
-      unit: '%',
-    },
-    {
-      key: 'rankPointsMultiplier',
       ruleNumber: 2,
       name: 'Rank Gap Multiplier',
       description: 'Point weighting per spot in the 8-place table ranking differential',
