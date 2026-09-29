@@ -5,6 +5,7 @@ import {
 } from '../types/superLearning';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
 import { HistoricalMatchResult } from '../types/soccer';
+import { getAdminApiHeaders } from '../services/adminAuthService';
 
 const STORAGE_KEY_TEAM_MATRICES = 'football_pulse_team_matrices_v1';
 
