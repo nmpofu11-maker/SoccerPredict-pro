@@ -763,7 +763,7 @@ export function evaluateFixturePrediction(
 
   // Calculate confidence score (based on margin between leader and second)
   const maxPct = Math.max(roundedHome, roundedAway, roundedDraw);
-  const confidenceScore = Math.min(96, Math.max(48, Math.round(maxPct * 1.15)));
+  const confidenceScore = Math.min(100, Math.max(0, Math.round(maxPct)));
 
   return {
     matchId: fixture.id,
