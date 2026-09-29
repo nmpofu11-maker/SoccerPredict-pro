@@ -558,7 +558,7 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
                         {isInternationalCompetition(match.fixture?.league) ? (
                           <span className="text-amber-400 font-medium">National Team (Qualifier)</span>
                         ) : (
-                          `Rank #${homeTeam.leagueRank} • ${homeTeam.points} pts`
+                          `Rank #${homeTeam.leagueRank ?? 'N/A'} • ${homeTeam.points === null ? 'N/A' : `${homeTeam.points} pts`}`
                         )}
                       </div>
                     </div>
@@ -584,7 +584,7 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
                         {isInternationalCompetition(match.fixture?.league) ? (
                           <span className="text-amber-400 font-medium">National Team (Qualifier)</span>
                         ) : (
-                          `Rank #${awayTeam.leagueRank} • ${awayTeam.points} pts`
+                          `Rank #${awayTeam.leagueRank ?? 'N/A'} • ${awayTeam.points === null ? 'N/A' : `${awayTeam.points} pts`}`
                         )}
                       </div>
                     </div>
