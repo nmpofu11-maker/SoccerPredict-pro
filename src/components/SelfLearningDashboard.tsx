@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   LearningModelState,
-  BacktestEvaluation,
+  HistoricalEvaluation,
   EngineWeights,
 } from '../types/soccer';
 import {
@@ -65,7 +65,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
 }) => {
   const [isTraining, setIsTraining] = useState(false);
   const [isRequestingAI, setIsRequestingAI] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'superlearning' | 'weights' | 'backtest' | 'synthesis' | 'statistical' | 'comparison'>('superlearning');
+  const [activeSubTab, setActiveSubTab] = useState<'superlearning' | 'weights' | 'evaluation' | 'synthesis' | 'statistical' | 'comparison'>('superlearning');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [comparisonModelB, setComparisonModelB] = useState<'baseline' | 'halfway'>('baseline');
   const [autoRetrainFeedback, setAutoRetrainFeedback] = useState<{ gain: number; lossDelta: number; epochs: number } | null>(null);
