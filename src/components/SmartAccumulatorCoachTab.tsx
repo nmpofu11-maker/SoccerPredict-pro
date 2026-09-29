@@ -299,7 +299,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
       `Bundle: ${optimalReport.bundleTitle}`,
       `AI Confidence Rating: ${optimalReport.aiConfidenceRating}% (${optimalReport.confidenceGrade})`,
       `Combined Match Odds: ${optimalReport.combinedOdds}x`,
-      `Historical Validation Rate: ${optimalReport.historicalValidationRate}%`,
+      `Historical Validation Rate: ${optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.historicalValidationRate}%`}`,
       `Expected Value Alpha: +${optimalReport.expectedValueAlpha}%`,
       `Recommended Stake: ${optimalReport.recommendedStakeUnits} Units`,
       `Generated: ${new Date(optimalReport.generatedAt).toLocaleString()}`,
@@ -343,14 +343,14 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
               </span>
               <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-[11px] font-mono font-bold rounded-full border border-emerald-500/30 flex items-center gap-1">
                 <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                Historical Backtest Verified
+                Historical Cohort Observed
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-slate-100 font-mono tracking-tight">
               Smart Accumulator & Self-Learning Coach
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 max-w-2xl">
-              Automated intelligence identifying optimal positive Expected Value (EV) accumulators based on empirical match history and current live odds.
+              Automated intelligence identifying positive Expected Value (EV) accumulator candidates when current odds and sufficient historical evidence are available.
             </p>
           </div>
 
@@ -579,7 +579,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                   <div className="flex items-center justify-between text-slate-300 gap-4">
                     <span className="text-slate-400">Historical Fit:</span>
                     <span className="font-bold text-emerald-400">
-                      {optimalReport.confidenceBreakdown.historicalBacktestFit}%
+                      {optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.confidenceBreakdown.historicalBacktestFit}%`}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-slate-300 gap-4">
