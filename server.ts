@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { timingSafeEqual } from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
@@ -26,7 +27,32 @@ import { parseRawResults } from './src/services/resultParserService';
 
 dotenv.config();
 
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({
+  dest: 'uploads/',
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+});
+
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY?.trim() || '';
+
+function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction): void {
+  if (!ADMIN_API_KEY) {
+    if (process.env.NODE_ENV === 'production') {
+      res.status(503).json({ error: 'Administrative API is not configured.' });
+      return;
+    }
+    next();
+    return;
+  }
+
+  const supplied = req.get('x-admin-api-key') || '';
+  const expected = Buffer.from(ADMIN_API_KEY);
+  const actual = Buffer.from(supplied);
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    res.status(401).json({ error: 'Administrative authorization required.' });
+    return;
+  }
+  next();
+}
 
 const PORT = 3000;
 
@@ -44,6 +70,31 @@ function ensureDataDirectory(): void {
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
+}
+
+function readRawDiskManifest(): any[] {
+  ensureDataDirectory();
+  let list: any[] = [];
+
+  if (fs.existsSync(MANIFEST_PATH)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf-8'));
+      if (Array.isArray(data)) list = data;
+    } catch (e) {
+      console.warn('Error reading raw fixtures-manifest.json:', e);
+    }
+  }
+
+  if (list.length === 0 && fs.existsSync(SRC_FIXTURES_PATH)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(SRC_FIXTURES_PATH, 'utf-8'));
+      if (Array.isArray(data)) list = data;
+    } catch (e) {
+      console.warn('Error reading source fixture manifest:', e);
+    }
+  }
+
+  return list;
 }
 
 export function readDiskManifest(): any[] {
@@ -843,7 +894,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
 
   try {
     const now = Date.now();
-    const manifest = readDiskManifest();
+    const manifest = readRawDiskManifest();
     const existingLog = readResultsLog();
     const settledIds = new Set(existingLog.map((e) => e.id));
 
@@ -870,10 +921,17 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
       dateGroups.get(d)!.push(f);
     }
 
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const yesterdayStr = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const twoDaysAgoStr = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const allowedDates = new Set([twoDaysAgoStr, yesterdayStr, todayStr]);
+    const settlementLookbackDays = Math.max(7, Number(process.env.SETTLEMENT_LOOKBACK_DAYS || 30));
+    const cutoffMs = now - settlementLookbackDays * 24 * 60 * 60 * 1000;
+    const allowedDates = new Set(
+      Array.from({ length: settlementLookbackDays + 1 }, (_, i) =>
+        new Date(now - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      )
+    );
+    const eligiblePastFixtures = pastFixtures.filter((f: any) => {
+      const kickoffMs = new Date(f.kickoffTime).getTime();
+      return Number.isFinite(kickoffMs) && kickoffMs >= cutoffMs;
+    });
 
     let settledCount = 0;
     const newEntries: SettledResultEntry[] = [];
@@ -1108,7 +1166,7 @@ async function startServer() {
   });
 
   // Durable Persistence: Save Learned Model State
-  app.post('/api/learning-state', (req, res) => {
+  app.post('/api/learning-state', requireAdmin, (req, res) => {
     try {
       const { state } = req.body;
       if (!state || !state.weights) {
@@ -1166,7 +1224,7 @@ async function startServer() {
   });
 
   // Durable Persistence: Create Snapshot Backup
-  app.post('/api/learning-state/backup', (req, res) => {
+  app.post('/api/learning-state/backup', requireAdmin, (req, res) => {
     try {
       const { state, tag } = req.body;
       const backupDir = path.join(process.cwd(), 'data', 'backups');
@@ -1223,7 +1281,7 @@ async function startServer() {
   });
 
   // Durable Persistence: Restore a Specific Backup
-  app.post('/api/learning-state/restore', (req, res) => {
+  app.post('/api/learning-state/restore', requireAdmin, (req, res) => {
     try {
       const { filename } = req.body;
       if (!filename || typeof filename !== 'string') {
@@ -1312,7 +1370,7 @@ async function startServer() {
   });
 
   // Verify and Sanitize Arbitrary Payload
-  app.post('/api/fixtures/verify', async (req, res) => {
+  app.post('/api/fixtures/verify', requireAdmin, async (req, res) => {
     try {
       const { fixtures } = req.body || {};
       if (!Array.isArray(fixtures)) {
@@ -1458,11 +1516,11 @@ async function startServer() {
     }
   };
 
-  app.post('/api/fixtures/ingest-slate', handleIngestSlate);
-  app.post('/api/fixtures/ingest-hollywoodbets', handleIngestSlate);
+  app.post('/api/fixtures/ingest-slate', requireAdmin, handleIngestSlate);
+  app.post('/api/fixtures/ingest-hollywoodbets', requireAdmin, handleIngestSlate);
 
   // 3. POST /api/fixtures/purge: Resets and wipes all stored fixtures and memory caches to a clean state
-  app.post('/api/fixtures/purge', (_req, res) => {
+  app.post('/api/fixtures/purge', requireAdmin, (_req, res) => {
     try {
       writeDiskManifest([]);
       fixturesCache = {
@@ -1497,7 +1555,7 @@ async function startServer() {
   });
 
   // 4. POST /api/fixtures/delete: Deletes a specific match by ID from disk and active state
-  app.post('/api/fixtures/delete', (req, res) => {
+  app.post('/api/fixtures/delete', requireAdmin, (req, res) => {
     try {
       const { matchId } = req.body || {};
       if (!matchId || typeof matchId !== 'string') {
@@ -1530,7 +1588,7 @@ async function startServer() {
   });
 
   // Force Deep Standings Recalibration Endpoint
-  app.post('/api/fixtures/recalibrate', async (_req, res) => {
+  app.post('/api/fixtures/recalibrate', requireAdmin, async (_req, res) => {
     try {
       standingsMemoryCache.clear();
       const liveData = await getLiveScoreboardFixtures(true);
@@ -1548,7 +1606,7 @@ async function startServer() {
   });
 
   // Server-side AI Self-Learning Synthesis endpoint
-  app.post('/api/ai/tactical-learning', async (req, res) => {
+  app.post('/api/ai/tactical-learning', requireAdmin, async (req, res) => {
     try {
       const { accuracyPct, brierLoss, totalEpochs, weights, recentEvaluations } = req.body || {};
 
@@ -1815,7 +1873,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
   });
 
   // Aggressive Super-Learning Protocol Sync - POST
-  app.post('/api/ai/super-learning/sync', (req, res) => {
+  app.post('/api/ai/super-learning/sync', requireAdmin, (req, res) => {
     try {
       const payload = req.body || {};
       if (payload && payload.team_intelligence_matrices) {
@@ -1869,12 +1927,12 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
   });
 
   // Manual triggers, mainly for testing the pipeline without waiting for the schedule.
-  app.post('/api/admin/run-ingest-now', async (_req, res) => {
+  app.post('/api/admin/run-ingest-now', requireAdmin, async (_req, res) => {
     const result = await runDailyIngestJob();
     return res.status(result.success ? 200 : 500).json({ status: result.success ? 'success' : 'error', ...result });
   });
 
-  app.post('/api/admin/run-settlement-now', async (_req, res) => {
+  app.post('/api/admin/run-settlement-now', requireAdmin, async (_req, res) => {
     const result = await runSettlementJob();
     return res.status(result.success ? 200 : 500).json({ status: result.success ? 'success' : 'error', ...result });
   });
@@ -1883,7 +1941,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
   // fixture manifest and appends them to data/results-log.json (the same store the
   // automated settlement job writes to), so manually-entered results actually feed
   // "yesterday's performance" and the learning engine, not a dead-end file.
-  app.post('/api/admin/upload-results', async (req, res) => {
+  app.post('/api/admin/upload-results', requireAdmin, async (req, res) => {
     try {
       const { rawData } = req.body;
       if (!rawData || typeof rawData !== 'string') {
@@ -1953,7 +2011,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
 
   // Upload fixture PDF — extracts text, then runs it through the same real
   // Hollywoodbets-format parser and manifest pipeline as the paste-text flow.
-  app.post('/api/admin/upload-fixture-file', upload.single('file'), async (req, res) => {
+  app.post('/api/admin/upload-fixture-file', requireAdmin, upload.single('file'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
       const text = await extractTextFromPDF(req.file.path);
@@ -1975,7 +2033,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
   // pages whose raw text already resembles a Hollywoodbets-style fixture list; it is
   // NOT a general-purpose scraper and won't reliably extract from arbitrary bookmaker
   // pages (most render odds via JavaScript, which a simple HTML fetch won't execute).
-  app.post('/api/admin/fetch-fixture-link', async (req, res) => {
+  app.post('/api/admin/fetch-fixture-link', requireAdmin, async (req, res) => {
     try {
       const { url } = req.body;
       if (!url) return res.status(400).json({ error: 'No URL provided' });
