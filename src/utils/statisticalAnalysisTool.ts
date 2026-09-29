@@ -1,6 +1,7 @@
 import { HistoricalMatchResult, EngineWeights, PredictionResult } from '../types/soccer';
 import { evaluateFixturePrediction, DEFAULT_ENGINE_WEIGHTS, sanitizeEngineWeights } from '../engine/rulesEngine';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
+import { synthesizeTeamIntelligenceMatrices } from '../engine/teamIntelligenceMatrix';
 
 export interface ClassPerformance {
   precision: number;
@@ -30,7 +31,7 @@ export interface RuleAblationItem {
   deltaRPS: number;
   ablatedBrier: number;
   deltaBrier: number;
-  statisticalRole: 'Essential Stabilizer' | 'High Alpha Driver' | 'Probabilistic Calibrator' | 'Disparity Grounding';
+  ablationCategory: 'Motivation' | 'Standings' | 'Form' | 'Venue' | 'Tactical' | 'Fatigue' | 'Volatility' | 'Favourite' | 'Draw';
   significanceRank: number;
 }
 
@@ -138,14 +139,21 @@ export function runStatisticalEvaluation(
   dataset: HistoricalMatchResult[] = HISTORICAL_MATCH_RESULTS
 ): StatisticalEvaluationResult {
   const weights = sanitizeEngineWeights(weightsInput || DEFAULT_ENGINE_WEIGHTS);
-  const validDataset = (dataset || []).filter(
-    (m): m is HistoricalMatchResult => Boolean(m && m.fixture && m.actualOutcome)
-  );
-  const total = validDataset.length;
-
-  if (total === 0) {
-    throw new Error('Dataset cannot be empty for statistical evaluation');
+  const validDataset = (dataset || []).filter((m): m is HistoricalMatchResult => Boolean(m && m.fixture && m.actualOutcome));
+  if (validDataset.length < 2) {
+    throw new Error('At least two dated historical records are required for holdout evaluation');
   }
+  validDataset.sort((a, b) => {
+    const aTime = new Date(a.fixture?.kickoffTime || a.date || 0).getTime();
+    const bTime = new Date(b.fixture?.kickoffTime || b.date || 0).getTime();
+    return aTime - bTime;
+  });
+  const holdoutSize = Math.max(1, Math.floor(validDataset.length * 0.20));
+  const splitIndex = Math.max(1, validDataset.length - holdoutSize);
+  const trainingDataset = validDataset.slice(0, splitIndex);
+  const holdoutDataset = validDataset.slice(splitIndex);
+  const total = holdoutDataset.length;
+  const teamMatrices = synthesizeTeamIntelligenceMatrices(trainingDataset);
 
   let totalCorrect = 0;
   let sumBrier = 0;
@@ -173,13 +181,13 @@ export function runStatisticalEvaluation(
     { range: '70% - 100%', min: 0.70, max: 1.01, count: 0, correct: 0, sumProb: 0 },
   ];
 
-  for (const m of validDataset) {
+  for (const m of holdoutDataset) {
     const actual = m.actualOutcome || 'draw';
     if (actual === 'home') countHome++;
     else if (actual === 'draw') countDraw++;
     else countAway++;
 
-    const pred: PredictionResult = evaluateFixturePrediction(m.fixture, 'none', weights);
+    const pred: PredictionResult = evaluateFixturePrediction(m.fixture, 'none', weights, teamMatrices);
     const ph = Math.max(0.01, Math.min(0.98, pred.homeWinPct / 100));
     const pd = Math.max(0.01, Math.min(0.98, pred.drawPct / 100));
     const pa = Math.max(0.01, Math.min(0.98, pred.awayWinPct / 100));
