@@ -297,9 +297,9 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
       `====================================================`,
       `📊 AI AUTOMATED OPTIMAL VALUE REPORT`,
       `Bundle: ${optimalReport.bundleTitle}`,
-      `AI Confidence Rating: ${optimalReport.aiConfidenceRating}% (${optimalReport.confidenceGrade})`,
+      `Heuristic Evidence Score: ${optimalReport.aiConfidenceRating}% (${optimalReport.evidenceLabel})`,
       `Combined Match Odds: ${optimalReport.combinedOdds}x`,
-      `Historical Validation Rate: ${optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.historicalValidationRate}%`}`,
+      `Historical Validation Rate: ${optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.historicalValidationRate}%``}`,
       `Expected Value Alpha: +${optimalReport.expectedValueAlpha}%`,
       `Recommended Stake: ${optimalReport.recommendedStakeUnits} Units`,
       `Generated: ${new Date(optimalReport.generatedAt).toLocaleString()}`,
@@ -449,7 +449,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                 <button
                   onClick={() => setStrategyMode('optimal')}
                   className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
-                    strategyMode === 'optimal'
+                    strategyMode === 'balanced'
                       ? 'bg-emerald-600 text-white shadow'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
@@ -520,14 +520,14 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
             </div>
           </div>
 
-          {/* AI Confidence Rating Hero & Key Value Matrix */}
+          {/* Heuristic Evidence Score & Key Value Matrix */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
             {/* AI Confidence Rating Hero Card */}
             <div className="md:col-span-4 bg-gradient-to-br from-slate-900 via-slate-900/90 to-emerald-950/40 border border-emerald-500/40 rounded-2xl p-6 flex flex-col justify-between space-y-4 shadow-xl relative overflow-hidden">
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400 font-mono text-xs uppercase tracking-wider">
-                    Bundle Rating
+                    Evidence Label
                   </span>
                   <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 font-mono text-[11px] font-bold rounded-full border border-emerald-500/30">
                     {optimalReport.confidenceGrade}
@@ -571,7 +571,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
 
                 <div className="space-y-1.5 text-xs font-mono">
                   <div className="flex items-center justify-between text-slate-300 gap-4">
-                    <span className="text-slate-400">Model Certainty:</span>
+                    <span className="text-slate-400">Model Probability:</span>
                     <span className="font-bold text-slate-200">
                       {optimalReport.confidenceBreakdown.modelCertainty}%
                     </span>
@@ -583,7 +583,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-slate-300 gap-4">
-                    <span className="text-slate-400">Odds EV Alpha:</span>
+                    <span className="text-slate-400">Market EV Signal:</span>
                     <span className="font-bold text-amber-400">
                       {optimalReport.confidenceBreakdown.marketOddsAlpha}%
                     </span>
@@ -612,7 +612,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                   </div>
                 </div>
                 <div className="text-[11px] text-slate-400 font-mono">
-                  {optimalReport.legs.length} Optimal Value Legs
+                  {optimalReport.legs.length} Evidence-Gated Value Legs
                 </div>
               </div>
 
@@ -1323,7 +1323,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                 Top 10 Autonomous Best Value Picks (Next 12 Hours)
               </h2>
               <p className="text-xs text-slate-400">
-                Sorted strictly by composite Expected Value, model confidence, and historical backtest win-rate for matches kicking off within the next 12 hours. Color-coded with progressive shades of green where rank #1 is the darkest green.
+                Sorted strictly by composite Expected Value, model confidence, and observed historical cohort hit-rate for matches kicking off within the next 12 hours. Color-coded with progressive shades of green where rank #1 is the darkest green.
               </p>
             </div>
           </div>
