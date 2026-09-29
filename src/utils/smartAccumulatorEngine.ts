@@ -511,7 +511,7 @@ export function generateOptimalValueAccumulatorReport(
     : 0;
 
   let evidenceLabel: 'High Evidence' | 'Moderate Evidence' | 'Limited Evidence' | 'Insufficient Evidence' = 'Insufficient Evidence';
-  if (selectedLegs.length > 0 && historicalRates.length > 0 && historicalRates.length >= selectedLegs.length) evidenceLabel = aiConfidenceRating >= 80 ? 'High Evidence' : aiConfidenceRating >= 65 ? 'Moderate Evidence' : 'Limited Evidence';
+  if (selectedLegs.length > 0 && historicalRates.length > 0 && historicalRates.length >= selectedLegs.length) evidenceLabel = heuristicEvidenceScore >= 80 ? 'High Evidence' : heuristicEvidenceScore >= 65 ? 'Moderate Evidence' : 'Limited Evidence';
 
   // Bankroll unit sizing based on Kelly score
   const avgKelly = selectedLegs.length > 0
@@ -528,7 +528,7 @@ export function generateOptimalValueAccumulatorReport(
     : 'Balanced Positive-EV Bundle';
 
   const executiveSummary = selectedLegs.length > 0
-    ? `The accumulator engine analyzed today's fixture matrix and identified a ${selectedLegs.length}-leg bundle with model-estimated Expected Value (${expectedValueAlpha >= 0 ? '+' : ''}${expectedValueAlpha}% EV). Combined odds: ${combinedOdds.toFixed(2)}x; heuristic evidence score: ${aiConfidenceRating}%.`
+    ? `The accumulator engine analyzed today's fixture matrix and identified a ${selectedLegs.length}-leg bundle with model-estimated Expected Value (${expectedValueAlpha >= 0 ? '+' : ''}${expectedValueAlpha}% EV). Combined odds: ${combinedOdds.toFixed(2)}x; heuristic evidence score: ${heuristicEvidenceScore}%.`
     : `No qualifying accumulator legs found matching the selected strategy criteria with positive Expected Value.`;
 
   const historicalPrecedentSummary = selectedLegs.length > 0
@@ -544,7 +544,7 @@ export function generateOptimalValueAccumulatorReport(
   return {
     generatedAt: new Date().toISOString(),
     bundleTitle: modeTitle,
-    aiConfidenceRating,
+    heuristicEvidenceScore,
     evidenceLabel,
     strategyMode,
     combinedOdds: Number(combinedOdds.toFixed(2)),
