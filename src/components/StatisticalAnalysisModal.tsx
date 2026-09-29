@@ -413,11 +413,11 @@ export const StatisticalAnalysisModal: React.FC<StatisticalAnalysisModalProps> =
                           <td className="p-3">
                             <span
                               className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border ${
-                                item.ablationCategory === 'Essential Stabilizer'
+                                item.ablationCategory === 'Draw'
                                   ? 'bg-rose-950/80 text-rose-300 border-rose-700/60'
-                                  : item.ablationCategory === 'High Alpha Driver'
+                                  : item.ablationCategory === 'Venue'
                                   ? 'bg-sky-950/80 text-sky-300 border-sky-700/60'
-                                  : item.ablationCategory === 'Probabilistic Calibrator'
+                                  : item.ablationCategory === 'Standings'
                                   ? 'bg-purple-950/80 text-purple-300 border-purple-700/60'
                                   : 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60'
                               }`}
