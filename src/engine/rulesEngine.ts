@@ -83,7 +83,7 @@ export function evaluateFixturePrediction(
   if (awayIsFav) favouriteTeams.push(fixture.awayTeam.name);
 
   // Initial baseline scores: modulated by Super-Learned home advantage multiplier
-  let homePoints = w.homeAdvantageBaseline * (homeLearned.home_advantage_multiplier || 1.15);
+  let homePoints = w.homeAdvantageBaseline * homeLearned.home_advantage_multiplier;
   let awayPoints = w.awayAdvantageBaseline;
   let drawPoints = 6.8;
 
@@ -241,11 +241,11 @@ export function evaluateFixturePrediction(
 
   if (homeForm.length > 0) {
     const homeFormPts = homeForm.reduce((acc, res) => acc + (res === 'W' ? (w.formWinPoints ?? 1.20) : res === 'D' ? (w.formDrawPoints ?? 0.40) : 0), 0);
-    homePoints += homeFormPts * (homeLearned.form_momentum_weight || 0.85);
+    homePoints += homeFormPts * (homeLearned.form_momentum_weight);
   }
   if (awayForm.length > 0) {
     const awayFormPts = awayForm.reduce((acc, res) => acc + (res === 'W' ? (w.formWinPoints ?? 1.20) : res === 'D' ? (w.formDrawPoints ?? 0.40) : 0), 0);
-    awayPoints += awayFormPts * (awayLearned.form_momentum_weight || 0.85);
+    awayPoints += awayFormPts * (awayLearned.form_momentum_weight);
   }
 
   // Part B: Elite Road Form & Home Fortress Dominance
@@ -363,18 +363,14 @@ export function evaluateFixturePrediction(
   }
 
   // Part B: Total Squad Market Value Disparity (Roster Depth & Quality)
-  const homeSquadVal = Number.isFinite(fixture.homeTeam.totalSquadValueEur)
-    ? (fixture.homeTeam.totalSquadValueEur as number)
-    : (homeProfile.totalSquadValueEur || 150);
-  const awaySquadVal = Number.isFinite(fixture.awayTeam.totalSquadValueEur)
-    ? (fixture.awayTeam.totalSquadValueEur as number)
-    : (awayProfile.totalSquadValueEur || 150);
-  const valRatio = (homeSquadVal > 0 && awaySquadVal > 0)
-    ? (homeSquadVal / awaySquadVal)
-    : 1;
+  const homeSquadVal = Number.isFinite(fixture.homeTeam.totalSquadValueEur) ? (fixture.homeTeam.totalSquadValueEur as number) : null;
+  const awaySquadVal = Number.isFinite(fixture.awayTeam.totalSquadValueEur) ? (fixture.awayTeam.totalSquadValueEur as number) : null;
+  const valRatio = homeSquadVal !== null && awaySquadVal !== null && homeSquadVal > 0 && awaySquadVal > 0
+    ? homeSquadVal / awaySquadVal
+    : null;
   const squadValWeight = Number.isFinite(w.squadValueWeight) ? w.squadValueWeight : 0.40;
 
-  if (valRatio >= 1.40) {
+  if (valRatio !== null && valRatio >= 1.40) {
     const rawBonus = Math.log2(valRatio) * squadValWeight + 0.6;
     const valueBonus = Number.isFinite(rawBonus) ? Math.min(3.2, Math.max(0, Math.round(rawBonus * 10) / 10)) : 0;
     if (valueBonus > 0) {
@@ -388,7 +384,7 @@ export function evaluateFixturePrediction(
         description: `Home squad valuation (${formatSquadValue(homeSquadVal)}) exceeds Away (${formatSquadValue(awaySquadVal)}) by ${valRatio.toFixed(1)}x, reflecting elite roster depth and game-changing individual talent.`,
       });
     }
-  } else if (valRatio <= 0.71) {
+  } else if (valRatio !== null && valRatio <= 0.71) {
     const invRatio = 1 / Math.max(valRatio, 0.01);
     const rawBonus = Math.log2(invRatio) * squadValWeight + 0.6;
     const valueBonus = Number.isFinite(rawBonus) ? Math.min(3.2, Math.max(0, Math.round(rawBonus * 10) / 10)) : 0;
@@ -406,16 +402,14 @@ export function evaluateFixturePrediction(
   }
 
   // Part C: Average Match Rating Superiority
-  const homeRating = Number.isFinite(fixture.homeTeam.avgMatchRating)
-    ? (fixture.homeTeam.avgMatchRating as number)
-    : (homeProfile.avgMatchRating || 6.75);
-  const awayRating = Number.isFinite(fixture.awayTeam.avgMatchRating)
-    ? (fixture.awayTeam.avgMatchRating as number)
-    : (awayProfile.avgMatchRating || 6.75);
-  const ratingDiff = Math.round((homeRating - awayRating) * 100) / 100;
+  const homeRating = Number.isFinite(fixture.homeTeam.avgMatchRating) ? (fixture.homeTeam.avgMatchRating as number) : null;
+  const awayRating = Number.isFinite(fixture.awayTeam.avgMatchRating) ? (fixture.awayTeam.avgMatchRating as number) : null;
+  const ratingDiff = homeRating !== null && awayRating !== null
+    ? Math.round((homeRating - awayRating) * 100) / 100
+    : 0;
   const mRatingWeight = Number.isFinite(w.matchRatingWeight) ? w.matchRatingWeight : 4.50;
 
-  if (Math.abs(ratingDiff) >= 0.12) {
+  if (homeRating !== null && awayRating !== null && Math.abs(ratingDiff) >= 0.12) {
     const rawRatingBonus = Math.abs(ratingDiff) * mRatingWeight;
     const ratingBonus = Number.isFinite(rawRatingBonus) ? Math.min(2.8, Math.max(0, Math.round(rawRatingBonus * 10) / 10)) : 0;
     if (ratingBonus > 0) {
@@ -528,8 +522,8 @@ export function evaluateFixturePrediction(
   }
 
   // Calculate standard intermediate probability distribution with complete finite safety
-  if (!Number.isFinite(homePoints) || isNaN(homePoints)) homePoints = w.homeAdvantageBaseline || 9.4;
-  if (!Number.isFinite(awayPoints) || isNaN(awayPoints)) awayPoints = w.awayAdvantageBaseline || 8.8;
+  if (!Number.isFinite(homePoints) || isNaN(homePoints)) homePoints = 0;
+  if (!Number.isFinite(awayPoints) || isNaN(awayPoints)) awayPoints = 0;
   if (!Number.isFinite(drawPoints) || isNaN(drawPoints)) drawPoints = 6.8;
 
   const totalScore = (homePoints + awayPoints + drawPoints) || 1;
@@ -685,9 +679,9 @@ export function evaluateFixturePrediction(
   }
 
   // Ensure exact rounding to 1 decimal place summing to 100%
-  let roundedHome = Number.isFinite(homeWinPct) ? Math.round(homeWinPct * 10) / 10 : 38.0;
-  let roundedAway = Number.isFinite(awayWinPct) ? Math.round(awayWinPct * 10) / 10 : 32.0;
-  let roundedDraw = Number.isFinite(drawPct) ? Math.round((100 - roundedHome - roundedAway) * 10) / 10 : 30.0;
+  let roundedHome = Number.isFinite(homeWinPct) ? Math.round(homeWinPct * 10) / 10 : 0;
+  let roundedAway = Number.isFinite(awayWinPct) ? Math.round(awayWinPct * 10) / 10 : 0;
+  let roundedDraw = Number.isFinite(drawPct) ? Math.round((100 - roundedHome - roundedAway) * 10) / 10 : 0;
 
   // ==========================================
   // RULE 9: Close-Contest Draw Equilibrium (Stalemate Parity)
@@ -718,7 +712,9 @@ export function evaluateFixturePrediction(
   // Part B: Low-Total / Clean Sheet Defensive Draw Synergy
   // In low-scoring environments (combined shots on target <= 8.5 or defensive cluster),
   // boost draw probability because clean sheets and 0-0/1-1 outcomes cluster heavily.
-  const combinedSot = (fixture.homeTeam.avgShotsOnTarget || 4.5) + (fixture.awayTeam.avgShotsOnTarget || 4.2);
+  const homeSotObserved = Number.isFinite(fixture.homeTeam.avgShotsOnTarget) ? fixture.homeTeam.avgShotsOnTarget : null;
+  const awaySotObserved = Number.isFinite(fixture.awayTeam.avgShotsOnTarget) ? fixture.awayTeam.avgShotsOnTarget : null;
+  const combinedSot = homeSotObserved !== null && awaySotObserved !== null ? homeSotObserved + awaySotObserved : null;
   const isDefensiveSynergy = combinedSot <= 8.6 || leagueCluster.archetype === 'defensive_draw';
 
   if (manualOverride === 'none' && isDefensiveSynergy && Math.abs(roundedHome - roundedAway) <= (drawMarginThreshold + 2.5)) {
