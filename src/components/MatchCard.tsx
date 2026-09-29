@@ -481,9 +481,9 @@ export const MatchCard: React.FC<MatchCardProps> = ({
                 <span className="text-amber-400 font-medium">National Team (Qualifier)</span>
               ) : (
                 <>
-                  <span>#{fixture.homeTeam.leagueRank}</span>
+                  <span>#{fixture.homeTeam.leagueRank ?? 'N/A'}</span>
                   <span>•</span>
-                  <span className="text-slate-300 font-semibold">{fixture.homeTeam.points} pts</span>
+                  <span className="text-slate-300 font-semibold">{fixture.homeTeam.points === null ? 'N/A' : `${fixture.homeTeam.points} pts`}</span>
                 </>
               )}
               {homeOutlierStatus.hasOutliersCleaned && (
@@ -592,9 +592,9 @@ export const MatchCard: React.FC<MatchCardProps> = ({
                 <span className="text-amber-400 font-medium">National Team (Qualifier)</span>
               ) : (
                 <>
-                  <span className="text-slate-300 font-semibold">{fixture.awayTeam.points} pts</span>
+                  <span className="text-slate-300 font-semibold">{fixture.awayTeam.points === null ? 'N/A' : `${fixture.awayTeam.points} pts`}</span>
                   <span>•</span>
-                  <span>#{fixture.awayTeam.leagueRank}</span>
+                  <span>#{fixture.awayTeam.leagueRank ?? 'N/A'}</span>
                 </>
               )}
             </div>
