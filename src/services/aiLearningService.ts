@@ -1,4 +1,5 @@
 import { LearningModelState, AITacticalSynthesis, BacktestEvaluation } from '../types/soccer';
+import { getAdminApiHeaders } from './adminAuthService';
 
 export async function requestAITacticalSynthesis(
   state: LearningModelState,
@@ -9,6 +10,7 @@ export async function requestAITacticalSynthesis(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...getAdminApiHeaders(),
       },
       body: JSON.stringify({
         accuracyPct: state.accuracyPct,
@@ -20,7 +22,7 @@ export async function requestAITacticalSynthesis(
           actual: e?.actualOutcome || 'draw',
           predicted: e?.predictedOutcome || 'draw',
           correct: e?.isCorrect || false,
-          probs: e?.probabilities || { home: 33, draw: 34, away: 33 },
+          probs: e?.probabilities || null,
         })),
       }),
     });
@@ -35,23 +37,12 @@ export async function requestAITacticalSynthesis(
     }
     throw new Error('Invalid synthesis format in response');
   } catch (err) {
-    console.warn('Falling back to local heuristic tactical synthesis:', err);
+    console.warn('AI tactical synthesis unavailable:', err);
     return {
-      summary: `Self-learning online optimization converged at ${state.accuracyPct}% accuracy with Brier score ${state.brierLoss.toFixed(3)}. Priority favourite win floors and tactical shot deltas show strong validation.`,
-      recommendations: [
-        'Maintain high weighting (>0.40) on rolling shot-on-target differential.',
-        'High-volatility leagues benefit from variance compression to dampen overconfident away predictions.',
-        'Midweek continental travel fatigue penalty reliably suppresses away road win rates.',
-      ],
-      ruleEfficiency: [
-        { rule: 'Rule 1: Motivation Stakes', impact: `+${state.weights.stakesMotivationBoost.toFixed(1)} pts`, status: 'optimal' },
-        { rule: 'Rule 3: Home Fortress', impact: `+${Math.round(state.weights.homeDominanceBonus * 100)}% boost`, status: 'optimal' },
-        { rule: 'Rule 5: Shot Dominance', impact: `Weight ${state.weights.tacticalShotsWeight.toFixed(2)}`, status: 'optimal' },
-        { rule: 'Rule 6: 72h Midweek Fatigue', impact: `-${Math.round(state.weights.fatiguePenaltyRate * 100)}% penalty`, status: 'optimal' },
-        { rule: 'Rule 7: Volatility Dampener', impact: `Compression ${state.weights.volatilityDrawBoost.toFixed(2)}`, status: 'optimal' },
-        { rule: 'Rule 8: Priority Favourite Floor', impact: `${state.weights.favouriteWinFloor}% floor`, status: 'optimal' },
-      ],
+      summary: 'AI tactical synthesis is unavailable because the synthesis service did not return a measured result.',
+      recommendations: [],
+      ruleEfficiency: [],
       timestamp: new Date().toISOString(),
     };
-  }
+
 }
