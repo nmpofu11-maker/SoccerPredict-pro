@@ -117,7 +117,7 @@ export function generateSmartAccumulator(
     return {
       legs: [],
       combinedOdds: 1.0,
-      averageConfidence: 50,
+      averageHeuristicScore: null,
       expectedYieldScore: 50,
       riskLevel: 'Conservative Value',
       strategicAdvice: 'No valid fixtures available for accumulator generation.',
@@ -210,7 +210,7 @@ export function generateSmartAccumulator(
   return {
     legs: selectedLegs,
     combinedOdds: Number(combinedOdds.toFixed(2)),
-    averageConfidence: Math.round(avgConf),
+    averageHeuristicScore: avgConf === null ? null : Math.round(avgConf),
     expectedYieldScore,
     riskLevel,
     strategicAdvice,
