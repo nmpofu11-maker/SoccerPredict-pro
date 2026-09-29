@@ -8,7 +8,7 @@ import {
 import { TeamIntelligenceMatrices } from '../types/superLearning';
 import { isFavouriteTeam, isHighVolatilityLeague, getLeagueClusterProfile } from '../constants/favourites';
 import { computeComparativeDominance } from '../utils/robustMetricsCalculator';
-import { resolveTeamPerformanceProfile, formatSquadValue } from '../utils/teamPerformanceProfile';
+import { formatSquadValue } from '../utils/teamPerformanceProfile';
 import { getTeamLearnedCoefficients } from './teamIntelligenceMatrix';
 
 export const DEFAULT_ENGINE_WEIGHTS: EngineWeights = {
@@ -119,9 +119,6 @@ export function evaluateFixturePrediction(
 
   const rawInitialPoints = { home: homePoints, away: awayPoints, draw: drawPoints };
 
-  // Resolve canonical profiles for previous season standing, squad value, and match rating
-  const homeProfile = resolveTeamPerformanceProfile(fixture.homeTeam, fixture.league);
-  const awayProfile = resolveTeamPerformanceProfile(fixture.awayTeam, fixture.league);
 
   // ==========================================
   // RULE 1: League Title / Relegation Motivation
@@ -715,7 +712,7 @@ export function evaluateFixturePrediction(
   const homeSotObserved = Number.isFinite(fixture.homeTeam.avgShotsOnTarget) ? fixture.homeTeam.avgShotsOnTarget : null;
   const awaySotObserved = Number.isFinite(fixture.awayTeam.avgShotsOnTarget) ? fixture.awayTeam.avgShotsOnTarget : null;
   const combinedSot = homeSotObserved !== null && awaySotObserved !== null ? homeSotObserved + awaySotObserved : null;
-  const isDefensiveSynergy = combinedSot <= 8.6 || leagueCluster.archetype === 'defensive_draw';
+  const isDefensiveSynergy = (combinedSot !== null && combinedSot <= 8.6) || leagueCluster.archetype === 'defensive_draw';
 
   if (manualOverride === 'none' && isDefensiveSynergy && Math.abs(roundedHome - roundedAway) <= (drawMarginThreshold + 2.5)) {
     const lowTotalMultiplier = Math.max(1.0, w.lowTotalDrawBoost ?? 1.25);
@@ -732,10 +729,12 @@ export function evaluateFixturePrediction(
       appliedRules.push({
         ruleNumber: 9,
         ruleName: 'Low-Total & Clean Sheet Synergy',
-        tag: `Rule 9: Low-Total Draw Synergy (Combined SOT: ${combinedSot.toFixed(1)})`,
+        tag: `Rule 9: Low-Total Draw Synergy${combinedSot !== null ? ` (Combined SOT: ${combinedSot.toFixed(1)})` : ''}`,
         impact: `Draw boosted to ${roundedDraw.toFixed(1)}% (+${drawDiff.toFixed(1)}% clean sheet synergy)`,
         beneficiary: 'draw',
-        description: `Both sides average low cumulative shots on target (${combinedSot.toFixed(1)} SOT) or compete in a defensive archetype league. Elevated probability of low-scoring stalemate (0-0, 1-1).`,
+        description: combinedSot !== null
+          ? `Both sides average low cumulative shots on target (${combinedSot.toFixed(1)} SOT) or compete in a defensive archetype league. Elevated draw probability adjustment applied.`
+          : 'The league is classified as defensive; the shot-on-target component is unavailable.' ,
       });
     }
   }
