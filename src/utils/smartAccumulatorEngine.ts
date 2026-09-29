@@ -303,7 +303,7 @@ export function generateOptimalValueAccumulatorReport(
 ): OptimalValueReport {
   const candidateLegs: OptimalValueLeg[] = [];
 
-  const todayIso = new Date().toISOString().split('T')[0];
+  const todayIso = getTodayDateString();
   let activeFixtures = (fixtures || []).filter((f) => {
     if (!f || !f.id || !f.homeTeam || !f.awayTeam || !f.kickoffTime) return false;
     return f.kickoffTime.slice(0, 10) >= todayIso;
