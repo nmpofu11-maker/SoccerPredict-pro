@@ -59,8 +59,8 @@ export interface OptimalValueReport {
   generatedAt: string;
   bundleTitle: string;
   aiConfidenceRating: number; // 0 - 100
-  confidenceGrade: 'AAA+ Elite Value' | 'AA High Value' | 'A Strong Value' | 'B+ Moderate Value' | 'No Qualifying Value';
-  strategyMode: 'optimal' | 'conservative' | 'high_alpha';
+  evidenceLabel: 'High Evidence' | 'Moderate Evidence' | 'Limited Evidence' | 'Insufficient Evidence';
+  strategyMode: 'balanced' | 'conservative' | 'high_alpha';
   combinedOdds: number;
   expectedValueAlpha: number; // percentage e.g. +24.8%
   historicalValidationRate: number | null; // null when no qualifying historical cohort exists
@@ -75,7 +75,7 @@ export interface OptimalValueReport {
     modelCertainty: number; // 0-100
     historicalBacktestFit: number; // 0-100
     marketOddsAlpha: number; // 0-100
-    formStability: number; // 0-100
+    formStability: number | null;
   };
   historicalCohort: {
     sampleSize: number;
@@ -187,7 +187,7 @@ export function generateSmartAccumulator(
     }
   }
 
-  // Sort legs by confidenceScore and EV, take top 4 legs for optimal yield accumulator
+  // Sort legs by confidenceScore and EV, take top 4 legs for evidence-gated yield accumulator
   legs.sort((a, b) => b.confidenceScore * b.expectedValue - a.confidenceScore * a.expectedValue);
   const selectedLegs = legs.slice(0, 4);
 
@@ -292,14 +292,14 @@ export function analyzeUserCoachingPatterns(
 /**
  * Generates an Automated 'Optimal Value' Accumulator Intelligence Report.
  * Cross-references real match odds against model probabilities, historical backtest performance,
- * and empirical failure matrices to synthesize an optimal risk-reward bundle with an AI Confidence Rating.
+ * and empirical failure matrices to synthesize an evidence-gated bundle with a heuristic score.
  */
 export function generateOptimalValueAccumulatorReport(
   fixtures: MatchFixture[],
   overrides: Record<string, string> = {},
   weights: any = {},
   historicalResults: HistoricalMatchResult[] = HISTORICAL_MATCH_RESULTS,
-  strategyMode: 'optimal' | 'conservative' | 'high_alpha' = 'optimal'
+  strategyMode: 'balanced' | 'conservative' | 'high_alpha' = 'balanced'
 ): OptimalValueReport {
   const candidateLegs: OptimalValueLeg[] = [];
 
@@ -494,7 +494,7 @@ export function generateOptimalValueAccumulatorReport(
   const modelCertainty = Math.min(100, Math.round(avgModelConfidence));
   const historicalBacktestFit = avgHistWinRate === null ? 0 : Math.min(99, Math.round(avgHistWinRate));
   const marketOddsAlpha = Math.min(99, Math.max(0, Math.round(50 + expectedValueAlpha * 1.8)));
-  const formStability = 0;
+  const formStability = null;
 
   const aiConfidenceRating = selectedLegs.length > 0
     ? Math.min(
@@ -510,12 +510,8 @@ export function generateOptimalValueAccumulatorReport(
       )
     : 0;
 
-  let confidenceGrade: 'AAA+ Elite Value' | 'AA High Value' | 'A Strong Value' | 'B+ Moderate Value' | 'No Qualifying Value' = selectedLegs.length > 0 ? 'B+ Moderate Value' : 'No Qualifying Value';
-  if (selectedLegs.length === 0) confidenceGrade = 'No Qualifying Value';
-  else if (aiConfidenceRating >= 88) confidenceGrade = 'AAA+ Elite Value';
-  else if (aiConfidenceRating >= 80) confidenceGrade = 'AA High Value';
-  else if (aiConfidenceRating >= 72) confidenceGrade = 'A Strong Value';
-  else confidenceGrade = 'B+ Moderate Value';
+  let evidenceLabel: 'High Evidence' | 'Moderate Evidence' | 'Limited Evidence' | 'Insufficient Evidence' = 'Insufficient Evidence';
+  if (selectedLegs.length > 0 && historicalRates.length > 0 && historicalRates.length >= selectedLegs.length) evidenceLabel = aiConfidenceRating >= 80 ? 'High Evidence' : aiConfidenceRating >= 65 ? 'Moderate Evidence' : 'Limited Evidence';
 
   // Bankroll unit sizing based on Kelly score
   const avgKelly = selectedLegs.length > 0
@@ -532,7 +528,7 @@ export function generateOptimalValueAccumulatorReport(
     : 'Balanced Positive-EV Bundle';
 
   const executiveSummary = selectedLegs.length > 0
-    ? `The AI Optimal Value Engine analyzed today's fixture matrix and identified a ${selectedLegs.length}-leg accumulator bundle exhibiting Expected Value (${expectedValueAlpha >= 0 ? '+' : ''}${expectedValueAlpha}% EV Alpha). Combined odds: ${combinedOdds.toFixed(2)}x with a model confidence score of ${aiConfidenceRating}%.`
+    ? `The accumulator engine analyzed today's fixture matrix and identified a ${selectedLegs.length}-leg bundle with model-estimated Expected Value (${expectedValueAlpha >= 0 ? '+' : ''}${expectedValueAlpha}% EV). Combined odds: ${combinedOdds.toFixed(2)}x; heuristic evidence score: ${aiConfidenceRating}%.`
     : `No qualifying accumulator legs found matching the selected strategy criteria with positive Expected Value.`;
 
   const historicalPrecedentSummary = selectedLegs.length > 0
@@ -549,7 +545,7 @@ export function generateOptimalValueAccumulatorReport(
     generatedAt: new Date().toISOString(),
     bundleTitle: modeTitle,
     aiConfidenceRating,
-    confidenceGrade,
+    evidenceLabel,
     strategyMode,
     combinedOdds: Number(combinedOdds.toFixed(2)),
     expectedValueAlpha,
