@@ -227,7 +227,7 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
       <div className="flex flex-col gap-1">
         <div className="flex items-center justify-between text-[11px]">
           {/* HOME TEAM ATTRIBUTION */}
-          <div className="flex items-center gap-1.5 min-w-0" title={`${homeTeam.name} (Home): ${homeSot === null ? 'N/A' : `${homeSot === null ? 'N/A' : homeSot.toFixed(1)} SOT`}`}>
+          <div className="flex items-center gap-1.5 min-w-0" title={`${homeTeam.name} (Home): ${homeSot === null ? 'N/A' : homeSot.toFixed(1) + ' SOT'}`}>
             <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
             <span className="text-emerald-400 font-bold tracking-tight truncate max-w-[80px] sm:max-w-[110px]">
               {homeShort}
@@ -263,7 +263,7 @@ export const MetricsDisplay: React.FC<MetricsDisplayProps> = ({
           </div>
 
           {/* AWAY TEAM ATTRIBUTION */}
-          <div className="flex items-center justify-end gap-1.5 min-w-0" title={`${awayTeam.name} (Away): ${awaySot === null ? 'N/A' : `${awaySot === null ? 'N/A' : awaySot.toFixed(1)} SOT`}`}>
+          <div className="flex items-center justify-end gap-1.5 min-w-0" title={`${awayTeam.name} (Away): ${awaySot === null ? 'N/A' : awaySot.toFixed(1) + ' SOT'}`}>
             {showAdjusted && awayMetrics.shotsDelta !== null && awayMetrics.shotsDelta !== 0 && (
               <span className={`text-[8.5px] font-bold ${awayMetrics.shotsDelta > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
                 ({awayMetrics.shotsDelta > 0 ? `+${awayMetrics.shotsDelta}` : awayMetrics.shotsDelta})
