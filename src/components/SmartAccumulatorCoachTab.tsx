@@ -561,7 +561,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                   </svg>
                   <div className="absolute flex flex-col items-center justify-center">
                     <span className="text-2xl font-black text-slate-100 font-mono leading-none">
-                      {optimalReport.aiConfidenceRating}%
+                      {optimalReport.heuristicEvidenceScore}%
                     </span>
                     <span className="text-[9px] font-mono uppercase text-emerald-400 font-bold mt-0.5">
                       Confidence
