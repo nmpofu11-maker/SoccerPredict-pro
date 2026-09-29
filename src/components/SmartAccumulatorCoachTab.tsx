@@ -546,7 +546,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                   </span>
                 </div>
                 <div className="text-xs text-slate-400">
-                  Calculated against historical performance & current market odds
+                  Descriptive model certainty; not statistically calibrated
                 </div>
               </div>
 
@@ -631,7 +631,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4.5 space-y-2 flex flex-col justify-between">
                 <div className="space-y-1">
                   <div className="text-slate-400 text-xs font-mono uppercase tracking-wider flex items-center justify-between">
-                    <span>Historical Validation</span>
+                    <span>Historical Cohort</span>
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                   </div>
                   <div className="text-2xl font-black text-emerald-400 font-mono">
@@ -639,7 +639,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                   </div>
                 </div>
                 <div className="text-[11px] text-slate-400 font-mono">
-                  Empirical Match Hit Rate
+                  Observed Cohort Hit Rate
                 </div>
               </div>
 
@@ -661,15 +661,15 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4.5 space-y-2 flex flex-col justify-between">
                 <div className="space-y-1">
                   <div className="text-slate-400 text-xs font-mono uppercase tracking-wider flex items-center justify-between">
-                    <span>Simulated ROI</span>
+                    <span>Simulation</span>
                     <BarChart3 className="w-3.5 h-3.5 text-teal-400" />
                   </div>
                   <div className="text-2xl font-black text-teal-400 font-mono">
-                    +{optimalReport.backtestSimulation.simulatedROI}%
+                    {optimalReport.backtestSimulation.totalSimulatedRounds > 0 ? `${optimalReport.backtestSimulation.simulatedROI}%` : 'Not run'}
                   </div>
                 </div>
                 <div className="text-[11px] text-slate-400 font-mono">
-                  1,000-Round Backtest Run
+                  No simulation executed
                 </div>
               </div>
             </div>
@@ -1257,11 +1257,11 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono">
                     <div className="bg-slate-900 p-3 rounded-lg border border-slate-800">
-                      <span className="text-slate-400 block text-[10px] uppercase">Root Cause Analysis</span>
+                      <span className="text-slate-400 block text-[10px] uppercase">Observed Prediction Diagnostics</span>
                       <span className="text-slate-200 font-medium">{failure.failureReason}</span>
                     </div>
                     <div className="bg-slate-900 p-3 rounded-lg border border-slate-800">
-                      <span className="text-indigo-400 block text-[10px] uppercase font-bold">Auto-Correction Weight Applied</span>
+                      <span className="text-indigo-400 block text-[10px] uppercase font-bold">Contributing Model Rules</span>
                       <span className="text-indigo-200 font-medium">{failure.ruleAdjustmentHint}</span>
                     </div>
                   </div>
@@ -1284,13 +1284,13 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-2">
               <div className="text-slate-400 text-xs font-mono uppercase">User Override Accuracy</div>
-              <div className="text-2xl font-black text-emerald-400 font-mono">{coachingAudit.userAccuracyPct}%</div>
-              <div className="text-[11px] text-slate-500">Historic win rate on manual picks</div>
+              <div className="text-2xl font-black text-emerald-400 font-mono">{coachingAudit.userAccuracyPct === null ? 'N/A' : `${coachingAudit.userAccuracyPct}%`}</div>
+              <div className="text-[11px] text-slate-500">Measured only when recorded override outcomes exist</div>
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-2">
               <div className="text-slate-400 text-xs font-mono uppercase">AI Autonomous Accuracy</div>
-              <div className="text-2xl font-black text-amber-400 font-mono">{coachingAudit.aiAccuracyPct}%</div>
+              <div className="text-2xl font-black text-amber-400 font-mono">{coachingAudit.aiAccuracyPct === null ? 'N/A' : `${coachingAudit.aiAccuracyPct}%`}</div>
               <div className="text-[11px] text-slate-500">Pure 9-rule tactical engine accuracy</div>
             </div>
           </div>
