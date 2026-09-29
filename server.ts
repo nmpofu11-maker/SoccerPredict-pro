@@ -171,7 +171,7 @@ function loadInitialDiskCache(): LiveFixturesCache {
   return {
     fixtures: sanitizedFallback,
     syncedAt: new Date().toISOString(),
-    provider: 'Disk Manifest (Sanitized)',,
+    provider: 'Disk Manifest (Sanitized)',
     auditReport: fallbackAudit,
   };
 }
@@ -507,7 +507,7 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
       fixturesCache = {
         fixtures: validatedFixtures,
         syncedAt: new Date().toISOString(),
-        provider: 'ESPN + configured competition feeds (Sanitized)',,
+        provider: 'ESPN + configured competition feeds (Sanitized)',
         auditReport,
       };
       return fixturesCache;
