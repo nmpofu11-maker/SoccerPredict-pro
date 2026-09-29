@@ -1,4 +1,5 @@
 import { HistoricalMatchResult, MatchFixture } from '../types/soccer';
+import { getAdminApiHeaders } from './adminAuthService';
  
 export interface SettledResultsResponse {
   status: 'success' | 'error';
@@ -83,7 +84,7 @@ export async function fetchCronStatus(): Promise<CronStatusResponse | null> {
 /** Manually triggers the ingestion job right now, for a 'Sync Now' button that does something real. */
 export async function triggerIngestNow(): Promise<{ success: boolean; message: string; count: number }> {
   try {
-    const res = await fetch('/api/admin/run-ingest-now', { method: 'POST' });
+    const res = await fetch('/api/admin/run-ingest-now', { method: 'POST', headers: getAdminApiHeaders() });
     return await res.json();
   } catch (err) {
     return { success: false, message: err instanceof Error ? err.message : 'Request failed', count: 0 };
