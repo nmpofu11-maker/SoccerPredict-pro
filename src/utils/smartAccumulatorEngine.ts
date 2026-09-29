@@ -20,7 +20,7 @@ export interface AccumulatorLeg {
 
 export interface SmartAccumulatorResult {
   legs: AccumulatorLeg[];
-  combinedOdds: number;
+  combinedOdds: number | null;
   averageHeuristicScore: number | null;
   expectedYieldScore: number; // 0 - 100 rating
   riskLevel: 'Conservative Value' | 'Balanced Sweet-Spot' | 'High Yield Aggressive';
@@ -62,9 +62,9 @@ export interface OptimalValueReport {
   evidenceLabel: 'High Evidence' | 'Moderate Evidence' | 'Limited Evidence' | 'Insufficient Evidence';
   strategyMode: 'balanced' | 'conservative' | 'high_alpha';
   combinedOdds: number;
-  expectedValueAlpha: number; // percentage e.g. +24.8%
+  expectedValueAlpha: number | null; // percentage e.g. +24.8%
   historicalValidationRate: number | null; // null when no qualifying historical cohort exists
-  bundleWinProbability: number; // joint probability percentage
+  bundleWinProbability: number | null; // joint probability percentage
   recommendedStakeUnits: number; // e.g. 1.5 units
   kellyScore: number;
   legs: OptimalValueLeg[];
@@ -472,8 +472,8 @@ export function generateOptimalValueAccumulatorReport(
   }
 
   // Aggregate Bundle Calculations
-  const combinedOdds = selectedLegs.reduce((acc, l) => acc * l.marketOdds, 1.0);
-  const bundleWinProbability = selectedLegs.reduce((acc, l) => acc * (l.modelProbability / 100), 1.0) * 100;
+  const combinedOdds = selectedLegs.length > 0 ? selectedLegs.reduce((acc, l) => acc * l.marketOdds, 1.0) : null;
+  const bundleWinProbability = selectedLegs.length > 0 ? selectedLegs.reduce((acc, l) => acc * (l.modelProbability / 100), 1.0) * 100 : null;
   
   const historicalRates = selectedLegs.map(l => l.historicalWinRate).filter((v): v is number => v !== null && Number.isFinite(v));
   const avgHistWinRate = historicalRates.length > 0
@@ -488,12 +488,12 @@ export function generateOptimalValueAccumulatorReport(
     ? selectedLegs.reduce((acc, l) => acc + l.expectedValue, 0) / selectedLegs.length
     : 0;
 
-  const expectedValueAlpha = Number(((avgEV) * 100).toFixed(1));
+  const expectedValueAlpha = selectedLegs.length > 0 ? Number(((avgEV) * 100).toFixed(1)) : null;
 
   // Compute AI Heuristic Evidence Score (0 - 100)
   const modelCertainty = Math.min(100, Math.round(avgModelConfidence));
   const historicalCohortFit = avgHistWinRate === null ? 0 : Math.min(99, Math.round(avgHistWinRate));
-  const marketOddsAlpha = Math.min(99, Math.max(0, Math.round(50 + expectedValueAlpha * 1.8)));
+  const marketOddsAlpha = expectedValueAlpha === null ? 0 : Math.min(99, Math.max(0, Math.round(50 + expectedValueAlpha * 1.8)));
   const formStability = null;
 
   const heuristicEvidenceScore = selectedLegs.length > 0
@@ -528,7 +528,7 @@ export function generateOptimalValueAccumulatorReport(
     : 'Balanced Positive-EV Bundle';
 
   const executiveSummary = selectedLegs.length > 0
-    ? `The accumulator engine analyzed today's fixture matrix and identified a ${selectedLegs.length}-leg bundle with model-estimated Expected Value (${expectedValueAlpha >= 0 ? '+' : ''}${expectedValueAlpha}% EV). Combined odds: ${combinedOdds.toFixed(2)}x; heuristic evidence score: ${heuristicEvidenceScore}%.`
+    ? `The accumulator engine analyzed today's fixture matrix and identified a ${selectedLegs.length}-leg bundle with model-estimated Expected Value (${(expectedValueAlpha ?? 0) >= 0 ? '+' : ''}${expectedValueAlpha ?? 0}% EV). Combined odds: ${(combinedOdds ?? 0).toFixed(2)}x; heuristic evidence score: ${heuristicEvidenceScore}%.`
     : `No qualifying accumulator legs found matching the selected strategy criteria with positive Expected Value.`;
 
   const historicalPrecedentSummary = selectedLegs.length > 0
@@ -547,10 +547,10 @@ export function generateOptimalValueAccumulatorReport(
     heuristicEvidenceScore,
     evidenceLabel,
     strategyMode,
-    combinedOdds: Number(combinedOdds.toFixed(2)),
+    combinedOdds: combinedOdds === null ? null : Number(combinedOdds.toFixed(2)),
     expectedValueAlpha,
     historicalValidationRate: avgHistWinRate === null ? null : Number(avgHistWinRate.toFixed(1)),
-    bundleWinProbability: Number(bundleWinProbability.toFixed(1)),
+    bundleWinProbability: bundleWinProbability === null ? null : Number(bundleWinProbability.toFixed(1)),
     recommendedStakeUnits,
     kellyScore: Number(avgKelly.toFixed(2)),
     legs: selectedLegs,
