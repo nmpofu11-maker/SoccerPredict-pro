@@ -95,6 +95,15 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
     }
 
     for (const fixture of activeFixtures) {
+      // DATA-QUALITY GATE: Only fixtures with verified official standings may enter EV / value ranking
+      const isStandingsVerified = Boolean(fixture.isStandingsVerified || fixture.authenticity?.source === 'OFFICIAL_ESPN_STANDINGS');
+      if (!isStandingsVerified) continue;
+
+      // AUTHENTIC ODDS GATE: Exclude fixture from EV calculation if authentic odds are missing
+      if (!fixture.odds?.home || !fixture.odds?.away || Number(fixture.odds.home) <= 1.05 || Number(fixture.odds.away) <= 1.05) {
+        continue;
+      }
+
       const pred = evaluateFixturePrediction(fixture, (overrides[fixture.id] as any) || 'none', engineWeights);
       if (!pred) continue;
 
@@ -102,22 +111,43 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
       const drawPct = pred.drawPct;
       const awayPct = pred.awayWinPct;
 
-      const mOddsHome = fixture.odds?.home && fixture.odds.home > 1.05 ? Number(fixture.odds.home) : (homePct > 0 ? Number((100 / (homePct * 0.94)).toFixed(2)) : 2.10);
-      const mOddsDraw = fixture.odds?.draw && fixture.odds.draw > 1.05 ? Number(fixture.odds.draw) : (drawPct > 0 ? Number((100 / (drawPct * 0.94)).toFixed(2)) : 3.20);
-      const mOddsAway = fixture.odds?.away && fixture.odds.away > 1.05 ? Number(fixture.odds.away) : (awayPct > 0 ? Number((100 / (awayPct * 0.94)).toFixed(2)) : 2.50);
+      const mOddsHome = Number(fixture.odds.home);
+      const mOddsAway = Number(fixture.odds.away);
+      const mOddsDraw = fixture.odds.draw && Number(fixture.odds.draw) > 1.05 ? Number(fixture.odds.draw) : undefined;
 
-      const outcomes = [
+      const outcomes: {
+        sel: 'home' | 'draw' | 'away';
+        prob: number;
+        odds: number;
+        name: string;
+      }[] = [
         { sel: 'home', prob: homePct, odds: mOddsHome, name: fixture.homeTeam.name },
-        { sel: 'draw', prob: drawPct, odds: mOddsDraw, name: 'Draw' },
         { sel: 'away', prob: awayPct, odds: mOddsAway, name: fixture.awayTeam.name },
       ];
+      if (mOddsDraw !== undefined) {
+        outcomes.push({ sel: 'draw', prob: drawPct, odds: mOddsDraw, name: 'Draw' });
+      }
 
       for (const outcome of outcomes) {
-        if (outcome.prob < 28 || outcome.odds <= 1.15) continue;
+        // Enforce strict sanity filters: never pick reckless low-probability longshots
+        const isPredictedWinner = outcome.sel === pred.predictedWinner;
+        const meetsProbThreshold = isPredictedWinner ? outcome.prob >= 44 : outcome.prob >= 50;
+
+        // Strict odds sanity bounds: must be between 1.30 and 3.50 (eliminates reckless @17.00, @15.00, @14.00 longshots)
+        if (!meetsProbThreshold || outcome.odds < 1.30 || outcome.odds > 3.50) continue;
+
         const fairOdds = Number((100 / outcome.prob).toFixed(2));
         const ev = (outcome.prob / 100) * outcome.odds - 1;
+
+        // Discard negative or heavily negative EV
+        if (ev < -0.05) continue;
+
         const valueMarginPct = Number((((outcome.odds - fairOdds) / fairOdds) * 100).toFixed(1));
-        const score = ev * 45 + (outcome.prob * 0.35) + (pred.confidenceScore * 0.20);
+
+        // Balanced composite score: primary weight on win probability, capped EV alpha, and model confidence
+        // Prevents artificial theoretical EV on longshots from drowning out genuine high-probability winners
+        const cappedEv = Math.min(0.40, Math.max(0, ev));
+        const score = (outcome.prob * 1.0) + (cappedEv * 75) + (pred.confidenceScore * 0.25) + (isPredictedWinner ? 12 : 0);
 
         candidateLegs.push({
           fixtureId: fixture.id,

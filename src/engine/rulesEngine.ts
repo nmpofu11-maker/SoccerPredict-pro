@@ -292,6 +292,10 @@ export function evaluateFixturePrediction(
 
   // ==========================================
   // RULE 5: Possession & Shot Dominance Ratio (Outlier-Filtered & Schedule-Adjusted)
+  // [STATUS: INERT PENDING REAL STATS SOURCE]
+  // With avgPossession and avgShotsOnTarget set to neutral parity constants (50% / 4.5 SOT)
+  // to prevent rank double-counting, comparative dominance evaluates to effectiveSotDiff = 0.
+  // Rule 5 remains dormant (awards 0 pts) until live match box score telemetry is integrated.
   // ==========================================
   const comparativeDominance = computeComparativeDominance(fixture.homeTeam, fixture.awayTeam);
   const { homeMetrics, awayMetrics, effectiveSotDiff, rawSotDiff, misleadingWarning } = comparativeDominance;

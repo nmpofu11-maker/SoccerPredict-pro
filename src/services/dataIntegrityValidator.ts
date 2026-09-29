@@ -95,6 +95,8 @@ export const OFFICIAL_LEAGUE_CODES: Record<string, string> = {
   'Chinese Super League': 'chn.1',
 };
 
+export const MAX_AUTHENTIC_MARGIN_OVERROUND = 1.20;
+
 /**
  * Validates and repairs an individual team's stats
  */
@@ -209,25 +211,9 @@ function sanitizeTeamStats(
     }
   }
 
-  // 2b. Ensure authentic Full-Time (FT) scores for form sequence inspection
-  if (!Array.isArray(cleanTeam.formScores) || cleanTeam.formScores.length !== cleanTeam.form.length) {
-    cleanTeam.formScores = cleanTeam.form.map((res, idx) => {
-      let hash = 0;
-      const str = `${cleanTeam.name}_${idx}`;
-      for (let i = 0; i < str.length; i++) {
-        hash = (hash * 33 + str.charCodeAt(i)) % 10000;
-      }
-      if (res === 'W') {
-        const winScores = ['2-1', '1-0', '3-1', '2-0', '3-2', '4-1', '3-0'];
-        return winScores[hash % winScores.length];
-      } else if (res === 'D') {
-        const drawScores = ['1-1', '0-0', '2-2', '1-1', '0-0', '2-2'];
-        return drawScores[hash % drawScores.length];
-      } else {
-        const lossScores = ['1-2', '0-1', '1-3', '0-2', '2-3', '0-3'];
-        return lossScores[hash % lossScores.length];
-      }
-    });
+  // 2b. Form score sequence inspection (only preserve authentic full-time scores, never fabricate)
+  if (!Array.isArray(cleanTeam.formScores)) {
+    cleanTeam.formScores = [];
   }
 
   // 3. Tactical Possession Bounds (25% - 75%)
@@ -345,15 +331,18 @@ export function verifyAndSanitizeFixture(
     severity: 'warning',
   });
 
-  // Check 4: Official Table Cross-Reference
-  const isCrossReferenced = homeResult.matchedOfficialTable || awayResult.matchedOfficialTable;
+  // Check 4: Official Table Cross-Reference (Requires BOTH teams to match official standings)
+  const bothTeamsCrossReferenced = Boolean(homeResult.matchedOfficialTable && awayResult.matchedOfficialTable);
+  const isPartiallyCrossReferenced = Boolean(homeResult.matchedOfficialTable || awayResult.matchedOfficialTable);
   checks.push({
     checkName: 'Official League Table Cross-Reference',
-    passed: isCrossReferenced,
-    details: isCrossReferenced
-      ? `Cross-referenced against verified official standings table`
+    passed: bothTeamsCrossReferenced,
+    details: bothTeamsCrossReferenced
+      ? `Both teams cross-referenced against verified official standings table`
+      : isPartiallyCrossReferenced
+      ? `Partial match: only one team verified in official standings table`
       : `Calibrated with mathematical division bounds`,
-    severity: 'info',
+    severity: bothTeamsCrossReferenced ? 'info' : 'warning',
   });
 
   // Check 5: Form Validity
@@ -382,6 +371,43 @@ export function verifyAndSanitizeFixture(
     severity: 'info',
   });
 
+  // Check 7: Market Odds Sanity & Bookmaker Overround Integrity
+  let cleanOdds = fixture.odds ? { ...fixture.odds } : undefined;
+  if (cleanOdds && cleanOdds.home && cleanOdds.away) {
+    const h = Number(cleanOdds.home);
+    const a = Number(cleanOdds.away);
+    const d = cleanOdds.draw ? Number(cleanOdds.draw) : undefined;
+
+    // Flag prices equal to 1.0, 2.0 or 2.5 (hallmark of scraping defaults / invalid fills)
+    const isSuspiciousPrice = (p?: number) => p !== undefined && (p === 1.0 || p === 2.0 || p === 2.5);
+    const hasSuspiciousPrice = isSuspiciousPrice(h) || isSuspiciousPrice(a) || isSuspiciousPrice(d);
+
+    // Compute bookmaker margin sum: 1/H + 1/D + 1/A
+    const marginSum = (1 / h) + (d ? (1 / d) : 0) + (1 / a);
+    const isOverroundCorrupt = marginSum < 1.00 || marginSum > MAX_AUTHENTIC_MARGIN_OVERROUND;
+
+    if (hasSuspiciousPrice || isOverroundCorrupt) {
+      const reason = hasSuspiciousPrice
+        ? `Contains default placeholder price (1.0, 2.0, or 2.5)`
+        : `Implied margin overround ${(marginSum * 100).toFixed(1)}% exceeds threshold ${(MAX_AUTHENTIC_MARGIN_OVERROUND * 100).toFixed(0)}%`;
+      
+      console.warn(`[DATA-INTEGRITY] Purged corrupt odds on fixture ${fixture.id} (${cleanHome.name} vs ${cleanAway.name}):`, {
+        odds: cleanOdds,
+        marginSum: Number(marginSum.toFixed(3)),
+        reason,
+      });
+
+      repairs.push({
+        field: 'odds',
+        originalValue: cleanOdds,
+        repairedValue: undefined,
+        reason: `Purged corrupt odds: ${reason}`,
+      });
+
+      cleanOdds = undefined;
+    }
+  }
+
   // Calculate Stakes Motivation
   let cleanMotivation: MatchMotivation = 'regular';
   if (cleanHome.leagueRank <= 3 || cleanAway.leagueRank <= 3) {
@@ -393,10 +419,10 @@ export function verifyAndSanitizeFixture(
   // Calculate Authenticity Score
   const passedChecksCount = checks.filter((c) => c.passed).length;
   const rawScore = Math.round((passedChecksCount / checks.length) * 100);
-  const authenticityScore = isCrossReferenced ? Math.max(95, rawScore) : Math.max(85, rawScore);
+  const authenticityScore = bothTeamsCrossReferenced ? Math.max(95, rawScore) : Math.max(85, rawScore);
 
   const status =
-    repairs.length === 0 && isCrossReferenced
+    repairs.length === 0 && bothTeamsCrossReferenced
       ? 'VERIFIED_AUTHENTIC'
       : repairs.length > 0
       ? 'AUTO_REPAIRED'
@@ -407,13 +433,17 @@ export function verifyAndSanitizeFixture(
     authenticityScore,
     isAuthentic: true,
     verifiedAt: new Date().toISOString(),
-    source: isCrossReferenced ? 'OFFICIAL_ESPN_STANDINGS' : 'CANONICAL_AUDITED_DATASET',
+    source: bothTeamsCrossReferenced ? 'OFFICIAL_ESPN_STANDINGS' : 'CANONICAL_AUDITED_DATASET',
     checks,
     repairedFields: repairs.map((r) => r.field),
   };
 
+  const isStandingsVerified = Boolean(bothTeamsCrossReferenced && stamp.source === 'OFFICIAL_ESPN_STANDINGS');
+
   const sanitizedFixture: MatchFixture = {
     ...fixture,
+    odds: cleanOdds,
+    isStandingsVerified,
     homeTeam: cleanHome,
     awayTeam: cleanAway,
     h2h: cleanH2H,

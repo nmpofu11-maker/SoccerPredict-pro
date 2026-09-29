@@ -15,7 +15,7 @@ import { getTeamOutlierStatus } from '../utils/robustMetricsCalculator';
 import { OutlierIndicator } from './OutlierIndicator';
 import { VolatilityHeatmapOverlay } from './VolatilityHeatmapOverlay';
 import { resolveTeamPerformanceProfile, formatSquadValue } from '../utils/teamPerformanceProfile';
-import { Clock, Flame, ChevronDown, ChevronUp, Star, ExternalLink, CheckCircle2, Zap, Search, Share2, Ticket, Swords, Trash2 } from 'lucide-react';
+import { Clock, Flame, ChevronDown, ChevronUp, Star, ExternalLink, CheckCircle2, Zap, Search, Share2, Ticket, Swords, Trash2, ShieldCheck, ShieldAlert } from 'lucide-react';
 
 const isInternationalCompetition = (leagueName: string = ''): boolean => {
   const l = leagueName.toLowerCase();
@@ -251,20 +251,14 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
   const pickFairOdds = pickProbability > 0 ? (100 / pickProbability).toFixed(2) : '--';
 
-  const homeOdds = fixture.odds?.home
+  const homeOdds = fixture.odds?.home && Number(fixture.odds.home) > 1.05
     ? Number(fixture.odds.home).toFixed(2)
-    : safeHomePct > 0
-    ? (100 / safeHomePct).toFixed(2)
     : '--';
-  const drawOdds = fixture.odds?.draw
+  const drawOdds = fixture.odds?.draw && Number(fixture.odds.draw) > 1.05
     ? Number(fixture.odds.draw).toFixed(2)
-    : safeDrawPct > 0
-    ? (100 / safeDrawPct).toFixed(2)
     : '--';
-  const awayOdds = fixture.odds?.away
+  const awayOdds = fixture.odds?.away && Number(fixture.odds.away) > 1.05
     ? Number(fixture.odds.away).toFixed(2)
-    : safeAwayPct > 0
-    ? (100 / safeAwayPct).toFixed(2)
     : '--';
 
   return (
@@ -336,6 +330,25 @@ export const MatchCard: React.FC<MatchCardProps> = ({
               {displayLeagueName}
             </span>
           </span>
+
+          {/* Data-Quality Gate: Official Standings Verification vs No Edge Estimate */}
+          {(fixture.isStandingsVerified || fixture.authenticity?.source === 'OFFICIAL_ESPN_STANDINGS') ? (
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[9px] font-mono uppercase font-bold"
+              title="Standings verified against official league table"
+            >
+              <ShieldCheck className="w-2.5 h-2.5 text-emerald-400" />
+              Verified Standings
+            </span>
+          ) : (
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 border border-slate-700/60 text-[9px] font-mono uppercase font-medium"
+              title="No verified league table match. Prediction baseline only; no edge estimate."
+            >
+              <ShieldAlert className="w-2.5 h-2.5 text-amber-400" />
+              No Edge Estimate
+            </span>
+          )}
 
           {/* Quick Bet Badge (>80% Confidence Score) */}
           {isQuickBet && (

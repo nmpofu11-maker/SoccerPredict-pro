@@ -220,26 +220,6 @@ function parseForm(formStr: unknown): ('W' | 'D' | 'L')[] {
   return res;
 }
 
-function generateFtScores(teamName: string, formArr: ('W' | 'D' | 'L')[]): string[] {
-  return formArr.map((res, i) => {
-    let hash = 0;
-    const str = `${teamName}_${i}`;
-    for (let c = 0; c < str.length; c++) {
-      hash = (hash * 33 + str.charCodeAt(c)) % 10000;
-    }
-    if (res === 'W') {
-      const winScores = ['2-1', '1-0', '3-1', '2-0', '3-2', '4-1', '3-0'];
-      return winScores[hash % winScores.length];
-    } else if (res === 'D') {
-      const drawScores = ['1-1', '0-0', '2-2', '1-1', '0-0', '2-2'];
-      return drawScores[hash % drawScores.length];
-    } else {
-      const lossScores = ['1-2', '0-1', '1-3', '0-2', '2-3', '0-3'];
-      return lossScores[hash % lossScores.length];
-    }
-  });
-}
-
 function parsePoints(recordSummary: unknown): number {
   if (!recordSummary || typeof recordSummary !== 'string') return 12;
   const parts = recordSummary.split('-');
@@ -282,6 +262,33 @@ async function getLeagueStandingsMap(leagueCode: string): Promise<Map<string, { 
   }
   standingsMemoryCache.set(leagueCode, map);
   return map;
+}
+
+function aggregateStandingsFromCache(): Map<string, { rank: number; points: number }> {
+  const aggregatedStandings = new Map<string, { rank: number; points: number }>();
+  for (const [, sMap] of standingsMemoryCache.entries()) {
+    for (const [k, v] of sMap.entries()) {
+      aggregatedStandings.set(k, v);
+    }
+  }
+  return aggregatedStandings;
+}
+
+async function ensureAllHollywoodbetsStandingsCached(): Promise<Map<string, { rank: number; points: number }>> {
+  const CHUNK_SIZE = 8;
+  for (let i = 0; i < HOLLYWOODBETS_LEAGUES.length; i += CHUNK_SIZE) {
+    const chunk = HOLLYWOODBETS_LEAGUES.slice(i, i + CHUNK_SIZE);
+    await Promise.all(
+      chunk.map(async (item) => {
+        try {
+          await getLeagueStandingsMap(item.code);
+        } catch {
+          // Keep pipeline resilient on individual network failures
+        }
+      })
+    );
+  }
+  return aggregateStandingsFromCache();
 }
 
 async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixturesCache> {
@@ -354,12 +361,13 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
               const homeColor = homeTeam.color ? `#${homeTeam.color}` : '#0284c7';
               const awayColor = awayTeam.color ? `#${awayTeam.color}` : '#dc2626';
 
-              const homeWins = Math.floor(Math.random() * 3) + 1;
-              const awayWins = Math.floor(Math.random() * 2) + 1;
-              const draws = 5 - (homeWins + awayWins);
+              // Neutral, balanced placeholder for H2H when actual head-to-head records are not provided
+              const homeWins = 1;
+              const awayWins = 1;
+              const draws = 3;
 
               const fixture = {
-                id: `match_${ev.id || Math.random().toString(36).substring(2, 9)}`,
+                id: `match_${ev.id || `${homeTeam.displayName}_${awayTeam.displayName}`.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
                 kickoffTime: comp.date || ev.date || new Date().toISOString(),
                 league: item.name,
                 venue: comp.venue?.fullName || `${homeTeam.displayName} Stadium`,
@@ -373,11 +381,9 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
                   leagueRank: homeRank,
                   points: finalHomePoints,
                   form: homeFormParsed,
-                  formScores: generateFtScores(homeTeam.displayName, homeFormParsed),
-                  avgPossession: Math.round(50 + (awayRank - homeRank) * 1.5 + (Math.random() * 4 - 2)),
-                  avgShotsOnTarget: Math.round((5.2 + (awayRank - homeRank) * 0.3) * 10) / 10,
-                  isHomeDominant: homeRank <= 6,
-                  hasTopTierAwayForm: awayRank <= 5,
+                  avgPossession: 50,
+                  avgShotsOnTarget: 4.5,
+                  isHomeDominant: false,
                   badgeColor: homeColor,
                 },
                 awayTeam: {
@@ -387,19 +393,18 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
                   leagueRank: awayRank,
                   points: finalAwayPoints,
                   form: awayFormParsed,
-                  formScores: generateFtScores(awayTeam.displayName, awayFormParsed),
-                  avgPossession: 0,
-                  avgShotsOnTarget: Math.round((4.4 + (homeRank - awayRank) * 0.2) * 10) / 10,
+                  avgPossession: 50,
+                  avgShotsOnTarget: 4.5,
                   isHomeDominant: false,
-                  hasTopTierAwayForm: awayRank <= 4,
+                  hasTopTierAwayForm: false,
                   badgeColor: awayColor,
                 },
                 h2h: {
-                  homeWins: homeWins >= 0 ? homeWins : 2,
-                  awayWins: awayWins >= 0 ? awayWins : 1,
-                  draws: draws >= 0 ? draws : 2,
+                  homeWins: 1,
+                  awayWins: 1,
+                  draws: 3,
                   totalLast5: 5,
-                  scoresLast5: ['2-1', '1-1', '0-1', '2-0', '1-2'],
+                  scoresLast5: [],
                 },
               };
 
@@ -602,41 +607,20 @@ function mapSportApiAiToInternalFixture(f: any): any {
     ? `${f.league_zone || f.league_geo || 'Global'} • ${f.league_name}`
     : (typeof f.league === 'string' ? f.league : `${f.league?.country || 'Global'} • ${f.league?.name || 'League'}`);
 
-  // Parse odds if available from SportAPI object
-  let homeOdds = Number(f.home_odds || f.odds?.home || f.odds?.home_win || f.homeOdds);
-  let awayOdds = Number(f.away_odds || f.odds?.away || f.odds?.away_win || f.awayOdds);
-  let drawOdds = Number(f.draw_odds || f.odds?.draw || f.drawOdds);
+  // Parse odds if available from SportAPI object strictly for market display/odds comparisons
+  const homeOdds = Number(f.home_odds || f.odds?.home || f.odds?.home_win || f.homeOdds);
+  const awayOdds = Number(f.away_odds || f.odds?.away || f.odds?.away_win || f.awayOdds);
+  const drawOdds = Number(f.draw_odds || f.odds?.draw || f.drawOdds);
 
-  let homeRank = 10;
-  let awayRank = 10;
-  let homePoss = 50;
-  let awayPoss = 50;
-  let homeSot = 4.5;
-  let awaySot = 4.5;
-  let isHomeDom = false;
-  let hasAwayForm = false;
-
-  if (Number.isFinite(homeOdds) && Number.isFinite(awayOdds) && homeOdds > 0 && awayOdds > 0) {
-    if (homeOdds < awayOdds * 0.7) {
-      // Home is substantial favorite
-      homeRank = 4;
-      awayRank = 14;
-      homePoss = 55;
-      awayPoss = 45;
-      homeSot = 5.4;
-      awaySot = 3.6;
-      isHomeDom = true;
-    } else if (awayOdds < homeOdds * 0.7) {
-      // Away is substantial favorite (e.g. clear mismatch like Inter Lagos away)
-      homeRank = 14;
-      awayRank = 4;
-      homePoss = 44;
-      awayPoss = 56;
-      homeSot = 3.5;
-      awaySot = 5.5;
-      hasAwayForm = true;
-    }
-  }
+  // Neutral, odds-independent placeholder stats. Real rankings & form are resolved via verified standings.
+  const homeRank = 10;
+  const awayRank = 10;
+  const homePoss = 50;
+  const awayPoss = 50;
+  const homeSot = 4.5;
+  const awaySot = 4.5;
+  const isHomeDom = false;
+  const hasAwayForm = false;
 
   return {
     id: `sportapiai_${idStr}`,
@@ -648,13 +632,20 @@ function mapSportApiAiToInternalFixture(f: any): any {
     round: f.stage || f.league?.round || f.round || 'Regular Season',
     isHighStakes: false,
     motivation: 'regular',
-    odds: (Number.isFinite(homeOdds) && Number.isFinite(awayOdds)) ? { home: homeOdds, draw: drawOdds || 3.4, away: awayOdds, provider: 'SportAPI.ai' } : undefined,
+    odds: (Number.isFinite(homeOdds) && Number.isFinite(awayOdds) && homeOdds > 1.05 && awayOdds > 1.05)
+      ? {
+          home: homeOdds,
+          draw: (Number.isFinite(drawOdds) && drawOdds > 1.05) ? drawOdds : undefined,
+          away: awayOdds,
+          provider: 'SportAPI.ai',
+        }
+      : undefined,
     homeTeam: {
       id: `sportapiai_team_${f.home_id || f.home_team?.id || f.homeTeam?.id || normalizeTeamName(homeName)}`,
       name: homeName,
       shortName: (f.home_short || homeName).slice(0, 3).toUpperCase(),
       leagueRank: homeRank,
-      points: Math.max(1, 40 - homeRank * 2),
+      points: 15,
       form: ['W', 'D', 'W', 'D', 'L'],
       avgPossession: homePoss,
       avgShotsOnTarget: homeSot,
@@ -666,20 +657,20 @@ function mapSportApiAiToInternalFixture(f: any): any {
       name: awayName,
       shortName: (f.away_short || awayName).slice(0, 3).toUpperCase(),
       leagueRank: awayRank,
-      points: Math.max(1, 40 - awayRank * 2),
+      points: 15,
       form: ['W', 'D', 'W', 'D', 'L'],
       avgPossession: awayPoss,
       avgShotsOnTarget: awaySot,
       hasTopTierAwayForm: hasAwayForm,
       badgeColor: '#dc2626',
     },
-    h2h: { homeWins: 2, draws: 1, awayWins: 2, totalLast5: 5, scoresLast5: ['1-1', '2-1', '0-1', '1-0', '2-2'] },
+    h2h: { homeWins: 2, draws: 1, awayWins: 2, totalLast5: 5, scoresLast5: [] },
     authenticity: {
-      status: 'VERIFIED_AUTHENTIC',
-      authenticityScore: 95,
-      isAuthentic: true,
+      status: 'UNVERIFIED',
+      authenticityScore: 70,
+      isAuthentic: false,
       verifiedAt: new Date().toISOString(),
-      source: 'CANONICAL_AUDITED_DATASET',
+      source: 'MATHEMATICAL_VALIDATOR',
     },
   };
 }
@@ -729,13 +720,13 @@ function mapTheRundownToInternalFixture(ev: any): any {
       hasTopTierAwayForm: false,
       badgeColor: '#dc2626',
     },
-    h2h: { homeWins: 2, draws: 1, awayWins: 2, totalLast5: 5, scoresLast5: ['1-1', '2-1', '0-1', '1-0', '2-2'] },
+    h2h: { homeWins: 2, draws: 1, awayWins: 2, totalLast5: 5, scoresLast5: [] },
     authenticity: {
-      status: 'VERIFIED_AUTHENTIC',
-      authenticityScore: 90,
-      isAuthentic: true,
+      status: 'UNVERIFIED',
+      authenticityScore: 70,
+      isAuthentic: false,
       verifiedAt: new Date().toISOString(),
-      source: 'CANONICAL_AUDITED_DATASET',
+      source: 'MATHEMATICAL_VALIDATOR',
     },
   };
 }
@@ -1312,7 +1303,7 @@ async function startServer() {
   // Shared merge-into-manifest logic, extracted so every ingestion path (paste-text,
   // PDF upload, URL fetch) goes through the exact same real, working pipeline —
   // rather than each having its own parallel, partially-broken implementation.
-  const ingestFixturesIntoManifest = (incomingFixtures: any[]) => {
+  const ingestFixturesIntoManifest = async (incomingFixtures: any[]) => {
     const diskFixtures = readDiskManifest();
 
     const normalizeKey = (f: any) => {
@@ -1339,7 +1330,10 @@ async function startServer() {
     );
     combined.sort((a, b) => new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime());
 
-    const { fixtures: validatedFixtures, auditReport } = verifyAndSanitizeFixtures(combined);
+    // Proactively populate and merge authentic standings from ESPN cache
+    const aggregatedStandings = await ensureAllHollywoodbetsStandingsCached();
+
+    const { fixtures: validatedFixtures, auditReport } = verifyAndSanitizeFixtures(combined, aggregatedStandings);
     writeDiskManifest(validatedFixtures);
     fixturesCache = {
       fixtures: validatedFixtures,
@@ -1352,7 +1346,7 @@ async function startServer() {
 
   // 2. POST /api/fixtures/ingest-slate (and alias /api/fixtures/ingest-hollywoodbets):
   // Atomically deduplicates and commits user-imported slates directly to data/fixtures-manifest.json
-  const handleIngestSlate = (req: express.Request, res: express.Response) => {
+  const handleIngestSlate = async (req: express.Request, res: express.Response) => {
     try {
       const { rawText, fixtures } = req.body || {};
       let incomingFixtures: any[] = [];
@@ -1370,7 +1364,7 @@ async function startServer() {
         });
       }
 
-      const { validatedFixtures, auditReport } = ingestFixturesIntoManifest(incomingFixtures);
+      const { validatedFixtures, auditReport } = await ingestFixturesIntoManifest(incomingFixtures);
 
       return res.json({
         status: 'success',
@@ -1891,7 +1885,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
         return res.status(400).json({ error: 'No fixtures could be parsed from this PDF. Make sure it contains a Hollywoodbets-format fixture list.' });
       }
 
-      const { validatedFixtures } = ingestFixturesIntoManifest(incomingFixtures);
+      const { validatedFixtures } = await ingestFixturesIntoManifest(incomingFixtures);
       res.json({ success: true, count: incomingFixtures.length, totalCount: validatedFixtures.length });
     } catch (error) {
       console.error('Error uploading fixture file:', error);
@@ -1914,7 +1908,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
         return res.status(400).json({ error: 'No fixtures could be parsed from this page. This works best with a page whose raw HTML already contains Hollywoodbets-format text, not a JavaScript-rendered odds page.' });
       }
 
-      const { validatedFixtures } = ingestFixturesIntoManifest(incomingFixtures);
+      const { validatedFixtures } = await ingestFixturesIntoManifest(incomingFixtures);
       res.json({ success: true, count: incomingFixtures.length, totalCount: validatedFixtures.length });
     } catch (error) {
       console.error('Error fetching fixture link:', error);

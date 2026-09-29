@@ -134,24 +134,38 @@ export function generateSmartAccumulator(
 
   for (const fixture of activeFixtures) {
     if (!fixture || !fixture.id || !fixture.homeTeam || !fixture.awayTeam) continue;
+
+    // DATA-QUALITY GATE: Only fixtures with verified official standings may enter accumulator candidates
+    const isStandingsVerified = Boolean(fixture.isStandingsVerified || fixture.authenticity?.source === 'OFFICIAL_ESPN_STANDINGS');
+    if (!isStandingsVerified) continue;
+
+    // AUTHENTIC ODDS GATE: Exclude any fixture without genuine market odds
+    if (!fixture.odds?.home || !fixture.odds?.away || Number(fixture.odds.home) <= 1.05 || Number(fixture.odds.away) <= 1.05) {
+      continue;
+    }
+
+    const homeOdds = Number(fixture.odds.home);
+    const drawOdds = fixture.odds.draw && Number(fixture.odds.draw) > 1.05 ? Number(fixture.odds.draw) : undefined;
+    const awayOdds = Number(fixture.odds.away);
+
     const pred = evaluateFixturePrediction(fixture, (overrides[fixture.id] as any) || 'none', weights);
+    if (!pred) continue;
+
     const homePct = pred.homeWinPct;
     const drawPct = pred.drawPct;
     const awayPct = pred.awayWinPct;
 
-    const homeOdds = homePct > 0 ? Number((100 / homePct).toFixed(2)) : 2.0;
-    const drawOdds = drawPct > 0 ? Number((100 / drawPct).toFixed(2)) : 3.2;
-    const awayOdds = awayPct > 0 ? Number((100 / awayPct).toFixed(2)) : 2.5;
-
-    // Determine best value selection with EV > 0
+    // Determine best selection based on predicted winner with authentic market odds
     let bestSelection: 'home' | 'draw' | 'away' = pred.predictedWinner;
     let bestProb = bestSelection === 'home' ? homePct : bestSelection === 'away' ? awayPct : drawPct;
     let bestOdds = bestSelection === 'home' ? homeOdds : bestSelection === 'away' ? awayOdds : drawOdds;
 
-    // Sweet spot filtering: probability >= 52% and odds >= 1.50 and <= 3.20
+    if (!bestOdds || bestOdds <= 1.05) continue;
+
+    // Sweet spot filtering: probability >= 50% and odds between 1.35 and 3.50
     const ev = (bestProb / 100) * bestOdds - 1;
 
-    if (bestProb >= 52 && bestOdds >= 1.45 && bestOdds <= 3.50 && ev > -0.10) {
+    if (bestProb >= 50 && bestOdds >= 1.35 && bestOdds <= 3.50 && ev > -0.05) {
       const teamName = bestSelection === 'home' ? fixture.homeTeam.name : bestSelection === 'away' ? fixture.awayTeam.name : 'Draw';
       const ruleTag = pred.appliedRules[0]?.tag || 'Tactical Balance';
 
@@ -167,7 +181,7 @@ export function generateSmartAccumulator(
         odds: bestOdds,
         expectedValue: Number(ev.toFixed(2)),
         confidenceScore: pred.confidenceScore,
-        reasoning: `Supported by ${pred.appliedRules.length} rules (${ruleTag}). Prob: ${Math.round(bestProb)}% | EV: +${(ev * 100).toFixed(0)}%`,
+        reasoning: `Verified Standings. Supported by ${pred.appliedRules.length} rules (${ruleTag}). Prob: ${Math.round(bestProb)}% | EV: +${(ev * 100).toFixed(0)}%`,
       });
     }
   }
@@ -311,6 +325,19 @@ export function generateOptimalValueAccumulatorReport(
     }));
 
   for (const fixture of validFixtures) {
+    // DATA-QUALITY GATE: Only fixtures with verified official standings cross-reference may enter EV / value ranking
+    const isStandingsVerified = Boolean(fixture.isStandingsVerified || fixture.authenticity?.source === 'OFFICIAL_ESPN_STANDINGS');
+    if (!isStandingsVerified) continue;
+
+    // AUTHENTIC ODDS GATE: Exclude any fixture without genuine market odds (no synthetic fallbacks)
+    if (!fixture.odds?.home || !fixture.odds?.away || Number(fixture.odds.home) <= 1.05 || Number(fixture.odds.away) <= 1.05) {
+      continue;
+    }
+
+    const mOddsHome = Number(fixture.odds.home);
+    const mOddsAway = Number(fixture.odds.away);
+    const mOddsDraw = fixture.odds.draw && Number(fixture.odds.draw) > 1.05 ? Number(fixture.odds.draw) : undefined;
+
     const pred = evaluateFixturePrediction(fixture, (overrides[fixture.id] as any) || 'none', weights);
     if (!pred) continue;
 
@@ -318,20 +345,7 @@ export function generateOptimalValueAccumulatorReport(
     const drawPct = pred.drawPct;
     const awayPct = pred.awayWinPct;
 
-    // Retrieve real market odds or fallback to model-calibrated odds
-    const mOddsHome = fixture.odds?.home && fixture.odds.home > 1.05
-      ? Number(fixture.odds.home)
-      : homePct > 0 ? Number((100 / (homePct * 0.94)).toFixed(2)) : 2.10;
-
-    const mOddsDraw = fixture.odds?.draw && fixture.odds.draw > 1.05
-      ? Number(fixture.odds.draw)
-      : drawPct > 0 ? Number((100 / (drawPct * 0.94)).toFixed(2)) : 3.20;
-
-    const mOddsAway = fixture.odds?.away && fixture.odds.away > 1.05
-      ? Number(fixture.odds.away)
-      : awayPct > 0 ? Number((100 / (awayPct * 0.94)).toFixed(2)) : 2.50;
-
-    // Evaluate all 3 potential outcomes for maximum Expected Value (EV)
+    // Evaluate outcomes with authentic market odds
     const outcomes: {
       sel: 'home' | 'draw' | 'away';
       prob: number;
@@ -339,12 +353,15 @@ export function generateOptimalValueAccumulatorReport(
       name: string;
     }[] = [
       { sel: 'home', prob: homePct, odds: mOddsHome, name: fixture.homeTeam.name },
-      { sel: 'draw', prob: drawPct, odds: mOddsDraw, name: 'Draw' },
       { sel: 'away', prob: awayPct, odds: mOddsAway, name: fixture.awayTeam.name },
     ];
+    if (mOddsDraw !== undefined) {
+      outcomes.push({ sel: 'draw', prob: drawPct, odds: mOddsDraw, name: 'Draw' });
+    }
 
     for (const outcome of outcomes) {
-      if (outcome.prob < 35 || outcome.odds <= 1.20) continue;
+      // Secondary safety net: odds between 1.30 and 3.50, probability >= 40%
+      if (outcome.prob < 40 || outcome.odds < 1.30 || outcome.odds > 3.50) continue;
 
       const fairOdds = Number((100 / outcome.prob).toFixed(2));
       const ev = (outcome.prob / 100) * outcome.odds - 1; // Expected Value ratio
@@ -382,8 +399,8 @@ export function generateOptimalValueAccumulatorReport(
       } else if (strategyMode === 'high_alpha') {
         passesStrategy = ev >= 0.12 && outcome.prob >= 44 && outcome.odds >= 1.80 && outcome.odds <= 4.50;
       } else {
-        // Optimal balanced
-        passesStrategy = ev >= 0.04 && outcome.prob >= 50 && outcome.odds >= 1.45 && outcome.odds <= 3.40 && historicalWinRate >= 68;
+        // Optimal balanced: credible win probability, market odds in value sweet spot, positive EV
+        passesStrategy = ev >= 0.02 && outcome.prob >= 48 && outcome.odds >= 1.35 && outcome.odds <= 3.50 && historicalWinRate >= 60;
       }
 
       if (passesStrategy) {
@@ -432,10 +449,12 @@ export function generateOptimalValueAccumulatorReport(
     }
   }
 
-  // Rank candidate legs by composite Value Alpha index: (EV * 45) + (HistoricalWinRate * 0.35) + (Confidence * 0.20)
+  // Rank candidate legs by composite Value Alpha index: prioritize high win probability, capped EV, historical win rate, and confidence
   candidateLegs.sort((a, b) => {
-    const scoreA = a.expectedValue * 45 + (a.historicalWinRate * 0.35) + (a.confidenceScore * 0.20);
-    const scoreB = b.expectedValue * 45 + (b.historicalWinRate * 0.35) + (b.confidenceScore * 0.20);
+    const cappedEvA = Math.min(0.35, Math.max(0, a.expectedValue));
+    const cappedEvB = Math.min(0.35, Math.max(0, b.expectedValue));
+    const scoreA = (a.modelProbability * 0.8) + (cappedEvA * 60) + (a.historicalWinRate * 0.25) + (a.confidenceScore * 0.15);
+    const scoreB = (b.modelProbability * 0.8) + (cappedEvB * 60) + (b.historicalWinRate * 0.25) + (b.confidenceScore * 0.15);
     return scoreB - scoreA;
   });
 

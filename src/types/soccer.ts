@@ -58,11 +58,12 @@ export interface MatchFixture {
   h2h: H2HRecord;
   odds?: {
     home: number;
-    draw: number;
+    draw?: number;
     away: number;
     provider?: string;
   };
   isBookmakerProtected?: boolean;
+  isStandingsVerified?: boolean;
   impliedProbabilities?: {
     home: number;
     draw: number;

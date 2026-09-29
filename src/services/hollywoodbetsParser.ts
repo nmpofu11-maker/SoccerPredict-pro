@@ -12,18 +12,14 @@ function hashString(str: string): number {
 /**
  * Parses fractional odds (e.g., '5/2', '10/11', '1/2') or decimal/profit strings to true decimal odds (e.g., 3.50, 1.91, 1.50)
  */
-export function parseOddsValue(raw: string | number): number {
+export function parseOddsValue(raw: string | number): number | undefined {
   if (typeof raw === 'number') {
-    if (raw <= 0) return 2.0;
-    if (raw < 1.0) {
-      // Fractional profit notation e.g. 0.35 -> 1.35
-      return Number((1 + raw).toFixed(3));
-    }
+    if (raw <= 1.0 || !Number.isFinite(raw)) return undefined;
     return Number(raw.toFixed(3));
   }
 
-  const str = String(raw).trim();
-  if (!str) return 2.0;
+  const str = String(raw || '').trim();
+  if (!str) return undefined;
 
   // Fractional e.g. "5/2" or "10/11" or "1/2"
   if (str.includes('/')) {
@@ -36,10 +32,7 @@ export function parseOddsValue(raw: string | number): number {
   }
 
   const parsed = parseFloat(str);
-  if (isNaN(parsed) || parsed <= 0) return 2.0;
-  if (parsed < 1.0) {
-    return Number((1 + parsed).toFixed(3));
-  }
+  if (isNaN(parsed) || parsed <= 1.0) return undefined;
   return Number(parsed.toFixed(3));
 }
 
@@ -160,96 +153,44 @@ export function buildCompositeDeduplicationKey(home: string, away: string, kicko
 }
 
 /**
- * Derives realistic performance metrics, possession, shots, and form from implied market probabilities
+ * Derives neutral, odds-independent baseline placeholder metrics for fixtures.
+ * Implied probabilities from market odds are calculated strictly for display/market reference
+ * and are NEVER used to fabricate team stats (rank, form, possession, shots, H2H).
  */
-export function deriveTeamMetricsFromOdds(homeDec: number, drawDec: number, awayDec: number) {
-  const rawPHome = 1 / homeDec;
-  const rawPDraw = 1 / drawDec;
-  const rawPAway = 1 / awayDec;
-  const marginSum = rawPHome + rawPDraw + rawPAway;
+export function deriveTeamMetricsFromOdds(homeDec?: number, drawDec?: number, awayDec?: number) {
+  let pHome = 0.333;
+  let pDraw = 0.334;
+  let pAway = 0.333;
+  let marginPercent = 0;
 
-  const pHome = rawPHome / marginSum;
-  const pDraw = rawPDraw / marginSum;
-  const pAway = rawPAway / marginSum;
-  const marginPercent = Number(((marginSum - 1) * 100).toFixed(2));
+  if (homeDec && awayDec && homeDec > 1.05 && awayDec > 1.05) {
+    const rawPHome = 1 / homeDec;
+    const rawPDraw = (drawDec && drawDec > 1.05) ? (1 / drawDec) : 0.25;
+    const rawPAway = 1 / awayDec;
+    const marginSum = rawPHome + rawPDraw + rawPAway;
 
-  // Possession bounded between 32% and 70%
-  const homePossession = Math.min(70, Math.max(32, Math.round(50 + (pHome - pAway) * 32)));
-  const awayPossession = 100 - homePossession;
-
-  // Shots on target realistic range 2.0 to 9.5
-  const homeShots = Number(Math.min(9.5, Math.max(2.2, 3.2 + pHome * 7.2)).toFixed(1));
-  const awayShots = Number(Math.min(9.5, Math.max(2.2, 3.2 + pAway * 7.2)).toFixed(1));
-
-  // League Ranks & Points
-  let homeRank = 8;
-  let homePoints = 18;
-  let awayRank = 9;
-  let awayPoints = 17;
-  let homeForm: ('W' | 'D' | 'L')[] = ['W', 'D', 'W', 'D', 'L'];
-  let awayForm: ('W' | 'D' | 'L')[] = ['D', 'W', 'L', 'W', 'D'];
-  let homeH2HWins = 2;
-  let drawH2H = 1;
-  let awayH2HWins = 1;
-  let motivation: MatchMotivation = 'regular';
-  let isHighStakes = false;
-
-  if (pHome >= 0.72) {
-    homeRank = 1;
-    homePoints = 32;
-    awayRank = 19;
-    awayPoints = 7;
-    homeForm = ['W', 'W', 'W', 'W', 'W'];
-    awayForm = ['L', 'L', 'D', 'L', 'L'];
-    homeH2HWins = 4;
-    drawH2H = 1;
-    awayH2HWins = 0;
-    motivation = 'title_race';
-    isHighStakes = true;
-  } else if (pHome >= 0.55) {
-    homeRank = 3;
-    homePoints = 26;
-    awayRank = 14;
-    awayPoints = 12;
-    homeForm = ['W', 'W', 'D', 'W', 'W'];
-    awayForm = ['L', 'W', 'L', 'D', 'L'];
-    homeH2HWins = 3;
-    drawH2H = 1;
-    awayH2HWins = 1;
-    motivation = 'title_race';
-  } else if (pAway >= 0.70) {
-    homeRank = 20;
-    homePoints = 6;
-    awayRank = 1;
-    awayPoints = 33;
-    homeForm = ['L', 'L', 'L', 'D', 'L'];
-    awayForm = ['W', 'W', 'W', 'W', 'W'];
-    homeH2HWins = 0;
-    drawH2H = 1;
-    awayH2HWins = 4;
-    motivation = 'relegation_battle';
-    isHighStakes = true;
-  } else if (pAway >= 0.52) {
-    homeRank = 15;
-    homePoints = 11;
-    awayRank = 2;
-    awayPoints = 28;
-    homeForm = ['L', 'D', 'L', 'W', 'L'];
-    awayForm = ['W', 'W', 'D', 'W', 'W'];
-    homeH2HWins = 1;
-    drawH2H = 1;
-    awayH2HWins = 3;
-  } else {
-    homeRank = 6;
-    homePoints = 21;
-    awayRank = 7;
-    awayPoints = 20;
-    homeForm = ['W', 'D', 'L', 'W', 'D'];
-    awayForm = ['D', 'W', 'W', 'L', 'D'];
-    homeH2HWins = 2;
-    drawH2H = 2;
-    awayH2HWins = 1;
+    pHome = rawPHome / marginSum;
+    pDraw = rawPDraw / marginSum;
+    pAway = rawPAway / marginSum;
+    marginPercent = Number(((marginSum - 1) * 100).toFixed(2));
   }
+
+  // Neutral, odds-independent placeholder baselines
+  const homePossession = 50;
+  const awayPossession = 50;
+  const homeShots = 4.5;
+  const awayShots = 4.5;
+  const homeRank = 8;
+  const homePoints = 18;
+  const awayRank = 9;
+  const awayPoints = 17;
+  const homeForm: ('W' | 'D' | 'L')[] = ['W', 'D', 'W', 'D', 'L'];
+  const awayForm: ('W' | 'D' | 'L')[] = ['D', 'W', 'L', 'W', 'D'];
+  const homeH2HWins = 2;
+  const drawH2H = 1;
+  const awayH2HWins = 2;
+  const motivation: MatchMotivation = 'regular';
+  const isHighStakes = false;
 
   return {
     homePossession,
@@ -267,8 +208,8 @@ export function deriveTeamMetricsFromOdds(homeDec: number, drawDec: number, away
     awayH2HWins,
     motivation,
     isHighStakes,
-    isHomeDominant: pHome >= 0.48,
-    hasTopTierAwayForm: pAway >= 0.45,
+    isHomeDominant: false,
+    hasTopTierAwayForm: false,
     impliedProbabilities: {
       home: Number((pHome * 100).toFixed(1)),
       draw: Number((pDraw * 100).toFixed(1)),
@@ -508,12 +449,12 @@ export function parseHollywoodbetsRawText(text: string): MatchFixture[] {
         motivation: metrics.motivation,
         isBookmakerProtected: true,
         impliedProbabilities: metrics.impliedProbabilities,
-        odds: {
+        odds: (homeDec && awayDec && homeDec > 1.05 && awayDec > 1.05) ? {
           home: homeDec,
           draw: drawDec,
           away: awayDec,
           provider: 'Hollywoodbets',
-        },
+        } : undefined,
         homeTeam: {
           id: `tm_${Math.abs(hashString(homeTeamName)) % 10000}`,
           name: homeTeamName,
@@ -543,20 +484,20 @@ export function parseHollywoodbetsRawText(text: string): MatchFixture[] {
           draws: metrics.drawH2H,
           awayWins: metrics.awayH2HWins,
           totalLast5: 5,
-          scoresLast5: ['2-1', '1-1', '1-0', '0-2', '2-0'],
+          scoresLast5: [],
         },
         authenticity: {
-          status: 'VERIFIED_AUTHENTIC',
-          authenticityScore: 100,
-          isAuthentic: true,
+          status: 'UNVERIFIED',
+          authenticityScore: 70,
+          isAuthentic: false,
           verifiedAt: new Date().toISOString(),
-          source: 'CANONICAL_AUDITED_DATASET',
+          source: 'MATHEMATICAL_VALIDATOR',
           checks: [
             {
-              checkName: 'Official Bookmaker Slate Verification',
+              checkName: 'Bookmaker Slate Raw Extraction',
               passed: true,
-              details: `Verified: ${homeTeamName} vs ${awayTeamName} (${league}) | Margin: ${metrics.impliedProbabilities.marginPercent}%`,
-              severity: 'critical',
+              details: `Parsed: ${homeTeamName} vs ${awayTeamName} (${league}) | Margin: ${metrics.impliedProbabilities.marginPercent}% (Pending Standings Verification)`,
+              severity: 'info',
             },
           ],
         },

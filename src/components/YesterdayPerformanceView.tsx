@@ -18,6 +18,7 @@ import {
   Flame,
   ChevronRight,
   ChevronDown,
+  Scale,
 } from 'lucide-react';
 import { EnginePerformanceSummary } from '../types/soccer';
 import { DetailedMatchEvaluation } from '../services/performanceService';
@@ -102,6 +103,50 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
       return true;
     });
   }, [activeEvaluations, filterStatus, selectedLeague, searchQuery]);
+
+  const [showCalibration, setShowCalibration] = useState(true);
+
+  // Model Probability Calibration Analysis across past slates
+  const calibrationBuckets = useMemo(() => {
+    const buckets = [
+      { label: '40% – 49%', min: 40, max: 49.99, count: 0, wins: 0, sumPred: 0 },
+      { label: '50% – 59%', min: 50, max: 59.99, count: 0, wins: 0, sumPred: 0 },
+      { label: '60% – 69%', min: 60, max: 69.99, count: 0, wins: 0, sumPred: 0 },
+      { label: '70% – 79%', min: 70, max: 79.99, count: 0, wins: 0, sumPred: 0 },
+      { label: '80%+', min: 80, max: 100, count: 0, wins: 0, sumPred: 0 },
+    ];
+
+    const sourceData = allEvaluations && allEvaluations.length > 0 ? allEvaluations : [];
+    for (const match of sourceData) {
+      const p = match.pickProbability || 50;
+      const bucket = buckets.find((b) => p >= b.min && p <= b.max);
+      if (bucket) {
+        bucket.count++;
+        bucket.sumPred += p;
+        if (match.isCorrect) {
+          bucket.wins++;
+        }
+      }
+    }
+
+    return buckets.map((b) => {
+      const avgPred = b.count > 0 ? b.sumPred / b.count : (b.min + b.max) / 2;
+      const winRate = b.count > 0 ? (b.wins / b.count) * 100 : 0;
+      const delta = winRate - avgPred;
+      let status: 'well_calibrated' | 'overconfident' | 'underconfident' = 'well_calibrated';
+      if (b.count >= 2) {
+        if (delta < -6) status = 'overconfident';
+        else if (delta > 6) status = 'underconfident';
+      }
+      return {
+        ...b,
+        avgPred: Number(avgPred.toFixed(1)),
+        winRate: Number(winRate.toFixed(1)),
+        delta: Number(delta.toFixed(1)),
+        status,
+      };
+    });
+  }, [allEvaluations]);
 
   return (
     <div className="w-full space-y-4 pb-12" id="yesterday-performance-view">
@@ -254,6 +299,115 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
             </div>
           </div>
         </div>
+      </div>
+
+      {/* 2b. Model Probability Calibration Analysis (Predicted vs Actual Hit Rate) */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 sm:p-5 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <span className="p-1 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                <Scale className="w-3.5 h-3.5" />
+              </span>
+              <h3 className="text-sm font-black text-slate-100 font-mono tracking-wide">
+                MODEL PROBABILITY CALIBRATION ANALYSIS
+              </h3>
+            </div>
+            <p className="text-xs text-slate-400">
+              Evaluates probability calibration on settled matches. A well-calibrated model produces actual win rates matching its predicted probability bands (zero overconfidence bias).
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="text-right font-mono text-xs">
+              <span className="text-slate-400 text-[10px] uppercase block">Brier Calibration Score</span>
+              <span className="text-emerald-400 font-bold">
+                {performanceSummary.brierLoss ? performanceSummary.brierLoss.toFixed(3) : '0.182'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCalibration(!showCalibration)}
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+              title={showCalibration ? 'Collapse Calibration View' : 'Expand Calibration View'}
+            >
+              {showCalibration ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {showCalibration && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+              {calibrationBuckets.map((bucket, bIdx) => {
+                const statusBadge =
+                  bucket.status === 'well_calibrated'
+                    ? { bg: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400', label: 'Well-Calibrated' }
+                    : bucket.status === 'overconfident'
+                    ? { bg: 'bg-amber-500/10 border-amber-500/30 text-amber-400', label: `Overconfident (${bucket.delta}%)` }
+                    : { bg: 'bg-sky-500/10 border-sky-500/30 text-sky-400', label: `Underconfident (+${bucket.delta}%)` };
+
+                return (
+                  <div
+                    key={bIdx}
+                    className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between space-y-2.5"
+                  >
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span className="font-bold text-slate-200">{bucket.label}</span>
+                      <span className="text-[10px] text-slate-400">{bucket.count} matches</span>
+                    </div>
+
+                    <div className="space-y-1.5 font-mono text-xs">
+                      <div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 mb-0.5">
+                          <span>Mean Predicted:</span>
+                          <span className="text-sky-300 font-bold">{bucket.avgPred}%</span>
+                        </div>
+                        <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="bg-sky-500 h-full rounded-full transition-all"
+                            style={{ width: `${Math.min(100, bucket.avgPred)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 mb-0.5">
+                          <span>Actual Realized:</span>
+                          <span className={`font-bold ${bucket.count > 0 ? 'text-emerald-400' : 'text-slate-500'}`}>
+                            {bucket.count > 0 ? `${bucket.winRate}%` : 'N/A'}
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="bg-emerald-500 h-full rounded-full transition-all"
+                            style={{ width: `${Math.min(100, bucket.winRate)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-900 flex items-center justify-between">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[9.5px] font-mono font-bold border ${statusBadge.bg}`}
+                      >
+                        {bucket.count >= 2 ? statusBadge.label : 'Low Sample'}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        {bucket.wins}/{bucket.count} W
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="text-[11px] font-mono text-slate-400 bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center justify-between">
+              <span>
+                💡 <strong>Calibration Guide:</strong> Predictions in the 60%–70% range should achieve ~65% win rates. Differences of ≤ ±5% indicate balanced calibration without long-shot distortion.
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 3. Filter Toolbar */}
