@@ -7,7 +7,7 @@ import {
 import {
   saveLearningState,
   getInitialLearningState,
-  evaluateHistoricalBacktest,
+  evaluateOutOfSampleValidation,
   BOUNDS_ENGINE_WEIGHTS,
   loadSuperLearningTelemetry,
   updateSuperLearningTelemetry,
@@ -75,15 +75,15 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
   const [isSyncingServer, setIsSyncingServer] = useState(false);
 
   // Re-evaluate current evaluations
-  const currentEval = evaluateHistoricalBacktest(HISTORICAL_MATCH_RESULTS, learningState.weights, teamMatrices);
+  const currentEval = evaluateOutOfSampleValidation(HISTORICAL_MATCH_RESULTS, learningState.weights);
 
   // Baseline evaluation for comparison
   const baselineWeights = DEFAULT_ENGINE_WEIGHTS;
-  const baselineEval = evaluateHistoricalBacktest(HISTORICAL_MATCH_RESULTS, baselineWeights, teamMatrices);
+  const baselineEval = evaluateOutOfSampleValidation(HISTORICAL_MATCH_RESULTS, baselineWeights);
 
   const handleSyncSuperLearningToServer = async () => {
     setIsSyncingServer(true);
-    setStatusMessage('Syncing Aggressive Super-Learning matrix & coefficients to persistent server API...');
+    setStatusMessage('Syncing observed team coefficients to persistent server API...');
     try {
       const payload = generateAggressiveSuperLearningPayload(teamMatrices);
       const res = await fetch('/api/ai/super-learning/sync', {
@@ -92,7 +92,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
         body: JSON.stringify(payload),
       });
       if (res.ok) {
-        setStatusMessage('✓ Super-Learning Protocol state successfully synchronized to persistent server!');
+        setStatusMessage('✓ Observed team coefficients synchronized to persistent server.');
       } else {
         setStatusMessage('Sync cached locally (server offline fallback active).');
       }
@@ -214,7 +214,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
       key: 'favouriteWinFloor',
       ruleNumber: 8,
       name: 'Priority Favourite Win Floor',
-      description: 'Calibrated minimum win probability floor enforced for 80 Priority Favourites',
+      description: 'Heuristic probability floor applied to configured priority favourites; not statistically calibrated',
       unit: '%',
     },
     {
@@ -228,7 +228,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
       key: 'drawEquilibriumBoost',
       ruleNumber: 9,
       name: 'Draw Equilibrium Probability',
-      description: 'Calibrated consensus draw probability assigned when teams are within equilibrium margin',
+      description: 'Configured draw probability adjustment when teams are within the equilibrium margin; requires out-of-sample validation',
       unit: '%',
     },
     {
@@ -471,7 +471,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
           }`}
         >
           <Zap className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
-          <span>⚡ Aggressive Super-Learning & Matrices</span>
+          <span>⚡ Model Calibration & Team Matrices</span>
         </button>
 
         <button
@@ -484,7 +484,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
           }`}
         >
           <Sliders className="w-3.5 h-3.5" />
-          <span>Calibrated Rule Weights ({ruleWeightItems.length})</span>
+          <span>Model Rule Weights ({ruleWeightItems.length})</span>
         </button>
 
         <button
@@ -497,7 +497,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
           }`}
         >
           <Award className="w-3.5 h-3.5" />
-          <span>Backtest Match Log ({HISTORICAL_MATCH_RESULTS.length})</span>
+          <span>Chronological Evaluation Match Log ({HISTORICAL_MATCH_RESULTS.length})</span>
         </button>
 
         <button
