@@ -52,6 +52,66 @@ export const BOUNDS_ENGINE_WEIGHTS: Record<keyof EngineWeights, { min: number; m
  * Evaluates the entire historical dataset against a specific set of engine weights and team matrices.
  * Computes accuracy, individual match correctness, and Brier Loss.
  */
+
+function splitHistoricalResults(results: HistoricalMatchResult[]): {
+  training: HistoricalMatchResult[];
+  validation: HistoricalMatchResult[];
+} {
+  const ordered = (results || [])
+    .filter((m): m is HistoricalMatchResult => Boolean(m && m.id && m.fixture && m.actualOutcome))
+    .slice()
+    .sort((a, b) => {
+      const aTime = new Date(a.fixture?.kickoffTime || a.date || 0).getTime();
+      const bTime = new Date(b.fixture?.kickoffTime || b.date || 0).getTime();
+      return aTime - bTime;
+    });
+
+  if (ordered.length < 2) return { training: ordered, validation: [] };
+
+  const validationSize = Math.max(1, Math.floor(ordered.length * 0.20));
+  const splitIndex = Math.max(1, ordered.length - validationSize);
+
+  return {
+    training: ordered.slice(0, splitIndex),
+    validation: ordered.slice(splitIndex),
+  };
+}
+
+export function evaluateOutOfSampleValidation(
+  results: HistoricalMatchResult[] = HISTORICAL_MATCH_RESULTS,
+  weights: EngineWeights = DEFAULT_ENGINE_WEIGHTS
+): {
+  evaluations: BacktestEvaluation[];
+  accuracyPct: number;
+  brierLoss: number;
+  correctCount: number;
+  totalCount: number;
+  trainingCount: number;
+  validationCount: number;
+} {
+  const { training, validation } = splitHistoricalResults(results);
+  if (validation.length === 0) {
+    return {
+      evaluations: [],
+      accuracyPct: 0,
+      brierLoss: 0,
+      correctCount: 0,
+      totalCount: 0,
+      trainingCount: training.length,
+      validationCount: 0,
+    };
+  }
+
+  const trainingMatrices = synthesizeTeamIntelligenceMatrices(training, loadTeamIntelligenceMatrices());
+  const evaluation = evaluateHistoricalBacktest(validation, weights, trainingMatrices);
+
+  return {
+    ...evaluation,
+    trainingCount: training.length,
+    validationCount: validation.length,
+  };
+}
+
 export function evaluateHistoricalBacktest(
   results: HistoricalMatchResult[] = HISTORICAL_MATCH_RESULTS,
   weights: EngineWeights = DEFAULT_ENGINE_WEIGHTS,
@@ -139,7 +199,9 @@ export function trainSingleEpoch(
   deltas: Record<keyof EngineWeights, number>;
 } {
   const safeCurrent = sanitizeEngineWeights(currentWeights);
-  const baseEval = evaluateHistoricalBacktest(results, safeCurrent, teamMatrices);
+  const { training, validation } = splitHistoricalResults(results);
+  const optimisationResults = training.length > 0 ? training : results;
+  const baseEval = evaluateHistoricalBacktest(optimisationResults, safeCurrent, teamMatrices);
   const updatedWeights: EngineWeights = { ...safeCurrent };
   const deltas: Partial<Record<keyof EngineWeights, number>> = {};
 
@@ -156,11 +218,11 @@ export function trainSingleEpoch(
 
     // Test positive step
     const testPlus = Math.min(bounds.max, currentVal + stepSize);
-    const evalPlus = evaluateHistoricalBacktest(results, { ...updatedWeights, [key]: testPlus }, teamMatrices);
+    const evalPlus = evaluateHistoricalBacktest(optimisationResults, { ...updatedWeights, [key]: testPlus }, teamMatrices);
 
     // Test negative step
     const testMinus = Math.max(bounds.min, currentVal - stepSize);
-    const evalMinus = evaluateHistoricalBacktest(results, { ...updatedWeights, [key]: testMinus }, teamMatrices);
+    const evalMinus = evaluateHistoricalBacktest(optimisationResults, { ...updatedWeights, [key]: testMinus }, teamMatrices);
 
     let bestVal = currentVal;
     let minLoss = Number.isFinite(baseEval.brierLoss) ? baseEval.brierLoss : 0.25;
@@ -185,14 +247,22 @@ export function trainSingleEpoch(
     deltas[key] = deltaPct;
   }
 
-  const finalEval = evaluateHistoricalBacktest(results, updatedWeights, teamMatrices);
+  const finalEval = evaluateHistoricalBacktest(optimisationResults, updatedWeights, teamMatrices);
 
   return {
     updatedWeights,
-    oldAccuracy: Number.isFinite(baseEval.accuracyPct) ? baseEval.accuracyPct : 74.5,
-    newAccuracy: Number.isFinite(finalEval.accuracyPct) ? finalEval.accuracyPct : 74.5,
-    oldLoss: Number.isFinite(baseEval.brierLoss) ? baseEval.brierLoss : 0.22,
-    newLoss: Number.isFinite(finalEval.brierLoss) ? finalEval.brierLoss : 0.22,
+    oldAccuracy: validation.length > 0
+      ? evaluateHistoricalBacktest(validation, safeCurrent, teamMatrices).accuracyPct
+      : baseEval.accuracyPct,
+    newAccuracy: validation.length > 0
+      ? evaluateHistoricalBacktest(validation, updatedWeights, teamMatrices).accuracyPct
+      : finalEval.accuracyPct,
+    oldLoss: validation.length > 0
+      ? evaluateHistoricalBacktest(validation, safeCurrent, teamMatrices).brierLoss
+      : baseEval.brierLoss,
+    newLoss: validation.length > 0
+      ? evaluateHistoricalBacktest(validation, updatedWeights, teamMatrices).brierLoss
+      : finalEval.brierLoss,
     deltas: deltas as Record<keyof EngineWeights, number>,
   };
 }
@@ -265,10 +335,9 @@ export function runAggressiveSuperLearningProtocol(
   convergencesCount: number;
 } {
   let currentWeights = sanitizeEngineWeights(startWeights);
-  let matrices = loadTeamIntelligenceMatrices();
-
-  // First pass: Refine all team intelligence matrices from historical dataset
-  matrices = synthesizeTeamIntelligenceMatrices([], matrices);
+  const { training, validation } = splitHistoricalResults(results);
+  const fitResults = training.length > 0 ? training : results;
+  let matrices = synthesizeTeamIntelligenceMatrices(fitResults, loadTeamIntelligenceMatrices());
   saveTeamIntelligenceMatrices(matrices);
 
   const initialEval = evaluateHistoricalBacktest(results, currentWeights, matrices);
@@ -277,7 +346,7 @@ export function runAggressiveSuperLearningProtocol(
   let bestLoss = initialEval.brierLoss;
 
   for (let epoch = 1; epoch <= epochs; epoch++) {
-    // Unbounded aggressive learning rate with cyclic restarts
+    // Bounded calibration rate with cyclic variation
     const cyclePos = (epoch % 8) / 8;
     const lr = 0.025 + 0.055 * Math.sin(cyclePos * Math.PI);
 
@@ -295,12 +364,14 @@ export function runAggressiveSuperLearningProtocol(
     }
   }
 
-  // Final validation
-  const finalEval = evaluateHistoricalBacktest(results, currentWeights, matrices);
+  // Final evaluation is performed on the chronological holdout only.
+  const finalEval = validation.length > 0
+    ? evaluateHistoricalBacktest(validation, currentWeights, matrices)
+    : evaluateHistoricalBacktest(fitResults, currentWeights, matrices);
   const accuracyGain = Math.round((finalEval.accuracyPct - initialEval.accuracyPct) * 10) / 10;
   const lossDelta = Math.round((initialEval.brierLoss - finalEval.brierLoss) * 1000) / 1000;
 
-  // Record Telemetry
+  // Record telemetry from the actual completed calibration pass
   updateSuperLearningTelemetry({
     totalSuperEpochsIncrement: epochs,
     convergencesIncrement: convergencesCount,
@@ -337,25 +408,19 @@ export function loadSuperLearningTelemetry(): SuperLearningTelemetry {
     // ignore
   }
   return {
-    protocolActive: true,
-    totalSuperEpochs: 140,
-    unboundedLearningRate: 0.055,
-    lossVelocity: -0.012,
-    convergencesAchieved: 34,
-    bestBrierLoss: 0.168,
-    peakAccuracyPct: 83.4,
-    lastOptimizationTimestamp: new Date().toISOString(),
-    activeOptimizers: [
-      'Unbounded Coordinate Gradient Descent',
-      'Dynamic Momentum Annealing',
-      'Continuous Team Intelligence Convergence',
-      'Draw Equilibrium Parity Engine',
-    ],
+    protocolActive: false,
+    totalSuperEpochs: 0,
+    unboundedLearningRate: 0,
+    lossVelocity: 0,
+    convergencesAchieved: 0,
+    bestBrierLoss: 0,
+    peakAccuracyPct: 0,
+    lastOptimizationTimestamp: '',
+    activeOptimizers: [],
   };
 }
 
-/**
- * Updates and saves Super-Learning Protocol Telemetry
+
  */
 export function updateSuperLearningTelemetry(params: {
   totalSuperEpochsIncrement?: number;
@@ -402,17 +467,16 @@ export function getInitialLearningState(): LearningModelState {
     isAutoLearningEnabled: false,
     recentLossHistory: [baselineEval.brierLoss],
     aiTacticalSynthesis: {
-      summary: `Autonomous Learning Engine initialized: Operating under strict empirical calibration against ${HISTORICAL_MATCH_RESULTS.length} verified historical match results and club coefficient matrices.`,
+      summary: `Model initialized from ${HISTORICAL_MATCH_RESULTS.length} bundled historical records; performance metrics below use chronological holdout validation when a validation window exists.`,
       recommendations: [
-        'Coordinate gradient optimization calibrates weights against verified scorelines.',
-        'Team intelligence multipliers adjust for club home/away performance records.',
-        'Fatigue and congestion penalty parameters tuned to canonical match intervals.',
+        'Coordinate calibration fits weights against the training window.',
+        'Team intelligence coefficients are estimated from completed training-window results only.',
+        'Fatigue parameters are calibrated from observed training-window outcomes when available.',
       ],
       ruleEfficiency: [
         { rule: 'Rule 1: Motivation Stakes', impact: '+2.5 pts boost', status: 'optimal' },
         { rule: 'Rule 3: Home Dominance', impact: '+15% home multiplier', status: 'optimal' },
         { rule: 'Rule 5: Shot/Possession', impact: '+3.5 pts modifier', status: 'optimal' },
-        { rule: 'Rule 6: 72h Fatigue', impact: '-15% road fatigue', status: 'optimal' },
         { rule: 'Rule 7: Volatility Cap', impact: '0.68 compression', status: 'optimal' },
         { rule: 'Rule 8: Favourite Floor', impact: '55% win floor', status: 'optimal' },
         { rule: 'Rule 9: Draw Equilibrium', impact: '≤5% parity margin', status: 'optimal' },
@@ -434,8 +498,8 @@ export function sanitizeLearningState(state?: Partial<LearningModelState> | null
   const sanitizedBaselineWeights = sanitizeEngineWeights(state.baselineWeights);
   const matrices = loadTeamIntelligenceMatrices();
 
-  const evalRes = evaluateHistoricalBacktest(HISTORICAL_MATCH_RESULTS, sanitizedWeights, matrices);
-  const baselineEval = evaluateHistoricalBacktest(HISTORICAL_MATCH_RESULTS, sanitizedBaselineWeights, matrices);
+  const evalRes = evaluateOutOfSampleValidation(HISTORICAL_MATCH_RESULTS, sanitizedWeights);
+  const baselineEval = evaluateOutOfSampleValidation(HISTORICAL_MATCH_RESULTS, sanitizedBaselineWeights);
 
   const accuracyPct = evalRes.accuracyPct;
   const brierLoss = evalRes.brierLoss;
