@@ -465,7 +465,7 @@ export function verifyAndSanitizeFixtures(
           f.id &&
           f.homeTeam &&
           f.awayTeam &&
-          (!f.kickoffTime || f.kickoffTime >= '2026-09-18T00:00:00Z')
+          (!f.kickoffTime || Number.isFinite(new Date(f.kickoffTime).getTime()))
         )
       )
     : [];
