@@ -682,11 +682,11 @@ function mapSportApiAiToInternalFixture(f: any): any {
       id: `sportapiai_team_${f.away_id || f.away_team?.id || f.awayTeam?.id || normalizeTeamName(awayName)}`,
       name: awayName,
       shortName: (f.away_short || awayName).slice(0, 3).toUpperCase(),
-      leagueRank: 0,
-      points: 0,
+      leagueRank: null,
+      points: null,
       form: [],
-      avgPossession: 50,
-      avgShotsOnTarget: 4.5,
+      avgPossession: null,
+      avgShotsOnTarget: null,
       hasTopTierAwayForm: false,
       badgeColor: '#dc2626',
     },
@@ -743,13 +743,7 @@ function mapTheRundownToInternalFixture(ev: any): any {
       badgeColor: '#dc2626',
     },
     h2h: { homeWins: 0, draws: 0, awayWins: 0, totalLast5: 0, scoresLast5: [] },
-    authenticity: {
-      status: 'UNVERIFIED',
-      authenticityScore: 30,
-      isAuthentic: false,
-      verifiedAt: new Date().toISOString(),
-      source: 'UNVERIFIED_PROVIDER_INGESTION',
-    },
+
   };
 }
 
@@ -760,7 +754,7 @@ function mapTheRundownToInternalFixture(ev: any): any {
  */
 async function runDailyIngestJob(): Promise<{ success: boolean; message: string; count: number }> {
   const status = readCronStatus();
-  const dateStr = new Date().toISOString().slice(0, 10);
+  const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
   let mapped: any[] = [];
   let sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | null = null;
