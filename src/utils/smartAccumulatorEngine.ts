@@ -283,8 +283,8 @@ export function analyzeUserCoachingPatterns(
 
   return {
     totalOverridesCount: overrideCount,
-    userAccuracyPct: 0,
-    aiAccuracyPct: 0,
+    userAccuracyPct: null,
+    aiAccuracyPct: null,
     coachingTips: tips,
   };
 }
