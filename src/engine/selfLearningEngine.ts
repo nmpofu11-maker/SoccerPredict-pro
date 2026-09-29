@@ -16,6 +16,7 @@ import {
   loadTeamIntelligenceMatrices,
   saveTeamIntelligenceMatrices,
   synthesizeTeamIntelligenceMatrices,
+  CANONICAL_INITIAL_MATRICES,
 } from './teamIntelligenceMatrix';
 
 const STORAGE_KEY_LEARNING_STATE = 'football_pulse_learning_state_v1';
@@ -103,7 +104,7 @@ export function evaluateOutOfSampleValidation(
     };
   }
 
-  const trainingMatrices = synthesizeTeamIntelligenceMatrices(training, loadTeamIntelligenceMatrices());
+  const trainingMatrices = synthesizeTeamIntelligenceMatrices(training, CANONICAL_INITIAL_MATRICES);
   const evaluation = evaluateHistoricalBacktest(validation, weights, trainingMatrices);
 
   return {
@@ -287,7 +288,7 @@ export function trainMultipleEpochs(
   let currentWeights = { ...startWeights };
   const { training, validation } = splitHistoricalResults(results);
   const fitResults = training.length > 0 ? training : results;
-  const fitMatrices = teamMatrices || synthesizeTeamIntelligenceMatrices(fitResults, loadTeamIntelligenceMatrices());
+  const fitMatrices = teamMatrices || synthesizeTeamIntelligenceMatrices(fitResults, CANONICAL_INITIAL_MATRICES);
   const initialEval = evaluateOutOfSampleValidation(results, currentWeights);
   const lossHistory: number[] = [initialEval.brierLoss];
 
@@ -338,7 +339,7 @@ export function runAggressiveSuperLearningProtocol(
   let currentWeights = sanitizeEngineWeights(startWeights);
   const { training, validation } = splitHistoricalResults(results);
   const fitResults = training.length > 0 ? training : results;
-  let matrices = synthesizeTeamIntelligenceMatrices(fitResults, loadTeamIntelligenceMatrices());
+  let matrices = synthesizeTeamIntelligenceMatrices(fitResults, CANONICAL_INITIAL_MATRICES);
   saveTeamIntelligenceMatrices(matrices);
 
   const initialEval = validation.length > 0
@@ -353,7 +354,7 @@ export function runAggressiveSuperLearningProtocol(
     const cyclePos = (epoch % 8) / 8;
     const lr = 0.025 + 0.055 * Math.sin(cyclePos * Math.PI);
 
-    const stepResult = trainSingleEpoch(currentWeights, results, lr, matrices);
+    const stepResult = trainSingleEpoch(currentWeights, fitResults, lr, matrices);
     currentWeights = stepResult.updatedWeights;
     lossHistory.push(stepResult.newLoss);
 
