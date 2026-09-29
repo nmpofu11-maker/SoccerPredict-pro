@@ -1142,8 +1142,7 @@ async function startServer() {
         if (state && state.weights) {
           state.weights = sanitizeServerWeights(state.weights);
           state.baselineWeights = sanitizeServerWeights(state.baselineWeights);
-          if (!Number.isFinite(state.accuracyPct)) state.accuracyPct = 76.7;
-          if (!Number.isFinite(state.brierLoss)) state.brierLoss = 0.201;
+          // Invalid persisted performance metrics are left unavailable; the client recomputes measured holdout metrics.
         }
         return res.json({ status: 'ok', state, source: 'server_disk' });
       }
