@@ -376,7 +376,7 @@ export function runStatisticalEvaluation(
     parametersAblated: string;
     description: string;
     overrides: Partial<EngineWeights>;
-    statisticalRole: 'Essential Stabilizer' | 'High Alpha Driver' | 'Probabilistic Calibrator' | 'Disparity Grounding';
+    ablationCategory: 'Motivation' | 'Standings' | 'Form' | 'Venue' | 'Tactical' | 'Fatigue' | 'Volatility' | 'Favourite' | 'Draw';
   }> = [
     {
       ruleId: 1,
@@ -384,7 +384,7 @@ export function runStatisticalEvaluation(
       parametersAblated: 'stakesMotivationBoost, deadRubberPenalty',
       description: 'Awards urgency bonus to title/relegation battles and dampens end-of-season dead-rubbers.',
       overrides: { stakesMotivationBoost: 0, deadRubberPenalty: 0 },
-      statisticalRole: 'Disparity Grounding',
+      ablationCategory: 'Motivation',
     },
     {
       ruleId: 2,
@@ -392,7 +392,7 @@ export function runStatisticalEvaluation(
       parametersAblated: 'rankPointsMultiplier, lastSeasonStandingWeight',
       description: 'Accounts for current table positions reinforced by previous season pedigree.',
       overrides: { rankPointsMultiplier: 0, lastSeasonStandingWeight: 0 },
-      statisticalRole: 'Probabilistic Calibrator',
+      ablationCategory: 'Standings',
     },
     {
       ruleId: 3,
@@ -400,7 +400,7 @@ export function runStatisticalEvaluation(
       parametersAblated: 'formWinPoints, formDrawPoints, awayFormBonus',
       description: 'Quantifies recent 5-game trajectory and rewards verified road warriors.',
       overrides: { formWinPoints: 0, formDrawPoints: 0, awayFormBonus: 0 },
-      statisticalRole: 'Probabilistic Calibrator',
+      ablationCategory: 'Form',
     },
     {
       ruleId: 4,
@@ -408,7 +408,7 @@ export function runStatisticalEvaluation(
       parametersAblated: 'homeDominanceBonus',
       description: 'Awards home fortress venue multiplier and converts tactical home dominance.',
       overrides: { homeDominanceBonus: 0 },
-      statisticalRole: 'High Alpha Driver',
+      ablationCategory: 'Venue',
     },
     {
       ruleId: 5,
@@ -416,7 +416,7 @@ export function runStatisticalEvaluation(
       parametersAblated: 'tacticalPossessionWeight, tacticalShotsWeight, squadValueWeight, matchRatingWeight, h2hMultiplier',
       description: 'Integrates shot creation, roster market capitalisation, and season-long match ratings.',
       overrides: { tacticalPossessionWeight: 0, tacticalShotsWeight: 0, squadValueWeight: 0, matchRatingWeight: 0, h2hMultiplier: 0 },
-      statisticalRole: 'High Alpha Driver',
+      ablationCategory: 'Tactical',
     },
     {
       ruleId: 6,
@@ -424,7 +424,7 @@ export function runStatisticalEvaluation(
       parametersAblated: 'fatiguePenaltyRate',
       description: 'Applies -15% physical recovery deduction for squads with 3-day turnaround times.',
       overrides: { fatiguePenaltyRate: 0 },
-      statisticalRole: 'Disparity Grounding',
+      ablationCategory: 'Fatigue',
     },
     {
       ruleId: 7,
@@ -432,7 +432,7 @@ export function runStatisticalEvaluation(
       parametersAblated: 'volatilityDrawBoost',
       description: 'Expands draw probability envelope in historically high-parity competitions.',
       overrides: { volatilityDrawBoost: 0 },
-      statisticalRole: 'Probabilistic Calibrator',
+      ablationCategory: 'Volatility',
     },
     {
       ruleId: 8,
@@ -440,7 +440,7 @@ export function runStatisticalEvaluation(
       parametersAblated: 'favouriteWinFloor',
       description: 'Enforces a 55% win probability floor when elite tier favourites meet distinct underdogs.',
       overrides: { favouriteWinFloor: 0 },
-      statisticalRole: 'High Alpha Driver',
+      ablationCategory: 'Favourite',
     },
     {
       ruleId: 9,
@@ -448,7 +448,7 @@ export function runStatisticalEvaluation(
       parametersAblated: 'drawEquilibriumMargin, drawEquilibriumBoost',
       description: 'Pumps draw probability to 38% when opposing teams are separated by under 4 performance points.',
       overrides: { drawEquilibriumBoost: 0 },
-      statisticalRole: 'Essential Stabilizer',
+      ablationCategory: 'Draw',
     },
   ];
 
@@ -458,8 +458,8 @@ export function runStatisticalEvaluation(
     let ablatedBrier = 0;
     let ablatedRPS = 0;
 
-    for (const m of validDataset) {
-      const pred = evaluateFixturePrediction(m.fixture, 'none', ablatedWeights);
+    for (const m of holdoutDataset) {
+      const pred = evaluateFixturePrediction(m.fixture, 'none', ablatedWeights, teamMatrices);
       const actual = m.actualOutcome || 'draw';
       const ph = Math.max(0.01, Math.min(0.98, pred.homeWinPct / 100));
       const pd = Math.max(0.01, Math.min(0.98, pred.drawPct / 100));
@@ -486,12 +486,12 @@ export function runStatisticalEvaluation(
       deltaRPS: Number((meanAblatedRPS - meanRPS).toFixed(4)),
       ablatedBrier: Number(meanAblatedBrier.toFixed(4)),
       deltaBrier: Number((meanAblatedBrier - meanBrierScore).toFixed(4)),
-      statisticalRole: cfg.statisticalRole,
+      ablationCategory: cfg.ablationCategory,
       significanceRank: 0,
     };
   });
 
-  // Sort by statistical damage caused when ablated (higher deltaBrier + deltaRPS = more significant)
+  // Order only by the measured holdout metric difference; this is a descriptive ranking, not proof of causality.
   ruleAblations.sort((a, b) => (b.deltaBrier + b.deltaRPS * 2) - (a.deltaBrier + a.deltaRPS * 2));
   ruleAblations.forEach((item, idx) => {
     item.significanceRank = idx + 1;
