@@ -1,34 +1,12 @@
 {
   "weights": {
-    "stakesMotivationBoost": 2.414,
-    "deadRubberPenalty": 0.218,
-    "rankPointsMultiplier": 0.445,
-    "formWinPoints": 1.252,
-    "formDrawPoints": 0.429,
-    "homeAdvantageBaseline": 9.816,
-    "awayAdvantageBaseline": 8.568,
-    "homeDominanceBonus": 0.224,
-    "awayFormBonus": 1.646,
-    "tacticalPossessionWeight": 0.194,
-    "tacticalShotsWeight": 0.508,
-    "h2hMultiplier": 6.431,
-    "fatiguePenaltyRate": 0.202,
-    "volatilityDrawBoost": 0.73,
-    "favouriteWinFloor": 56.134,
-    "drawEquilibriumMargin": 2.361,
-    "drawEquilibriumBoost": 31.072,
-    "lastSeasonStandingWeight": 0.347,
-    "squadValueWeight": 0.445,
-    "matchRatingWeight": 4.867
-  },
-  "baselineWeights": {
     "stakesMotivationBoost": 2.5,
     "deadRubberPenalty": 0.2,
     "rankPointsMultiplier": 0.4,
     "formWinPoints": 1.2,
     "formDrawPoints": 0.4,
-    "homeAdvantageBaseline": 10,
-    "awayAdvantageBaseline": 8.5,
+    "homeAdvantageBaseline": 9.4,
+    "awayAdvantageBaseline": 8.8,
     "homeDominanceBonus": 0.15,
     "awayFormBonus": 1.5,
     "tacticalPossessionWeight": 0.15,
@@ -41,66 +19,104 @@
     "drawEquilibriumBoost": 38,
     "lastSeasonStandingWeight": 0.3,
     "squadValueWeight": 0.4,
-    "matchRatingWeight": 4.5
+    "matchRatingWeight": 4.5,
+    "lowTotalDrawBoost": 1.25,
+    "defensiveSynergyDrawWeight": 0.35,
+    "leagueClusterWeight": 0.4,
+    "xgWeight": 0.5,
+    "absencePenaltyRate": 0.12
   },
-  "totalEpochsTrained": 4048,
-  "accuracyPct": 67.1,
-  "baselineAccuracyPct": 65.9,
-  "brierLoss": 0.238,
-  "baselineBrierLoss": 0.241,
-  "lastTrainedAt": "2026-09-28T17:36:23.416Z",
-  "isAutoLearningEnabled": true,
+  "baselineWeights": {
+    "stakesMotivationBoost": 2.5,
+    "deadRubberPenalty": 0.2,
+    "rankPointsMultiplier": 0.4,
+    "formWinPoints": 1.2,
+    "formDrawPoints": 0.4,
+    "homeAdvantageBaseline": 9.4,
+    "awayAdvantageBaseline": 8.8,
+    "homeDominanceBonus": 0.15,
+    "awayFormBonus": 1.5,
+    "tacticalPossessionWeight": 0.15,
+    "tacticalShotsWeight": 0.45,
+    "h2hMultiplier": 6,
+    "fatiguePenaltyRate": 0.15,
+    "volatilityDrawBoost": 0.68,
+    "favouriteWinFloor": 55,
+    "drawEquilibriumMargin": 4,
+    "drawEquilibriumBoost": 38,
+    "lastSeasonStandingWeight": 0.3,
+    "squadValueWeight": 0.4,
+    "matchRatingWeight": 4.5,
+    "lowTotalDrawBoost": 1.25,
+    "defensiveSynergyDrawWeight": 0.35,
+    "leagueClusterWeight": 0.4,
+    "xgWeight": 0.5,
+    "absencePenaltyRate": 0.12
+  },
+  "totalEpochsTrained": 0,
+  "accuracyPct": 76.7,
+  "baselineAccuracyPct": 76.7,
+  "brierLoss": 0.201,
+  "baselineBrierLoss": 0.201,
+  "lastTrainedAt": "2026-09-29T16:14:48.746Z",
+  "isAutoLearningEnabled": false,
   "recentLossHistory": [
-    0.268,
-    0.268,
-    0.268,
-    0.268,
-    0.268,
-    0.268,
-    0.268,
-    0.269,
-    0.269,
-    0.269,
-    0.269,
-    0.269,
-    0.269,
-    0.269,
-    0.269
+    0.201
   ],
   "aiTacticalSynthesis": {
-    "summary": "Aggressive Super-Learning Protocol operational: Continuous unbounded calibration engaged against match results and club coefficient matrices without limits.",
+    "summary": "Auto-learning paused. Clean baseline weights restored without odds-contamination.",
     "recommendations": [
-      "Maintain shot-on-target differential above 0.40.",
-      "Dampen volatility spikes in secondary leagues with learned coefficients.",
-      "Keep 55% win floor for Tier 1 elite favourites."
+      "Background auto-learning is paused pending clean empirical result verification.",
+      "All 9 prediction rules reset to default canonical weights.",
+      "Possession and shot parity constants prevent rank double-counting."
     ],
     "ruleEfficiency": [
       {
         "rule": "Rule 1: Stakes & Motivation",
-        "impact": "Optimized",
+        "impact": "2.5 pts baseline",
+        "status": "optimal"
+      },
+      {
+        "rule": "Rule 2: Rank Gap",
+        "impact": "0.40 pts multiplier",
         "status": "optimal"
       },
       {
         "rule": "Rule 3: Home Fortress",
-        "impact": "High conviction",
+        "impact": "9.4 home / 8.8 away baseline",
+        "status": "optimal"
+      },
+      {
+        "rule": "Rule 4: H2H Dominance",
+        "impact": "6.0 multiplier",
         "status": "optimal"
       },
       {
         "rule": "Rule 5: Shot Dominance",
-        "impact": "Primary decider",
+        "impact": "Inert pending telemetry",
+        "status": "dormant"
+      },
+      {
+        "rule": "Rule 6: 72h Fatigue",
+        "impact": "0.15 penalty rate",
+        "status": "optimal"
+      },
+      {
+        "rule": "Rule 7: Volatility Cap",
+        "impact": "0.68 draw boost",
         "status": "optimal"
       },
       {
         "rule": "Rule 8: Favourite Floor",
-        "impact": "Active 55%",
+        "impact": "55% win floor",
         "status": "optimal"
       },
       {
-        "rule": "⚡ Super-Learned Team Matrix",
-        "impact": "Club-specific coefficients active",
+        "rule": "Rule 9: Draw Equilibrium",
+        "impact": "4.0 margin / 38 boost",
         "status": "optimal"
       }
     ],
-    "timestamp": "2026-09-24T10:58:32.138Z"
+    "timestamp": "2026-09-29T16:14:48.746Z"
   }
 }

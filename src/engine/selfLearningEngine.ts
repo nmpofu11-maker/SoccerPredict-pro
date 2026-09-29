@@ -399,7 +399,7 @@ export function getInitialLearningState(): LearningModelState {
     brierLoss: baselineEval.brierLoss,
     baselineBrierLoss: baselineEval.brierLoss,
     lastTrainedAt: new Date().toISOString(),
-    isAutoLearningEnabled: true,
+    isAutoLearningEnabled: false,
     recentLossHistory: [baselineEval.brierLoss],
     aiTacticalSynthesis: {
       summary: `Aggressive Super-Learning Protocol active: Continuous unbounded calibration engaged against ${HISTORICAL_MATCH_RESULTS.length} historical match results and club coefficient matrices.`,
@@ -458,7 +458,7 @@ export function sanitizeLearningState(state?: Partial<LearningModelState> | null
     brierLoss,
     baselineBrierLoss: baselineEval.brierLoss,
     lastTrainedAt: typeof state.lastTrainedAt === 'string' && state.lastTrainedAt ? state.lastTrainedAt : new Date().toISOString(),
-    isAutoLearningEnabled: state.isAutoLearningEnabled !== false,
+    isAutoLearningEnabled: Boolean(state.isAutoLearningEnabled),
     recentLossHistory: recentLossHistory.length > 0 ? recentLossHistory : [initial.brierLoss],
     aiTacticalSynthesis: state.aiTacticalSynthesis && typeof state.aiTacticalSynthesis === 'object'
       ? state.aiTacticalSynthesis
