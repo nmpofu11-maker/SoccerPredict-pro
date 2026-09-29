@@ -522,7 +522,7 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
   fixturesCache = {
     fixtures: sanitizedFallback,
     syncedAt: new Date().toISOString(),
-    provider: 'Hollywoodbets SA Live Coverage Feed (Verified Disk Manifest)',
+    provider: 'Disk Manifest (Sanitized)',
     auditReport: fallbackAudit,
   };
   return fixturesCache;
