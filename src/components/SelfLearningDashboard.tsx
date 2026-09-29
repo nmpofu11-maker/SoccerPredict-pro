@@ -1183,7 +1183,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
                   <tbody className="divide-y divide-slate-800/60">
                     {stats.ruleAblations.map((item) => (
                       <tr key={item.ruleId} className="hover:bg-slate-800/40">
-                        <td className="p-2.5 font-bold text-center">#{item.significanceRank}</td>
+                        <td className="p-2.5 font-bold text-center">#{item.descriptiveRank}</td>
                         <td className="p-2.5 font-semibold text-slate-200">{item.ruleName}</td>
                         <td className="p-2.5 text-center font-bold">
                           {item.ablatedAccuracy}%
