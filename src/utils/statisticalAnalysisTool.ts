@@ -186,6 +186,10 @@ export function runStatisticalEvaluation(
     { range: '70% - 100%', min: 0.70, max: 1.01, count: 0, correct: 0, sumProb: 0 },
   ];
 
+  const trainingTotal = trainingDataset.length;
+  const empH = trainingTotal > 0 ? countHome / trainingTotal : 0;
+  const empD = trainingTotal > 0 ? countDraw / trainingTotal : 0;
+  const empA = trainingTotal > 0 ? countAway / trainingTotal : 0;
   const empiricalPick = empH >= empD && empH >= empA ? 'home' : empD >= empA ? 'draw' : 'away';
   for (const m of holdoutDataset) {
     const actual = m.actualOutcome || 'draw';
@@ -294,11 +298,6 @@ export function runStatisticalEvaluation(
   }
 
   // Benchmark Baselines
-  const trainingTotal = trainingDataset.length;
-  const empH = trainingTotal > 0 ? countHome / trainingTotal : 0;
-  const empD = trainingTotal > 0 ? countDraw / trainingTotal : 0;
-  const empA = trainingTotal > 0 ? countAway / trainingTotal : 0;
-
   let rpsRandom = 0;
   let brierRandom = 0;
   let logLossRandom = 0;
