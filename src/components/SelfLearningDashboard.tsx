@@ -1044,13 +1044,13 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
                   <span className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
                     <BarChart3 className="w-4 h-4" />
                   </span>
-                  <h3 className="text-sm font-bold text-white">Statistical Analysis & Peer-Reviewed Scoring Suite</h3>
+                  <h3 className="text-sm font-bold text-white">Statistical Analysis & Holdout Evaluation Suite</h3>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-700/60 font-bold">
                     N = {stats.sampleSize} Holdout Matches
                   </span>
                 </div>
                 <p className="text-xs text-slate-300">
-                  Evaluated using Ranked Probability Score (Constantinou & Fenton 2012), Brier Skill Score, and feature ablation across all 9 mathematical rules.
+                  Evaluated on the chronological holdout using Ranked Probability Score, Brier Score, log loss, calibration bins, and rule ablation.
                 </p>
               </div>
 
@@ -1204,7 +1204,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
                         </td>
                         <td className="p-2.5">
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700">
-                            {item.statisticalRole}
+                            {item.ablationCategory}
                           </span>
                         </td>
                       </tr>
