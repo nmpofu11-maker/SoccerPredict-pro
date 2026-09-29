@@ -12,11 +12,7 @@ export function getAdminApiHeaders(): Record<string, string> {
     }
   }
 
-  if (!key) {
-    throw new Error('Operator authorization required.');
-  }
-
-  return { 'x-admin-api-key': key };
+  return key ? { 'x-admin-api-key': key } : {};
 }
 
 export function clearAdminApiKey(): void {
