@@ -1,7 +1,7 @@
 import {
   EngineWeights,
   HistoricalMatchResult,
-  BacktestEvaluation,
+  HistoricalEvaluation,
   LearningModelState,
   AITacticalSynthesis,
 } from '../types/soccer';
@@ -83,7 +83,7 @@ export function evaluateOutOfSampleValidation(
   results: HistoricalMatchResult[] = HISTORICAL_MATCH_RESULTS,
   weights: EngineWeights = DEFAULT_ENGINE_WEIGHTS
 ): {
-  evaluations: BacktestEvaluation[];
+  evaluations: HistoricalEvaluation[];
   accuracyPct: number;
   brierLoss: number;
   correctCount: number;
@@ -119,13 +119,13 @@ export function evaluateHistoricalMatches(
   weights: EngineWeights = DEFAULT_ENGINE_WEIGHTS,
   teamMatrices?: TeamIntelligenceMatrices
 ): {
-  evaluations: BacktestEvaluation[];
+  evaluations: HistoricalEvaluation[];
   accuracyPct: number;
   brierLoss: number;
   correctCount: number;
   totalCount: number;
 } {
-  const evaluations: BacktestEvaluation[] = [];
+  const evaluations: HistoricalEvaluation[] = [];
   let totalBrier = 0;
   let correctCount = 0;
 
