@@ -434,7 +434,7 @@ export default function App() {
 
   // Compute live empirical cumulative prediction success rate & yesterday metrics
   const performanceData = useMemo(() => {
-    return calculateEnginePerformance(combinedHistoricalResults, learningState.weights);
+    return calculateEnginePerformance(serverSettledResults, learningState.weights);
   }, [combinedHistoricalResults, learningState.weights]);
 
   const cumulativeSuccessRate = performanceData.summary.allTimeAccuracyPct;
