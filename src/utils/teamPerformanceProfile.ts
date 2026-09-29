@@ -1207,7 +1207,7 @@ export const WOMEN_TEAM_PROFILES: Record<string, TeamPerformanceProfile> = {
  * 3. Contextual dynamic calculation based on table rank, possession, shots, and league tier
  */
 export function resolveTeamPerformanceProfile(
-  team?: Partial<TeamStats> & { name?: string; leagueRank?: number; points?: number; avgPossession?: number; avgShotsOnTarget?: number },
+  team?: Partial<TeamStats> & { name?: string },
   league?: string
 ): TeamPerformanceProfile {
   if (!team) {
