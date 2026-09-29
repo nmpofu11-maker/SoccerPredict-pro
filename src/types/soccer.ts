@@ -187,7 +187,7 @@ export interface AITacticalSynthesis {
   ruleEfficiency: {
     rule: string;
     impact: string;
-    status: 'optimal' | 'recalibrating' | 'underweight';
+    status: 'recalibrating' | 'underweight' | 'insufficient_data';
   }[];
   timestamp: string;
 }
