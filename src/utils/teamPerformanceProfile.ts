@@ -1234,9 +1234,9 @@ export function resolveTeamPerformanceProfile(
 
   // If all three are already explicitly provided on the team object
   if (
-    team.lastSeasonRank !== undefined &&
-    team.totalSquadValueEur !== undefined &&
-    team.avgMatchRating !== undefined
+    Number.isFinite(team.lastSeasonRank) &&
+    Number.isFinite(team.totalSquadValueEur) &&
+    Number.isFinite(team.avgMatchRating)
   ) {
     return {
       lastSeasonRank: team.lastSeasonRank,
