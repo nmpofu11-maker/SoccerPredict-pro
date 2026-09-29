@@ -267,24 +267,24 @@ function parseForm(formStr: unknown): ('W' | 'D' | 'L')[] {
   return res;
 }
 
-function parsePoints(recordSummary: unknown): number {
-  if (!recordSummary || typeof recordSummary !== 'string') return 12;
+function parsePoints(recordSummary: unknown): number | null {
+  if (!recordSummary || typeof recordSummary !== 'string') return null;
   const parts = recordSummary.split('-');
   if (parts.length >= 3) {
     const w = parseInt(parts[0], 10) || 0;
     const d = parseInt(parts[1], 10) || 0;
     return w * 3 + d;
   }
-  return 15;
+  return null;
 }
 
-const standingsMemoryCache = new Map<string, Map<string, { rank: number; points: number }>>();
+const standingsMemoryCache = new Map<string, Map<string, { rank: number; points: number | null }>>();
 
-async function getLeagueStandingsMap(leagueCode: string): Promise<Map<string, { rank: number; points: number }>> {
+async function getLeagueStandingsMap(leagueCode: string): Promise<Map<string, { rank: number; points: number | null }>> {
   if (standingsMemoryCache.has(leagueCode)) {
     return standingsMemoryCache.get(leagueCode)!;
   }
-  const map = new Map<string, { rank: number; points: number }>();
+  const map = new Map<string, { rank: number; points: number | null }>();
   try {
     const res = await fetch(`https://site.api.espn.com/apis/v2/sports/soccer/${leagueCode}/standings`, {
       signal: AbortSignal.timeout(2000)
@@ -298,9 +298,9 @@ async function getLeagueStandingsMap(leagueCode: string): Promise<Map<string, { 
         const rank = parseInt(rankStat?.value ?? rankStat?.displayValue, 10);
         const points = parseInt(ptsStat?.value ?? ptsStat?.displayValue, 10);
         if (Number.isFinite(rank)) {
-          if (e.team?.id) map.set(String(e.team.id), { rank, points: Number.isFinite(points) ? points : 12 });
-          if (e.team?.displayName) map.set(e.team.displayName.toLowerCase(), { rank, points: Number.isFinite(points) ? points : 12 });
-          if (e.team?.name) map.set(e.team.name.toLowerCase(), { rank, points: Number.isFinite(points) ? points : 12 });
+          if (e.team?.id) map.set(String(e.team.id), { rank, points: Number.isFinite(points) ? points : null });
+          if (e.team?.displayName) map.set(e.team.displayName.toLowerCase(), { rank, points: Number.isFinite(points) ? points : null });
+          if (e.team?.name) map.set(e.team.name.toLowerCase(), { rank, points: Number.isFinite(points) ? points : null });
         }
       }
     }
@@ -312,7 +312,7 @@ async function getLeagueStandingsMap(leagueCode: string): Promise<Map<string, { 
 }
 
 function aggregateStandingsFromCache(): Map<string, { rank: number; points: number }> {
-  const aggregatedStandings = new Map<string, { rank: number; points: number }>();
+  const aggregatedStandings = new Map<string, { rank: number; points: number | null }>();
   for (const [, sMap] of standingsMemoryCache.entries()) {
     for (const [k, v] of sMap.entries()) {
       aggregatedStandings.set(k, v);
@@ -396,8 +396,8 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
               const homePoints = homeStanding?.points ?? parsePoints(homeComp.records?.[0]?.summary);
               const awayPoints = awayStanding?.points ?? parsePoints(awayComp.records?.[0]?.summary);
 
-              let finalHomePoints = Math.max(homePoints, homeFormPts);
-              let finalAwayPoints = Math.max(awayPoints, awayFormPts);
+              const finalHomePoints = homePoints;
+              const finalAwayPoints = awayPoints;
 
               if (homeRank < awayRank && finalHomePoints < finalAwayPoints) {
                 finalHomePoints = finalAwayPoints + Math.min(3, Math.max(1, awayRank - homeRank));
