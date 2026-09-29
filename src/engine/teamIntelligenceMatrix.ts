@@ -4,7 +4,7 @@ import {
   AggressiveSuperLearningSyncPayload,
 } from '../types/superLearning';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
-import { MatchFixture } from '../types/soccer';
+import { HistoricalMatchResult } from '../types/soccer';
 
 const STORAGE_KEY_TEAM_MATRICES = 'football_pulse_team_matrices_v1';
 
@@ -16,11 +16,12 @@ export const DEFAULT_LEARNED_COEFFICIENTS: LearnedCoefficients = {
 };
 
 /**
- * Pre-calculated canonical base coefficients for top clubs across 46 Hollywoodbets leagues
+ * Canonical baseline coefficients for selected clubs.
+ * These are reference priors, not observed sample counts or trained results.
  */
 const CANONICAL_INITIAL_MATRICES: TeamIntelligenceMatrices = {
   'Manchester City': {
-    sample_size_matches: 48,
+    sample_size_matches: 0,
     learned_coefficients: {
       home_advantage_multiplier: 1.34,
       form_momentum_weight: 0.92,
@@ -29,7 +30,7 @@ const CANONICAL_INITIAL_MATRICES: TeamIntelligenceMatrices = {
     },
   },
   'Arsenal': {
-    sample_size_matches: 44,
+    sample_size_matches: 0,
     learned_coefficients: {
       home_advantage_multiplier: 1.29,
       form_momentum_weight: 0.88,
@@ -38,7 +39,7 @@ const CANONICAL_INITIAL_MATRICES: TeamIntelligenceMatrices = {
     },
   },
   'Liverpool': {
-    sample_size_matches: 46,
+    sample_size_matches: 0,
     learned_coefficients: {
       home_advantage_multiplier: 1.35,
       form_momentum_weight: 0.89,
@@ -47,7 +48,7 @@ const CANONICAL_INITIAL_MATRICES: TeamIntelligenceMatrices = {
     },
   },
   'Real Madrid': {
-    sample_size_matches: 52,
+    sample_size_matches: 0,
     learned_coefficients: {
       home_advantage_multiplier: 1.38,
       form_momentum_weight: 0.94,
@@ -56,7 +57,7 @@ const CANONICAL_INITIAL_MATRICES: TeamIntelligenceMatrices = {
     },
   },
   'Barcelona': {
-    sample_size_matches: 46,
+    sample_size_matches: 0,
     learned_coefficients: {
       home_advantage_multiplier: 1.31,
       form_momentum_weight: 0.89,
@@ -65,7 +66,7 @@ const CANONICAL_INITIAL_MATRICES: TeamIntelligenceMatrices = {
     },
   },
   'Bayern Munich': {
-    sample_size_matches: 42,
+    sample_size_matches: 0,
     learned_coefficients: {
       home_advantage_multiplier: 1.36,
       form_momentum_weight: 0.91,
@@ -74,7 +75,7 @@ const CANONICAL_INITIAL_MATRICES: TeamIntelligenceMatrices = {
     },
   },
   'Mamelodi Sundowns': {
-    sample_size_matches: 40,
+    sample_size_matches: 0,
     learned_coefficients: {
       home_advantage_multiplier: 1.42,
       form_momentum_weight: 0.95,
@@ -83,7 +84,7 @@ const CANONICAL_INITIAL_MATRICES: TeamIntelligenceMatrices = {
     },
   },
   'Orlando Pirates': {
-    sample_size_matches: 36,
+    sample_size_matches: 0,
     learned_coefficients: {
       home_advantage_multiplier: 1.26,
       form_momentum_weight: 0.84,
@@ -92,7 +93,7 @@ const CANONICAL_INITIAL_MATRICES: TeamIntelligenceMatrices = {
     },
   },
   'Kaizer Chiefs': {
-    sample_size_matches: 35,
+    sample_size_matches: 0,
     learned_coefficients: {
       home_advantage_multiplier: 1.21,
       form_momentum_weight: 0.79,
@@ -101,7 +102,7 @@ const CANONICAL_INITIAL_MATRICES: TeamIntelligenceMatrices = {
     },
   },
   'Inter Milan': {
-    sample_size_matches: 45,
+    sample_size_matches: 0,
     learned_coefficients: {
       home_advantage_multiplier: 1.30,
       form_momentum_weight: 0.90,
@@ -110,7 +111,7 @@ const CANONICAL_INITIAL_MATRICES: TeamIntelligenceMatrices = {
     },
   },
   'Paris Saint-Germain': {
-    sample_size_matches: 44,
+    sample_size_matches: 0,
     learned_coefficients: {
       home_advantage_multiplier: 1.32,
       form_momentum_weight: 0.87,
@@ -119,7 +120,7 @@ const CANONICAL_INITIAL_MATRICES: TeamIntelligenceMatrices = {
     },
   },
   'Bayer Leverkusen': {
-    sample_size_matches: 42,
+    sample_size_matches: 0,
     learned_coefficients: {
       home_advantage_multiplier: 1.28,
       form_momentum_weight: 0.93,
@@ -164,7 +165,7 @@ export function getTeamLearnedCoefficients(
  * Analyzes the entire historical match dataset and dynamically refines all team intelligence matrices
  */
 export function synthesizeTeamIntelligenceMatrices(
-  fixtures: MatchFixture[] = [],
+  results: HistoricalMatchResult[] = HISTORICAL_MATCH_RESULTS,
   baseMatrices: TeamIntelligenceMatrices = CANONICAL_INITIAL_MATRICES
 ): TeamIntelligenceMatrices {
   const teamStats: Record<
@@ -183,8 +184,8 @@ export function synthesizeTeamIntelligenceMatrices(
     }
   > = {};
 
-  // Process only genuine completed historical results
-  for (const result of HISTORICAL_MATCH_RESULTS) {
+  // Process only genuine completed results from the caller-provided training window.
+  for (const result of results || []) {
     const f = result.fixture;
     if (!f || !f.homeTeam || !f.awayTeam) continue;
 
@@ -334,14 +335,14 @@ export function saveTeamIntelligenceMatrices(matrices: TeamIntelligenceMatrices)
  */
 export function generateAggressiveSuperLearningPayload(
   matrices: TeamIntelligenceMatrices = loadTeamIntelligenceMatrices(),
-  notes = 'Aggressive Super-Learning Protocol operational: Continuous unbounded backtest optimization and dynamic club coefficient convergence active without limits.'
+  notes = 'Team intelligence coefficients derived from completed training-window results when sufficient data exists; otherwise treated as reference baselines.'
 ): AggressiveSuperLearningSyncPayload {
   const formattedMatrices: AggressiveSuperLearningSyncPayload['team_intelligence_matrices'] = {};
 
   for (const [team, entry] of Object.entries(matrices)) {
     if (!entry || !entry.learned_coefficients) continue;
     formattedMatrices[team] = {
-      sample_size_matches: entry.sample_size_matches || 10,
+      sample_size_matches: Number.isFinite(entry.sample_size_matches) ? entry.sample_size_matches : 0,
       learned_coefficients: {
         home_advantage_multiplier: entry.learned_coefficients.home_advantage_multiplier,
         form_momentum_weight: entry.learned_coefficients.form_momentum_weight,
@@ -353,7 +354,7 @@ export function generateAggressiveSuperLearningPayload(
 
   return {
     sync_timestamp: new Date().toISOString(),
-    model_engine: 'Aggressive Super-Learning Autonomous Protocol v5.0 (Unbounded Optimization)',
+    model_engine: 'Chronological Team Intelligence Calibration',
     meta_improvement_notes: notes,
     team_intelligence_matrices: formattedMatrices,
   };
