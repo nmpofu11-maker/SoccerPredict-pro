@@ -146,14 +146,14 @@ export function getTeamLearnedCoefficients(
   matrices: TeamIntelligenceMatrices = loadTeamIntelligenceMatrices()
 ): LearnedCoefficients {
   const norm = normalizeTeamKey(teamName);
-  if (matrices[norm]?.learned_coefficients) {
+  if (matrices[norm]?.learned_coefficients && matrices[norm].sample_size_matches >= 3) {
     return matrices[norm].learned_coefficients;
   }
 
   // Case-insensitive fallback check
   const lower = norm.toLowerCase();
   for (const [k, entry] of Object.entries(matrices)) {
-    if (k.toLowerCase() === lower && entry?.learned_coefficients) {
+    if (k.toLowerCase() === lower && entry?.learned_coefficients && entry.sample_size_matches >= 3) {
       return entry.learned_coefficients;
     }
   }
