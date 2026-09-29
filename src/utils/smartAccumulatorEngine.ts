@@ -58,7 +58,7 @@ export interface OptimalValueLeg {
 export interface OptimalValueReport {
   generatedAt: string;
   bundleTitle: string;
-  aiConfidenceRating: number; // 0 - 100
+  heuristicEvidenceScore: number; // 0 - 100
   evidenceLabel: 'High Evidence' | 'Moderate Evidence' | 'Limited Evidence' | 'Insufficient Evidence';
   strategyMode: 'balanced' | 'conservative' | 'high_alpha';
   combinedOdds: number;
@@ -492,18 +492,18 @@ export function generateOptimalValueAccumulatorReport(
 
   // Compute AI Confidence Rating (0 - 100)
   const modelCertainty = Math.min(100, Math.round(avgModelConfidence));
-  const historicalBacktestFit = avgHistWinRate === null ? 0 : Math.min(99, Math.round(avgHistWinRate));
+  const historicalCohortFit = avgHistWinRate === null ? 0 : Math.min(99, Math.round(avgHistWinRate));
   const marketOddsAlpha = Math.min(99, Math.max(0, Math.round(50 + expectedValueAlpha * 1.8)));
   const formStability = null;
 
-  const aiConfidenceRating = selectedLegs.length > 0
+  const heuristicEvidenceScore = selectedLegs.length > 0
     ? Math.min(
         98,
         Math.max(
           0,
           Math.round(
             modelCertainty * 0.40 +
-            historicalBacktestFit * 0.35 +
+            historicalCohortFit * 0.35 +
             marketOddsAlpha * 0.25
           )
         )
@@ -559,7 +559,7 @@ export function generateOptimalValueAccumulatorReport(
     riskMitigationAdvice,
     confidenceBreakdown: {
       modelCertainty,
-      historicalBacktestFit,
+      historicalCohortFit,
       marketOddsAlpha,
       formStability,
     },
