@@ -256,7 +256,7 @@ export interface MatchAuthenticityStamp {
   authenticityScore: number; // 0 - 100
   isAuthentic: boolean;
   verifiedAt: string;
-  source: 'OFFICIAL_ESPN_STANDINGS' | 'CANONICAL_AUDITED_DATASET' | 'MATHEMATICAL_VALIDATOR';
+  source: 'OFFICIAL_ESPN_STANDINGS' | 'CANONICAL_AUDITED_DATASET' | 'MATHEMATICAL_VALIDATOR' | 'UNVERIFIED_PROVIDER_INGESTION';
   checks: VerificationCheckResult[];
   repairedFields?: string[];
 }
