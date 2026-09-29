@@ -260,22 +260,25 @@ export function synthesizeTeamIntelligenceMatrices(
     if (stats.totalMatches < 3) continue;
 
     const sampleSize = stats.totalMatches;
-    const homeWinRate = stats.homeMatches > 0 ? stats.homeWins / stats.homeMatches : 0.45;
-    const awayWinRate = stats.awayMatches > 0 ? stats.awayWins / stats.awayMatches : 0.30;
+    const homeWinRate = stats.homeMatches > 0 ? stats.homeWins / stats.homeMatches : null;
+    const awayWinRate = stats.awayMatches > 0 ? stats.awayWins / stats.awayMatches : null;
 
     // Home advantage multiplier calibrated from 1.00 to 1.50
-    const homeAdvantage = Math.min(1.50, Math.max(1.02, Number((1.05 + (homeWinRate - awayWinRate) * 0.45).toFixed(2))));
+    const homeAdvantage = homeWinRate !== null && awayWinRate !== null
+      ? Math.min(1.50, Math.max(1.02, Number((1.05 + (homeWinRate - awayWinRate) * 0.45).toFixed(2))))
+      : DEFAULT_LEARNED_COEFFICIENTS.home_advantage_multiplier;
 
     // Form momentum weight calibrated from 0.65 to 0.98
-    const pointsPerMatch = stats.totalMatches > 0 ? stats.pointsTotal / stats.totalMatches : 1.4;
+    const pointsPerMatch = stats.totalMatches > 0 ? stats.pointsTotal / stats.totalMatches : 0;
     const formMomentum = Math.min(0.98, Math.max(0.65, Number((0.68 + (pointsPerMatch / 3) * 0.28).toFixed(2))));
 
     // Volatility index calibrated from 0.05 to 0.35 (lower means more predictable)
     const volatility = Math.min(0.35, Math.max(0.05, Number((0.25 - (pointsPerMatch / 3) * 0.15).toFixed(2))));
 
     // Fatigue penalty modifier calibrated from 0.08 to 0.25
-    const fatigueLossRate = stats.fatigueMatches > 0 ? stats.fatiguePointsLost / (stats.fatigueMatches * 3) : 0.35;
-    const fatiguePenalty = Math.min(0.25, Math.max(0.08, Number((0.09 + fatigueLossRate * 0.12).toFixed(2))));
+    const fatiguePenalty = stats.fatigueMatches > 0
+      ? Math.min(0.25, Math.max(0.08, Number((0.09 + (stats.fatiguePointsLost / (stats.fatigueMatches * 3)) * 0.12).toFixed(2))))
+      : DEFAULT_LEARNED_COEFFICIENTS.fatigue_penalty_modifier;
 
     updatedMatrices[teamName] = {
       sample_size_matches: sampleSize,
