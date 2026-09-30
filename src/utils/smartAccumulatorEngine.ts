@@ -414,7 +414,7 @@ export function generateOptimalValueAccumulatorReport(
           const rankDiff = Math.abs(fixture.homeTeam.leagueRank - fixture.awayTeam.leagueRank);
           if (rankDiff >= 4) drivers.push(`Table Rank Disparity (${rankDiff} spots)`);
         }
-        if (fixture.h2h && (fixture.h2h.homeWins >= 3 || fixture.h2h.awayWins >= 3)) {
+        if (fixture.h2h && ((fixture.h2h.homeWins ?? 0) >= 3 || (fixture.h2h.awayWins ?? 0) >= 3)) {
           drivers.push('Dominant Head-to-Head Record');
         }
         if (drivers.length === 0) drivers.push('Tactical xG & Possession Equilibrium');
