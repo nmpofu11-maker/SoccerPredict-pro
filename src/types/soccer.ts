@@ -37,10 +37,10 @@ export interface TeamStats {
 }
 
 export interface H2HRecord {
-  homeWins: number;
-  draws: number;
-  awayWins: number;
-  totalLast5: number;
+  homeWins: number | null;
+  draws: number | null;
+  awayWins: number | null;
+  totalLast5: number | null;
   scoresLast5?: string[]; // e.g. ["2-1", "3-0", "1-1", "2-0", "4-1"]
 }
 
