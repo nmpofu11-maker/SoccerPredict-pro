@@ -14,7 +14,7 @@ export interface AccumulatorLeg {
   probability: number;
   odds: number;
   expectedValue: number;
-  confidenceScore: number;
+  modelLeaderProbabilityPct: number;
   reasoning: string;
 }
 
@@ -48,7 +48,7 @@ export interface OptimalValueLeg {
   valueMarginPct: number; // percentage edge over bookmaker e.g. +24.5%
   historicalWinRate: number | null; // Observed cohort hit rate; null when no cohort exists
   historicalSampleSize: number; // Count of matching historical samples
-  confidenceScore: number; // 0 - 100
+  modelLeaderProbabilityPct: number; // 0 - 100
   kellyFraction: number; // recommended fractional stake percentage
   ruleHighlights: string[];
   keyDrivers: string[];
@@ -182,18 +182,18 @@ export function generateSmartAccumulator(
         probability: Math.round(bestProb),
         odds: bestOdds,
         expectedValue: Number(ev.toFixed(2)),
-        confidenceScore: pred.confidenceScore,
+        modelLeaderProbabilityPct: pred.modelLeaderProbabilityPct,
         reasoning: `Verified standings. Supported by ${pred.appliedRules.length} rules (${ruleTag}). Probability: ${Math.round(bestProb)}% | EV: ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(0)}%`,
       });
     }
   }
 
-  // Sort legs by confidenceScore and EV, take top 4 legs for evidence-gated yield accumulator
-  legs.sort((a, b) => b.confidenceScore * b.expectedValue - a.confidenceScore * a.expectedValue);
+  // Sort legs by modelLeaderProbabilityPct and EV, take top 4 legs for evidence-gated yield accumulator
+  legs.sort((a, b) => b.modelLeaderProbabilityPct * b.expectedValue - a.modelLeaderProbabilityPct * a.expectedValue);
   const selectedLegs = legs.slice(0, 4);
 
   const combinedOdds = selectedLegs.length > 0 ? selectedLegs.reduce((acc, l) => acc * Math.max(1.05, l.odds), 1.0) : null;
-  const avgConf = selectedLegs.length > 0 ? selectedLegs.reduce((acc, l) => acc + l.confidenceScore, 0) / selectedLegs.length : null;
+  const avgConf = selectedLegs.length > 0 ? selectedLegs.reduce((acc, l) => acc + l.modelLeaderProbabilityPct, 0) / selectedLegs.length : null;
 
   let riskLevel: 'Conservative Value' | 'Balanced Sweet-Spot' | 'High Yield Aggressive' | 'No Qualifying Bundle' = 'Balanced Sweet-Spot';
   if (combinedOdds === null) riskLevel = 'No Qualifying Bundle';
@@ -440,7 +440,7 @@ export function generateOptimalValueAccumulatorReport(
           valueMarginPct,
           historicalWinRate,
           historicalSampleSize: sampleSize,
-          confidenceScore: pred.confidenceScore,
+          modelLeaderProbabilityPct: pred.modelLeaderProbabilityPct,
           kellyFraction: Number((safeKelly * 100).toFixed(1)),
           ruleHighlights: topRules,
           keyDrivers: drivers,
@@ -454,8 +454,8 @@ export function generateOptimalValueAccumulatorReport(
   candidateLegs.sort((a, b) => {
     const cappedEvA = Math.min(0.35, Math.max(0, a.expectedValue));
     const cappedEvB = Math.min(0.35, Math.max(0, b.expectedValue));
-    const scoreA = (a.modelProbability * 0.8) + (cappedEvA * 60) + (a.historicalWinRate * 0.25) + (a.confidenceScore * 0.15);
-    const scoreB = (b.modelProbability * 0.8) + (cappedEvB * 60) + (b.historicalWinRate * 0.25) + (b.confidenceScore * 0.15);
+    const scoreA = (a.modelProbability * 0.8) + (cappedEvA * 60) + (a.historicalWinRate * 0.25) + (a.modelLeaderProbabilityPct * 0.15);
+    const scoreB = (b.modelProbability * 0.8) + (cappedEvB * 60) + (b.historicalWinRate * 0.25) + (b.modelLeaderProbabilityPct * 0.15);
     return scoreB - scoreA;
   });
 
@@ -483,7 +483,7 @@ export function generateOptimalValueAccumulatorReport(
     : null;
 
   const avgModelConfidence = selectedLegs.length > 0
-    ? selectedLegs.reduce((acc, l) => acc + l.confidenceScore, 0) / selectedLegs.length
+    ? selectedLegs.reduce((acc, l) => acc + l.modelLeaderProbabilityPct, 0) / selectedLegs.length
     : 0;
 
   const avgEV = selectedLegs.length > 0
