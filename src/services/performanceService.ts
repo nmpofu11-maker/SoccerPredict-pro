@@ -24,7 +24,7 @@ export interface DetailedMatchEvaluation extends HistoricalEvaluation {
   actualOutcomeLabel: string;
   pickProbability: number;
   pickFairOdds: string;
-  confidenceScore: number;
+  modelLeaderProbabilityPct: number;
 }
 
 /**
@@ -121,7 +121,7 @@ export function calculateEnginePerformance(
       actualOutcomeLabel: formatWinner(match.actualOutcome),
       pickProbability: pickProb,
       pickFairOdds: pickOdds,
-      confidenceScore: pred.confidenceScore,
+      modelLeaderProbabilityPct: pred.modelLeaderProbabilityPct,
     });
   }
 
