@@ -19,8 +19,8 @@ import {
   CANONICAL_INITIAL_MATRICES,
 } from './teamIntelligenceMatrix';
 
-const STORAGE_KEY_LEARNING_STATE = 'football_pulse_learning_state_v1';
-const STORAGE_KEY_SUPER_TELEMETRY = 'football_pulse_super_learning_telemetry_v1';
+const STORAGE_KEY_LEARNING_STATE = 'football_pulse_learning_state_v2';
+const STORAGE_KEY_SUPER_TELEMETRY = 'football_pulse_super_learning_telemetry_v2';
 
 export const BOUNDS_ENGINE_WEIGHTS: Record<keyof EngineWeights, { min: number; max: number }> = {
   stakesMotivationBoost: { min: 1.0, max: 5.5 },
