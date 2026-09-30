@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "track-record": "tsx scripts/track-record.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.1",

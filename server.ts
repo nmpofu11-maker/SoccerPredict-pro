@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { timingSafeEqual } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
@@ -23,6 +23,15 @@ import {
   getTheRundownScores,
 } from './src/services/serverTheRundown';
 import { extractTextFromPDF, scrapeUrl } from './src/services/manualDataService';
+import { evaluateFixturePrediction, sanitizeEngineWeights } from './src/engine/rulesEngine';
+import {
+  appendPrediction,
+  appendOutcome,
+  computeInputCoverage,
+  readLog,
+  summarize,
+  verifyLog,
+} from './src/services/predictionLog';
 import { parseRawResults } from './src/services/resultParserService';
 
 dotenv.config();
@@ -574,6 +583,88 @@ function writeResultsLog(entries: SettledResultEntry[]): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Prediction log: freeze predictions before kickoff, record outcomes afterwards.
+// See src/services/predictionLog.ts for the rules (append-only, hash-chained).
+// Set PREDICTION_LOG_PATH to a persistent volume if the app's disk is ephemeral.
+// ---------------------------------------------------------------------------
+const PREDICTION_LOG_PATH = process.env.PREDICTION_LOG_PATH?.trim()
+  || path.join(process.cwd(), 'data', 'prediction-log.jsonl');
+const PREDICTION_MIN_SAMPLE = Math.max(1, Number(process.env.PREDICTION_MIN_SAMPLE || 30));
+const PREDICTION_HORIZON_HOURS = Math.max(1, Number(process.env.PREDICTION_HORIZON_HOURS || 72));
+
+function currentEngineWeights() {
+  try {
+    const f = path.join(process.cwd(), 'data', 'persisted_learning_state.json');
+    if (fs.existsSync(f)) {
+      const st = JSON.parse(fs.readFileSync(f, 'utf-8'));
+      if (st && st.weights) return sanitizeEngineWeights(st.weights);
+    }
+  } catch {
+    /* fall through to defaults */
+  }
+  return sanitizeEngineWeights(undefined);
+}
+
+function runPredictionFreezeJob(now: number = Date.now()) {
+  const summary = { appended: 0, duplicate: 0, late: 0, invalid: 0, errors: 0, considered: 0 };
+  try {
+    const weights = currentEngineWeights();
+    const modelVersion =
+      `${process.env.GIT_SHA?.slice(0, 12) || 'local'}+w${createHash('sha256').update(JSON.stringify(weights)).digest('hex').slice(0, 10)}`;
+    const horizonMs = PREDICTION_HORIZON_HOURS * 3_600_000;
+
+    for (const f of readRawDiskManifest()) {
+      const kickoff = Date.parse(f?.kickoffTime);
+      if (!f?.id || !Number.isFinite(kickoff) || kickoff <= now || kickoff > now + horizonMs) continue;
+      summary.considered++;
+      try {
+        const p = evaluateFixturePrediction(f, 'none', weights);
+        if (!p) { summary.invalid++; continue; }
+        const r = appendPrediction(PREDICTION_LOG_PATH, {
+          fixtureId: String(f.id),
+          kickoffTime: new Date(kickoff).toISOString(),
+          league: String(f.league || ''),
+          homeTeam: String(f.homeTeam?.name || ''),
+          awayTeam: String(f.awayTeam?.name || ''),
+          probabilities: { home: p.homeWinPct, draw: p.drawPct, away: p.awayWinPct },
+          predicted: p.predictedWinner,
+          modelVersion,
+          inputCoverage: computeInputCoverage(f),
+        }, now);
+        if (r.status === 'appended') summary.appended++;
+        else if (r.status === 'duplicate') summary.duplicate++;
+        else if (r.status === 'late') summary.late++;
+        else summary.invalid++;
+      } catch (e) {
+        summary.errors++;
+        console.warn('[prediction-log] could not predict fixture', f?.id, e instanceof Error ? e.message : e);
+      }
+    }
+  } catch (e) {
+    summary.errors++;
+    console.error('[prediction-log] freeze job failed:', e);
+  }
+  if (summary.appended > 0 || summary.errors > 0) console.log('[prediction-log] freeze', JSON.stringify(summary));
+  return summary;
+}
+
+/** Copy settled results into the prediction log for predictions that have no outcome yet. Idempotent. */
+function reconcilePredictionOutcomes(now: number = Date.now()) {
+  let appended = 0;
+  try {
+    for (const e of readResultsLog()) {
+      if (!e?.id) continue;
+      const r = appendOutcome(PREDICTION_LOG_PATH, { fixtureId: String(e.id), homeScore: e.homeScore, awayScore: e.awayScore }, now);
+      if (r.status === 'appended') appended++;
+    }
+  } catch (err) {
+    console.error('[prediction-log] outcome reconciliation failed:', err);
+  }
+  if (appended > 0) console.log(`[prediction-log] recorded ${appended} outcome(s)`);
+  return appended;
+}
+
 interface CronStatus {
   ingest: {
     lastRunAt: string | null;
@@ -869,6 +960,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
     });
 
     if (pastFixtures.length === 0) {
+      reconcilePredictionOutcomes(); // catch results logged earlier but not yet copied into the prediction log
       const msg = 'No outstanding finished fixtures to settle.';
       status.settlement = { lastRunAt: new Date().toISOString(), lastSuccess: true, lastMessage: msg, resultsSettled: 0 };
       writeCronStatus(status);
@@ -999,6 +1091,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
     if (newEntries.length > 0) {
       writeResultsLog([...existingLog, ...newEntries]);
     }
+    reconcilePredictionOutcomes();
 
     const msg = `Settled ${settledCount} of ${pastFixtures.length} unsettled past fixtures.`;
     status.settlement = { lastRunAt: new Date().toISOString(), lastSuccess: true, lastMessage: msg, resultsSettled: settledCount };
@@ -1716,6 +1809,25 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
   });
 
   // Visibility into whether the automated jobs are actually running and provider status
+  // Public, read-only: honest accuracy on predictions frozen before kickoff.
+  app.get('/api/predictions/track-record', (_req, res) => {
+    try {
+      const verification = verifyLog(PREDICTION_LOG_PATH);
+      const { lines } = readLog(PREDICTION_LOG_PATH);
+      const report = summarize(lines, PREDICTION_MIN_SAMPLE);
+      return res.json({
+        status: 'ok',
+        logIntact: verification.ok,
+        logProblem: verification.reason,
+        headHash: verification.headHash,
+        entries: verification.count,
+        ...report,
+      });
+    } catch (err: unknown) {
+      return res.status(500).json({ status: 'error', message: err instanceof Error ? err.message : 'Track record unavailable' });
+    }
+  });
+
   app.get('/api/admin/cron-status', (_req, res) => {
     try {
       return res.json({
@@ -1801,6 +1913,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       if (newEntries.length > 0) {
         writeResultsLog([...existingLog, ...newEntries]);
       }
+      reconcilePredictionOutcomes();
 
       const message = unmatchedCount > 0
         ? `Settled ${newEntries.length} results. ${unmatchedCount} lines could not be matched to a known fixture (check team names/date match your uploaded slate exactly).`
@@ -1903,12 +2016,18 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       runSettlementJob().catch((e) => console.error('[cron:settlement] unhandled error', e));
     });
 
+    // Freeze predictions for upcoming fixtures every 30 minutes (once per fixture, never updated).
+    cron.schedule('*/30 * * * *', () => {
+      try { runPredictionFreezeJob(); } catch (e) { console.error('[cron:prediction-log] unhandled error', e); }
+    });
+
     // Run both once, shortly after boot, so the pipeline doesn't sit idle
     // until the next scheduled slot (e.g. after a redeploy).
     setTimeout(() => {
       runDailyIngestJob().catch((e) => console.error('[cron:ingest] startup run failed', e));
       runSettlementJob().catch((e) => console.error('[cron:settlement] startup run failed', e));
     }, 10_000);
+    setTimeout(() => { try { runPredictionFreezeJob(); } catch (e) { console.error('[prediction-log] startup freeze failed', e); } }, 25_000);
   });
 }
 

@@ -25,6 +25,16 @@ All notable changes to this project are documented here.
 - Removed an unsupported "86.0% to 76.7%" ablation claim from the statistical analysis modal.
 
 ### Added
+- Out-of-sample prediction log (`src/services/predictionLog.ts`). Every 30 minutes the server freezes a
+  prediction for each upcoming fixture (kickoff within `PREDICTION_HORIZON_HOURS`, default 72) into an
+  append-only, hash-chained file (`data/prediction-log.jsonl`, override with `PREDICTION_LOG_PATH`).
+  A prediction is accepted only strictly before kickoff and only once per fixture; it is never updated.
+  Real results are copied in after settlement, and the outcome is derived from the recorded scores.
+  `GET /api/predictions/track-record` and `npm run track-record` report accuracy (with a 95% interval),
+  Brier score, and the always-home and most-common-outcome baselines on logged predictions only.
+  Figures are withheld (`null`/"not reportable") until `PREDICTION_MIN_SAMPLE` (default 30) predictions
+  are scored. `verifyLog()` flags edited, deleted or reordered lines. This is tamper-evident, not
+  tamper-proof: record the head hash outside the server, and keep the log on persistent storage.
 - `npm test` (Node test runner via `tsx`), also run in CI. It checks that the rules engine never
   references odds data, that predictions are unchanged when odds are attached to a fixture, that the
   URL filter blocks private/loopback/mapped addresses, that no hardcoded headline accuracy figure
