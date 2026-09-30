@@ -255,7 +255,7 @@ const HOLLYWOODBETS_LEAGUES = [
 ];
 
 function parseForm(formStr: unknown): ('W' | 'D' | 'L')[] {
-  if (!formStr || typeof formStr !== 'string') return ['W', 'D', 'W', 'L', 'W'];
+  if (typeof formStr !== 'string') return [];
   const res: ('W' | 'D' | 'L')[] = [];
   for (const ch of formStr.toUpperCase()) {
     if (ch === 'W' || ch === 'D' || ch === 'L') {
@@ -263,19 +263,20 @@ function parseForm(formStr: unknown): ('W' | 'D' | 'L')[] {
     }
     if (res.length >= 5) break;
   }
-  while (res.length < 5) res.push('W');
   return res;
 }
 
 function parsePoints(recordSummary: unknown): number | null {
-  if (!recordSummary || typeof recordSummary !== 'string') return null;
-  const parts = recordSummary.split('-');
-  if (parts.length >= 3) {
-    const w = parseInt(parts[0], 10) || 0;
-    const d = parseInt(parts[1], 10) || 0;
-    return w * 3 + d;
-  }
-  return null;
+  if (typeof recordSummary !== 'string') return null;
+  const parts = recordSummary.split('-').map((part) => Number(part.trim()));
+  if (parts.length < 3 || !parts.slice(0, 3).every((part) => Number.isFinite(part) && part >= 0)) return null;
+  return parts[0] * 3 + parts[1];
+}
+
+function getApplicationDateString(date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: process.env.APP_TIMEZONE || 'Africa/Johannesburg',
+  }).format(date);
 }
 
 const standingsMemoryCache = new Map<string, Map<string, { rank: number; points: number | null }>>();
