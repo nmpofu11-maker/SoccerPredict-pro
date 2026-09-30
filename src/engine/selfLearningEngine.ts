@@ -535,26 +535,26 @@ export function sanitizeLearningState(state?: Partial<LearningModelState> | null
   const accuracyPct = evalRes.accuracyPct;
   const brierLoss = evalRes.brierLoss;
 
-  let recentLossHistory = Array.isArray(state.recentLossHistory)
-    ? state.recentLossHistory.filter((val): val is number => typeof val === 'number' && Number.isFinite(val) && !isNaN(val))
-    : [];
-  if (recentLossHistory.length === 0) {
-    recentLossHistory = [brierLoss];
-  }
+  const totalEpochsTrained = Number.isFinite(state.totalEpochsTrained)
+    ? Math.max(0, Math.floor(state.totalEpochsTrained as number))
+    : initial.totalEpochsTrained;
+  // Only retain loss history that this repaired client can substantiate with its current evaluation.
+  // Historical client-supplied metric arrays are not evidence of measured optimisation runs.
+  const recentLossHistory = totalEpochsTrained > 0 && Array.isArray(state.recentLossHistory)
+    ? state.recentLossHistory.filter((val): val is number => typeof val === 'number' && Number.isFinite(val))
+    : [brierLoss];
 
   return {
     weights: sanitizedWeights,
     baselineWeights: sanitizedBaselineWeights,
-    totalEpochsTrained: Number.isFinite(state.totalEpochsTrained)
-      ? Math.max(0, Math.floor(state.totalEpochsTrained as number))
-      : initial.totalEpochsTrained,
+    totalEpochsTrained,
     accuracyPct,
     baselineAccuracyPct: baselineEval.accuracyPct,
     brierLoss,
     baselineBrierLoss: baselineEval.brierLoss,
-    lastTrainedAt: typeof state.lastTrainedAt === 'string' && state.lastTrainedAt ? state.lastTrainedAt : null,
+    lastTrainedAt: totalEpochsTrained > 0 && typeof state.lastTrainedAt === 'string' && state.lastTrainedAt ? state.lastTrainedAt : null,
     isAutoLearningEnabled: false,
-    recentLossHistory: recentLossHistory.length > 0 ? recentLossHistory : [initial.brierLoss],
+    recentLossHistory,
     aiTacticalSynthesis: state.aiTacticalSynthesis && typeof state.aiTacticalSynthesis === 'object'
       ? state.aiTacticalSynthesis
       : initial.aiTacticalSynthesis,
