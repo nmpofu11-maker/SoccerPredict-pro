@@ -23,19 +23,20 @@ export interface RawFixture {
 export function mapRawToMatchFixture(raw: RawFixture): MatchFixture {
   const safeDate = String(raw.date || '').trim();
   const safeTime = String(raw.time || '').trim();
-  const kickoffTime = `${safeDate}T${safeTime}:00Z`;
+  const kickoffTime = safeDate && safeTime ? `${safeDate}T${safeTime}:00` : null;
 
-  // Default team stats for AI engine consumption
-  const defaultTeamStats: TeamStats = {
-    id: 'unknown',
-    name: 'Unknown',
-    shortName: 'UNK',
-    leagueRank: 0,
-    points: 0,
+  const makeUnknownTeamStats = (name: string): TeamStats => ({
+    id: name,
+    name,
+    shortName: name.slice(0, 3).toUpperCase(),
+    leagueRank: null,
+    points: null,
     form: [],
-    avgPossession: 50,
-    avgShotsOnTarget: 4.5,
-  };
+    avgPossession: null,
+    avgShotsOnTarget: null,
+    isHomeDominant: false,
+    hasTopTierAwayForm: false,
+  });
 
   return {
     id: `manual_${safeDate}_${safeTime}_${raw.homeTeam}_${raw.awayTeam}`.replace(/[^a-zA-Z0-9_-]+/g, '_'),
@@ -44,8 +45,8 @@ export function mapRawToMatchFixture(raw: RawFixture): MatchFixture {
     venue: `${raw.homeTeam} Stadium`,
     isHighStakes: false,
     motivation: 'regular',
-    homeTeam: { ...defaultTeamStats, id: raw.homeTeam, name: raw.homeTeam, shortName: raw.homeTeam.slice(0, 3).toUpperCase() },
-    awayTeam: { ...defaultTeamStats, id: raw.awayTeam, name: raw.awayTeam, shortName: raw.awayTeam.slice(0, 3).toUpperCase() },
+    homeTeam: makeUnknownTeamStats(raw.homeTeam),
+    awayTeam: makeUnknownTeamStats(raw.awayTeam),
     h2h: { homeWins: 0, draws: 0, awayWins: 0, totalLast5: 0 },
   };
 }
