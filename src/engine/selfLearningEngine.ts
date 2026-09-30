@@ -413,7 +413,7 @@ function emptySuperLearningTelemetry(): SuperLearningTelemetry {
 }
 
 /**
- * Loads Super-Learning Protocol Telemetry.
+ * Loads measured calibration telemetry.
  * Legacy telemetry is discarded because its provenance cannot be demonstrated.
  */
 export function loadSuperLearningTelemetry(): SuperLearningTelemetry {
@@ -423,11 +423,6 @@ export function loadSuperLearningTelemetry(): SuperLearningTelemetry {
     if (!raw) return empty;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return empty;
-
-    if (Object.prototype.hasOwnProperty.call(parsed, 'unboundedLearningRate')) {
-      localStorage.removeItem(STORAGE_KEY_SUPER_TELEMETRY);
-      return empty;
-    }
 
     return {
       protocolActive: parsed.protocolActive === true,
