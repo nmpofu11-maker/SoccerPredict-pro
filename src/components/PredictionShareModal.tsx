@@ -55,7 +55,7 @@ export const PredictionShareModal: React.FC<PredictionShareModalProps> = ({
     `----------------------------------------`,
     `⭐ AI Predicted Pick: ${pickName}`,
     `💡 Fair Value Odds: @${fairOdds}`,
-    `🛡️ Confidence Score: ${prediction.confidenceScore}%`,
+    `🛡️ Leading Model Probability: ${prediction.modelLeaderProbabilityPct}%`,
     `----------------------------------------`,
     `Powered by Football Pulse Neural Engine`,
   ].join('\n');
@@ -132,7 +132,7 @@ export const PredictionShareModal: React.FC<PredictionShareModalProps> = ({
             <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[11px] text-slate-400">
               <span className="flex items-center gap-1 font-semibold text-amber-400">
                 <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-                Confidence: {prediction.confidenceScore}%
+                Leading Probability: {prediction.modelLeaderProbabilityPct}%
               </span>
               <span className="font-mono text-[10px]">Football Pulse AI v2.4</span>
             </div>
