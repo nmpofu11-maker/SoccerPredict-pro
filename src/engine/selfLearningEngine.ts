@@ -625,9 +625,9 @@ export async function loadLearningStateWithServerFallback(): Promise<LearningMod
 }
 
 /**
- * Automated Post-Match Retraining Pipeline:
- * Ingests newly completed matches and executes an Aggressive Super-Learning Protocol pass,
- * updating model weights, team matrices, and empirical loss trajectories without limits.
+ * Automated Post-Match Calibration Pipeline:
+ * Ingests newly completed matches and runs a bounded chronological calibration pass,
+ * updating model weights and team coefficients with measured holdout evaluation.
  */
 export function autoRetrainOnCompletedMatches(
   currentState: LearningModelState,
