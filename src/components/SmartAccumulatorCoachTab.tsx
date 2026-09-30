@@ -530,7 +530,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                 </div>
               </div>
 
-              {/* Confidence Circle Visual Gauge */}
+              {/* Heuristic Evidence Gauge */}
               <div className="flex items-center gap-5 py-2">
                 <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
                   <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
