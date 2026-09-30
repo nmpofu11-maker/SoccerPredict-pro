@@ -124,10 +124,10 @@ export async function scrapeUrl(url: string): Promise<string> {
     timeout: 10000,
     maxContentLength: 2 * 1024 * 1024,
     maxBodyLength: 2 * 1024 * 1024,
+    maxRedirects: 0,
     responseType: 'text',
   });
   const $ = cheerio.load(data);
-  // Basic scraping - assuming text content or specific table structure
-  // This will need custom logic per target site. Returning body text for now.
+  // Basic scraping - returning the fetched page body as text; redirects are deliberately disabled.
   return $('body').text();
 }
