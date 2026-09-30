@@ -11,6 +11,9 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import fs from 'fs';
 import { isIP } from 'net';
+import dns from 'dns';
+import http from 'http';
+import https from 'https';
 
 export interface RawFixture {
   time: string;
@@ -76,6 +79,85 @@ export async function extractTextFromPDF(filePath: string): Promise<string> {
   }
 }
 
+/**
+ * True when an IP literal points at a loopback, private, link-local, unique-local,
+ * carrier-grade NAT, multicast, reserved or otherwise non-public destination.
+ * Handles IPv4, IPv6 and IPv4-mapped IPv6 (::ffff:a.b.c.d).
+ */
+export function isBlockedAddress(address: string): boolean {
+  let ip = address.trim().toLowerCase().replace(/^\[|\]$/g, '');
+  const zone = ip.indexOf('%');
+  if (zone !== -1) ip = ip.slice(0, zone);
+
+  const version = isIP(ip);
+  if (version === 0) return true; // not a valid literal: fail closed
+
+  if (version === 4) {
+    const [a, b] = ip.split('.').map(Number);
+    return (
+      a === 0 ||                          // "this" network
+      a === 10 ||                         // private
+      a === 127 ||                        // loopback
+      (a === 100 && b >= 64 && b <= 127) || // carrier-grade NAT
+      (a === 169 && b === 254) ||         // link-local / cloud metadata
+      (a === 172 && b >= 16 && b <= 31) ||  // private
+      (a === 192 && b === 168) ||         // private
+      (a === 192 && b === 0) ||           // IETF protocol assignments / TEST-NET-1
+      (a === 198 && (b === 18 || b === 19)) || // benchmarking
+      a >= 224                            // multicast, reserved, broadcast
+    );
+  }
+
+  // IPv6
+  const mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (mapped) return isBlockedAddress(mapped[1]);
+  const mappedHex = ip.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (mappedHex) {
+    const hi = parseInt(mappedHex[1], 16);
+    const lo = parseInt(mappedHex[2], 16);
+    return isBlockedAddress(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`);
+  }
+  if (ip === '::' || ip === '::1') return true;
+  const first = parseInt(ip.split(':')[0] || '0', 16);
+  return (
+    (first & 0xfe00) === 0xfc00 || // fc00::/7 unique-local
+    (first & 0xffc0) === 0xfe80 || // fe80::/10 link-local
+    (first & 0xff00) === 0xff00 || // ff00::/8 multicast
+    ip.startsWith('64:ff9b:') ||   // NAT64 (can embed private IPv4)
+    ip.startsWith('2001:db8:')     // documentation
+  );
+}
+
+function isBlockedHostname(hostname: string): boolean {
+  const h = hostname.toLowerCase().replace(/\.$/, '');
+  return (
+    h === 'localhost' ||
+    h.endsWith('.localhost') ||
+    h.endsWith('.local') ||
+    h.endsWith('.internal') ||
+    h === 'metadata.google.internal'
+  );
+}
+
+/**
+ * DNS lookup that refuses to hand back any non-public address. Because the
+ * validated address is the one the socket connects to, a hostname that
+ * resolves to a private IP (or rebinds between check and use) cannot slip through.
+ */
+const publicOnlyLookup = ((hostname: string, options: any, callback: any) => {
+  const opts = typeof options === 'function' ? {} : options || {};
+  const cb = typeof options === 'function' ? options : callback;
+  dns.lookup(hostname, { ...opts, all: true }, (err, addresses) => {
+    if (err) return cb(err);
+    const list = addresses as unknown as dns.LookupAddress[];
+    if (!list.length || list.some((a) => isBlockedAddress(a.address))) {
+      return cb(new Error('Scrape URL resolves to a private or local address.'));
+    }
+    if (opts.all) return cb(null, list);
+    return cb(null, list[0].address, list[0].family);
+  });
+}) as any;
+
 export async function scrapeUrl(url: string): Promise<string> {
   let parsed: URL;
   try {
@@ -87,53 +169,21 @@ export async function scrapeUrl(url: string): Promise<string> {
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     throw new Error('Only HTTP(S) scrape URLs are allowed.');
   }
+  if (parsed.username || parsed.password) {
+    throw new Error('Scrape URLs may not contain credentials.');
+  }
+  if (parsed.port && parsed.port !== '80' && parsed.port !== '443') {
+    throw new Error('Scrape URL port is not allowed.');
+  }
 
-  const hostname = parsed.hostname.toLowerCase();
-  const ipVersion = isIP(hostname);
-  const blockedHost =
-    hostname === 'localhost' ||
-    hostname.endsWith('.localhost') ||
-    hostname.endsWith('.local') ||
-    hostname.endsWith('.internal') ||
-    hostname === 'metadata.google.internal' ||
-    hostname === '169.254.169.254' ||
-    hostname === '0.0.0.0' ||
-    hostname === '::' ||
-    hostname === '::1' ||
-    (ipVersion === 4 && (
-      hostname.startsWith('0.') ||
-      hostname.startsWith('10.') ||
-      hostname.startsWith('127.') ||
-      hostname.startsWith('192.168.') ||
-      hostname.startsWith('100.') ||
-      hostname.startsWith('169.254.') ||
-      hostname.startsWith('172.16.') ||
-      hostname.startsWith('172.17.') ||
-      hostname.startsWith('172.18.') ||
-      hostname.startsWith('172.19.') ||
-      hostname.startsWith('172.20.') ||
-      hostname.startsWith('172.21.') ||
-      hostname.startsWith('172.22.') ||
-      hostname.startsWith('172.23.') ||
-      hostname.startsWith('172.24.') ||
-      hostname.startsWith('172.25.') ||
-      hostname.startsWith('172.26.') ||
-      hostname.startsWith('172.27.') ||
-      hostname.startsWith('172.28.') ||
-      hostname.startsWith('172.29.') ||
-      hostname.startsWith('172.30.') ||
-      hostname.startsWith('172.31.')
-    )) ||
-    (ipVersion === 6 && (
-      hostname.startsWith('fc') ||
-      hostname.startsWith('fd') ||
-      hostname.startsWith('fe80') ||
-      hostname.startsWith('::ffff:10.') ||
-      hostname.startsWith('::ffff:127.') ||
-      hostname.startsWith('::ffff:192.168.')
-    ));
-
-  if (blockedHost) throw new Error('Scrape URL targets a private or local address.');
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, '');
+  if (isBlockedHostname(hostname)) {
+    throw new Error('Scrape URL targets a private or local address.');
+  }
+  // Literal IPs are checked directly; hostnames are checked at connect time below.
+  if (isIP(hostname) !== 0 && isBlockedAddress(hostname)) {
+    throw new Error('Scrape URL targets a private or local address.');
+  }
 
   const { data } = await axios.get(url, {
     timeout: 10000,
@@ -141,6 +191,8 @@ export async function scrapeUrl(url: string): Promise<string> {
     maxBodyLength: 2 * 1024 * 1024,
     maxRedirects: 0,
     responseType: 'text',
+    httpAgent: new http.Agent({ lookup: publicOnlyLookup }),
+    httpsAgent: new https.Agent({ lookup: publicOnlyLookup }),
   });
   const $ = cheerio.load(data);
   // Basic scraping - returning the fetched page body as text; redirects are deliberately disabled.

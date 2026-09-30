@@ -440,8 +440,8 @@ export const StatisticalAnalysisModal: React.FC<StatisticalAnalysisModalProps> =
                     Top Stabilizer: Rule 9 (Draw Equilibrium)
                   </div>
                   <p className="text-slate-400 text-xs">
-                    Disabling Rule 9 drops accuracy from 86.0% to 76.7% (-9.3%) and causes Brier Loss to spike by +0.0891.
-                    In close matches, expanding the draw envelope prevents forced binary errors.
+                    Rule 9 widens the draw envelope when home and away probabilities are nearly level, which avoids
+                    forcing a binary pick in close matches. Its measured effect depends on the evaluation data; see the ablation results.
                   </p>
                 </div>
 

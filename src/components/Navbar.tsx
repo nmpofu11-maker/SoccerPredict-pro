@@ -77,7 +77,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="text-emerald-400 font-semibold">Betting-Independent</span>
             <span>•</span>
             <span className="text-emerald-300 font-bold bg-emerald-950/80 px-1.5 py-0.5 rounded border border-emerald-700/50">
-              {cumulativeSuccessRate ? `${cumulativeSuccessRate.toFixed(1)}% Accuracy` : '76.7% Accuracy'}
+              {cumulativeSuccessRate != null ? `${cumulativeSuccessRate.toFixed(1)}% Accuracy` : 'Accuracy: n/a'}
             </span>
             <span className="hidden md:inline">•</span>
             <span className="hidden md:inline">46 Leagues</span>
