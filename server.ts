@@ -402,9 +402,12 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
               const awayWins = 0;
               const draws = 0;
 
+              const kickoffTime = parseProviderKickoff(comp.date || ev.date);
+              if (!kickoffTime) continue;
+
               const fixture = {
                 id: `match_${ev.id || `${homeTeam.displayName}_${awayTeam.displayName}`.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
-                kickoffTime: parseProviderKickoff(comp.date || ev.date) || null,
+                kickoffTime,
                 league: item.name,
                 venue: comp.venue?.fullName || 'Unknown Venue',
                 round: ev.status?.type?.detail || comp.status?.type?.detail || undefined,
