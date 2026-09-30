@@ -88,7 +88,7 @@ export interface PredictionResult {
   drawPct: number; // 0 - 100
   awayWinPct: number; // 0 - 100
   predictedWinner: 'home' | 'draw' | 'away';
-  confidenceScore: number; // 0 - 100
+  modelLeaderProbabilityPct: number; // 0 - 100; leading model outcome probability, not calibrated confidence
   appliedRules: RuleAppliedItem[];
   rawPoints: {
     home: number;
