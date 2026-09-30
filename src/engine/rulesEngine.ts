@@ -287,7 +287,9 @@ export function evaluateFixturePrediction(
   // RULE 4: Historical Head-to-Head (H2H) Weighting
   // ==========================================
   const h2hBonus = w.h2hMultiplier;
-  if (fixture.h2h.homeWins >= 4) {
+  const h2hHomeWins = fixture.h2h.homeWins ?? 0;
+  const h2hAwayWins = fixture.h2h.awayWins ?? 0;
+  if (h2hHomeWins >= 4) {
     homePoints += h2hBonus;
     appliedRules.push({
       ruleNumber: 4,
@@ -295,9 +297,9 @@ export function evaluateFixturePrediction(
       tag: `Rule 4: H2H Dominance (+${h2hBonus.toFixed(1)} pts Home)`,
       impact: `+${h2hBonus.toFixed(1)} points override bonus to Home team`,
       beneficiary: 'home',
-      description: `Home team won ${fixture.h2h.homeWins} of the last ${fixture.h2h.totalLast5 || 5} head-to-head encounters.`,
+      description: `Home team won ${h2hHomeWins} of the last ${fixture.h2h.totalLast5 ?? 'unknown'} recorded head-to-head encounters.`,
     });
-  } else if (fixture.h2h.awayWins >= 4) {
+  } else if (h2hAwayWins >= 4) {
     awayPoints += h2hBonus;
     appliedRules.push({
       ruleNumber: 4,
@@ -305,7 +307,7 @@ export function evaluateFixturePrediction(
       tag: `Rule 4: H2H Dominance (+${h2hBonus.toFixed(1)} pts Away)`,
       impact: `+${h2hBonus.toFixed(1)} points override bonus to Away team`,
       beneficiary: 'away',
-      description: `Away team won ${fixture.h2h.awayWins} of the last ${fixture.h2h.totalLast5 || 5} head-to-head encounters.`,
+      description: `Away team won ${h2hAwayWins} of the last ${fixture.h2h.totalLast5 ?? 'unknown'} recorded head-to-head encounters.`,
     });
   }
 
