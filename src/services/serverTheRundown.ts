@@ -69,6 +69,20 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Milliseconds between TheRundown requests (plan limit: 1 request/second). */
+function requestSpacingMs(): number {
+  const raw = Number(process.env.THERUNDOWN_REQUEST_SPACING_MS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 1100;
+}
+
+/** Thrown when TheRundown answers HTTP 429 after a retry. Detected by type, not by message text. */
+export class TheRundownRateLimitError extends Error {
+  constructor(detail: string) {
+    super(`TheRundown rate limited (HTTP 429): ${detail}`);
+    this.name = 'TheRundownRateLimitError';
+  }
+}
+
 /**
  * Fetch events for a given sport ID and calendar date (YYYY-MM-DD).
  */
@@ -93,12 +107,12 @@ export async function fetchTheRundownSportEvents(sportId: number, dateStr: strin
     if (res.status === 429) {
       if (attempt === 0) {
         // Wait 1.1s before retrying to respect the 1 req/sec rate limit
-        await delay(1100);
+        await delay(requestSpacingMs());
         continue;
       }
       // Fail gracefully without flooding error boundaries
       const errorText = await res.text().catch(() => '');
-      throw new Error(`TheRundown rate limited (HTTP 429): ${errorText.slice(0, 100)}`);
+      throw new TheRundownRateLimitError(errorText.slice(0, 100));
     }
 
     if (!res.ok) {
@@ -126,7 +140,7 @@ export async function fetchAllTheRundownSoccerEvents(dateStr: string): Promise<A
     const sport = THE_RUNDOWN_SOCCER_SPORTS[i];
     try {
       if (i > 0) {
-        await delay(1100);
+        await delay(requestSpacingMs());
       }
       const events = await fetchTheRundownSportEvents(sport.id, dateStr);
       for (const ev of events) {
@@ -136,14 +150,18 @@ export async function fetchAllTheRundownSoccerEvents(dateStr: string): Promise<A
           country: sport.country,
         });
       }
-    } catch (err: any) {
-      const errMsg = err?.message || String(err);
-      if (errMsg.includes('429') || errMsg.includes('rate limited')) {
-        // If plan rate limit is fully saturated, stop hammering the API for subsequent sports in this batch
+    } catch (err: unknown) {
+      if (err instanceof TheRundownRateLimitError) {
+        // Plan limit exhausted: stop this batch, but say so, because the remaining leagues are skipped.
+        const skipped = THE_RUNDOWN_SOCCER_SPORTS.length - i;
+        console.warn(
+          `[TheRundown] Rate limit reached at ${sport.name}; skipping ${skipped} league(s) for ${dateStr}. ` +
+          `Returning ${results.length} event(s) fetched so far.`
+        );
         break;
-      } else {
-        console.warn(`[TheRundown] Notice for sport ${sport.name} (${sport.id}):`, errMsg);
       }
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.warn(`[TheRundown] Failed fetching events for sport ${sport.name} (${sport.id}):`, errMsg);
     }
   }
 
