@@ -541,7 +541,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
         </button>
       </div>
 
-      {/* Sub-Tab 0: Aggressive Super-Learning Protocol & Team Intelligence Matrices */}
+      {/* Sub-Tab 0: Model Calibration & Team Intelligence Matrices */}
       {activeSubTab === 'superlearning' && (
         <div className="space-y-5 animate-fadeIn">
           {/* Hero Protocol Banner */}
@@ -553,14 +553,14 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
                     <Zap className="w-5 h-5 animate-bounce" />
                   </span>
                   <h3 className="text-lg font-bold font-mono text-white tracking-wide">
-                    SUPER-LEARNING PROTOCOL v5.0
+                    MODEL CALIBRATION
                   </h3>
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/40">
                     OPERATOR-ONLY CALIBRATION
                   </span>
                 </div>
                 <p className="text-xs text-slate-300 max-w-3xl leading-relaxed">
-                  The client exposes calibration telemetry and server synchronization, but does not execute training. Weight changes and learned intelligence updates are operator-controlled and persisted through the protected server (<span className="text-amber-300 font-mono">home_advantage_multiplier</span>, <span className="text-amber-300 font-mono">form_momentum_weight</span>, <span className="text-amber-300 font-mono">volatility_index</span>, <span className="text-amber-300 font-mono">fatigue_penalty_modifier</span>) across all 46 leagues.
+                  The client exposes measured calibration telemetry and server synchronization, but does not execute training. Weight changes and learned intelligence updates are operator-controlled and persisted through the protected server (<span className="text-amber-300 font-mono">home_advantage_multiplier</span>, <span className="text-amber-300 font-mono">form_momentum_weight</span>, <span className="text-amber-300 font-mono">volatility_index</span>, <span className="text-amber-300 font-mono">fatigue_penalty_modifier</span>) across all 46 leagues.
                 </p>
               </div>
 
@@ -634,7 +634,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
               <div className="text-xl font-bold text-purple-300 mt-1">
                 {Object.keys(teamMatrices).length} Teams
               </div>
-              <span className="text-[10px] text-slate-400">Learned dynamic coefficients</span>
+              <span className="text-[10px] text-slate-400">Observed coefficients when supported by at least three completed training-window matches</span>
             </div>
           </div>
 
@@ -701,7 +701,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
                         </td>
                         <td className="p-2.5 text-center">
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                            SUPER-LEARNED
+                            OBSERVED
                           </span>
                         </td>
                       </tr>
@@ -721,7 +721,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
               <div className="flex items-center gap-2">
                 <Zap className="w-4 h-4 text-amber-400" />
                 <h3 className="text-sm font-bold text-white">
-                  Aggressive Super-Learning Autonomous Payload
+                  Team Intelligence Sync Payload
                 </h3>
               </div>
               <button
@@ -744,7 +744,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
                   navigator.clipboard?.writeText(
                     JSON.stringify(generateAggressiveSuperLearningPayload(teamMatrices), null, 2)
                   );
-                  setStatusMessage('✓ Super-Learning JSON payload copied to clipboard!');
+                  setStatusMessage('✓ Team Intelligence JSON payload copied to clipboard!');
                   setShowJsonSchemaModal(false);
                   setTimeout(() => setStatusMessage(null), 3000);
                 }}
