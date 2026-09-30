@@ -135,7 +135,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
         // Balanced composite score: primary weight on win probability, capped EV alpha, and model heuristic score
         // Prevents artificial theoretical EV on longshots from drowning out genuine high-probability winners
         const cappedEv = Math.min(0.40, Math.max(0, ev));
-        const score = (outcome.prob * 1.0) + (cappedEv * 75) + (pred.confidenceScore * 0.25) + (isPredictedWinner ? 12 : 0);
+        const score = (outcome.prob * 1.0) + (cappedEv * 75) + (pred.modelLeaderProbabilityPct * 0.25) + (isPredictedWinner ? 12 : 0);
 
         candidateLegs.push({
           fixtureId: fixture.id,
@@ -151,7 +151,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
           fairOdds,
           expectedValue: Number(ev.toFixed(3)),
           valueMarginPct,
-          confidenceScore: pred.confidenceScore,
+          modelLeaderProbabilityPct: pred.modelLeaderProbabilityPct,
           score,
         });
       }
@@ -165,14 +165,6 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
         seen.add(leg.fixtureId);
         top10.push(leg);
         if (top10.length >= 10) break;
-      }
-    }
-    if (top10.length < 10) {
-      for (const leg of candidateLegs) {
-        if (top10.length >= 10) break;
-        if (!top10.includes(leg)) {
-          top10.push(leg);
-        }
       }
     }
     return top10;
