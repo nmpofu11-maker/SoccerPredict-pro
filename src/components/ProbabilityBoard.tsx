@@ -13,7 +13,7 @@ export const ProbabilityBoard: React.FC<ProbabilityBoardProps> = ({
   homeTeamName,
   awayTeamName,
 }) => {
-  const { homeWinPct, drawPct, awayWinPct, predictedWinner, manualOverride, confidenceScore } = prediction;
+  const { homeWinPct, drawPct, awayWinPct, predictedWinner, manualOverride, modelLeaderProbabilityPct } = prediction;
 
   const isHomeWinner = predictedWinner === 'home';
   const isAwayWinner = predictedWinner === 'away';
@@ -30,7 +30,7 @@ export const ProbabilityBoard: React.FC<ProbabilityBoardProps> = ({
 
   return (
     <div className="w-full bg-slate-950/80 border border-slate-800 rounded-lg p-3 my-2" id={`prob-board-${prediction.matchId}`}>
-      {/* Top Header: 8-Rule Status & Confidence Pill */}
+      {/* Top Header: 8-Rule Status & Leading Probability Pill */}
       <div className="flex items-center justify-between text-xs mb-2.5 pb-2 border-b border-slate-800/80">
         <div className="flex items-center gap-1.5">
           {manualOverride !== 'none' ? (
@@ -49,13 +49,13 @@ export const ProbabilityBoard: React.FC<ProbabilityBoardProps> = ({
         <div className="flex items-center gap-1.5 text-[11px] font-mono">
           <span className="text-slate-400">Confidence:</span>
           <span className={`px-2 py-0.5 rounded font-bold ${
-            confidenceScore >= 75
+            modelLeaderProbabilityPct >= 75
               ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60'
-              : confidenceScore >= 55
+              : modelLeaderProbabilityPct >= 55
               ? 'bg-sky-950/80 text-sky-300 border border-sky-700/60'
               : 'bg-slate-800 text-slate-300 border border-slate-700'
           }`}>
-            {confidenceScore}%
+            {modelLeaderProbabilityPct}%
           </span>
         </div>
       </div>
