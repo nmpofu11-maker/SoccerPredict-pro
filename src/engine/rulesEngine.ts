@@ -758,7 +758,7 @@ export function evaluateFixturePrediction(
 
   // Calculate confidence score (based on margin between leader and second)
   const maxPct = Math.max(roundedHome, roundedAway, roundedDraw);
-  const confidenceScore = Math.min(100, Math.max(0, Math.round(maxPct)));
+  const modelLeaderProbabilityPct = Math.min(100, Math.max(0, Math.round(maxPct)));
 
   return {
     matchId: fixture.id,
@@ -766,7 +766,7 @@ export function evaluateFixturePrediction(
     drawPct: Math.max(0, roundedDraw),
     awayWinPct: roundedAway,
     predictedWinner,
-    confidenceScore: Number.isFinite(confidenceScore) ? confidenceScore : 0,
+    modelLeaderProbabilityPct: Number.isFinite(modelLeaderProbabilityPct) ? modelLeaderProbabilityPct : 0,
     appliedRules,
     rawPoints: {
       home: Number.isFinite(rawInitialPoints.home) ? rawInitialPoints.home : 0,
