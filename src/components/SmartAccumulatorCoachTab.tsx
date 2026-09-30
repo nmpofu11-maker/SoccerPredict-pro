@@ -290,9 +290,9 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
       `📊 AI AUTOMATED EVIDENCE-GATED VALUE REPORT`,
       `Bundle: ${optimalReport.bundleTitle}`,
       `Heuristic Evidence Score: ${optimalReport.heuristicEvidenceScore}% (${optimalReport.evidenceLabel})`,
-      `Combined Match Odds: ${optimalReport.combinedOdds}x`,
-      `Historical Cohort Hit Rate: ${optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.historicalValidationRate}%`}`,
-      `Expected Value Alpha: +${optimalReport.expectedValueAlpha}%`,
+      `Combined Match Odds: ${optimalReport.combinedOdds === null ? 'N/A' : `${optimalReport.combinedOdds === null ? 'N/A' : `${optimalReport.combinedOdds}x`}`}`,
+      `Historical Cohort Hit Rate: ${optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.historicalValidationRate === null ? 'N/A' : `${optimalReport.historicalValidationRate}%`}`}`,
+      `Expected Value Alpha: ${optimalReport.expectedValueAlpha === null ? 'N/A' : `${optimalReport.expectedValueAlpha >= 0 ? '+' : ''}${optimalReport.expectedValueAlpha}%`}`,
       `Recommended Stake: ${optimalReport.recommendedStakeUnits} Units`,
       `Generated: ${new Date(optimalReport.generatedAt).toLocaleString()}`,
       `====================================================`,
@@ -630,7 +630,7 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
                     <Percent className="w-3.5 h-3.5 text-indigo-400" />
                   </div>
                   <div className="text-2xl font-black text-indigo-400 font-mono">
-                    +{optimalReport.expectedValueAlpha}%
+                    {optimalReport.expectedValueAlpha === null ? 'N/A' : `${optimalReport.expectedValueAlpha >= 0 ? '+' : ''}${optimalReport.expectedValueAlpha}%`}
                   </div>
                 </div>
                 <div className="text-[11px] text-slate-400 font-mono">
