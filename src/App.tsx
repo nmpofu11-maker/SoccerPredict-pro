@@ -805,28 +805,15 @@ export default function App() {
                 )}
 
                 {/* Fixtures Timeline Feed */}
-                {displayedFixtures.filter(f => Boolean(f && f.id && f.homeTeam && f.awayTeam)).length > 0 ? (
+                {displayedFixtures.filter(f => Boolean(f && f.id && f.homeTeam && f.awayTeam && predictions[f.id])).length > 0 ? (
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 pb-8" id="fixtures-timeline-grid">
                     {displayedFixtures
-                      .filter(f => Boolean(f && f.id && f.homeTeam && f.awayTeam))
+                      .filter(f => Boolean(f && f.id && f.homeTeam && f.awayTeam && predictions[f.id]))
                       .map((fixture, index) => {
-                        const prediction = predictions[fixture.id] || {
-                          matchId: fixture.id,
-                          homeWinPct: 33.3,
-                          drawPct: 33.4,
-                          awayWinPct: 33.3,
-                          predictedWinner: 'draw',
-                          confidenceScore: 50,
-                          appliedRules: [],
-                          rawPoints: { home: 10, away: 8.5, draw: 6.8 },
-                          finalPoints: { home: 10, away: 8.5, draw: 6.8 },
-                          isFavouriteMatch: false,
-                          favouriteTeams: [],
-                          manualOverride: 'none',
-                          isVolatilityCompressed: false,
-                        };
+                        const prediction = predictions[fixture.id];
+                        if (!prediction) return null;
 
-                      return (
+                        return (
                         <MatchCard
                           key={`${fixture.id}-${index}`}
                           fixture={fixture}
