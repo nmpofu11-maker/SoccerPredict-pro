@@ -397,11 +397,7 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
               const homeColor = homeTeam.color ? `#${homeTeam.color}` : '#0284c7';
               const awayColor = awayTeam.color ? `#${awayTeam.color}` : '#dc2626';
 
-              // No H2H data was supplied by this provider event; keep it unknown/empty.
-              const homeWins = 0;
-              const awayWins = 0;
-              const draws = 0;
-
+              // Provider event does not include H2H; keep those fields explicitly unavailable.
               const kickoffTime = parseProviderKickoff(comp.date || ev.date);
               if (!kickoffTime) continue;
 
@@ -439,10 +435,10 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
                   badgeColor: awayColor,
                 },
                 h2h: {
-                  homeWins: 0,
-                  awayWins: 0,
-                  draws: 0,
-                  totalLast5: 0,
+                  homeWins: null,
+                  awayWins: null,
+                  draws: null,
+                  totalLast5: null,
                   scoresLast5: [],
                 },
               };
