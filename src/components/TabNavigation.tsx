@@ -260,7 +260,7 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
             <Brain className="w-4 h-4 text-purple-400" />
             <span>AI CALIBRATION</span>
             <span className="ml-0.5 px-2 py-0.5 bg-purple-950/80 border border-purple-800/60 text-emerald-400 rounded-full font-mono text-[11px] font-bold">
-              {learningAccuracyPct.toFixed(1)}%
+              {typeof learningAccuracyPct === 'number' ? learningAccuracyPct.toFixed(1) : '0.0'}%
             </span>
           </button>
 

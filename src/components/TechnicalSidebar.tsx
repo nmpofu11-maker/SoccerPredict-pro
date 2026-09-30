@@ -250,7 +250,7 @@ export const TechnicalSidebar: React.FC<TechnicalSidebarProps> = ({
           <div className="flex justify-between items-center text-xs">
             <span className="text-slate-300 font-mono text-[11px]">Correct / Total</span>
             <span className="font-mono text-emerald-400 font-extrabold text-sm">
-              {yesterdayStats.correct} / {yesterdayStats.total} ({yesterdayStats.accuracyPct.toFixed(0)}%)
+              {yesterdayStats.correct} / {yesterdayStats.total} ({typeof yesterdayStats.accuracyPct === 'number' ? yesterdayStats.accuracyPct.toFixed(0) : '0'}%)
             </span>
           </div>
           <div className="flex justify-between text-[9px] font-mono text-slate-400 mt-1">
@@ -277,17 +277,17 @@ export const TechnicalSidebar: React.FC<TechnicalSidebarProps> = ({
         </div>
         <div className="flex justify-between items-center text-xs">
           <span className="text-slate-300 font-mono text-[11px]">Cumulative Success</span>
-          <span className="font-mono text-emerald-400 font-extrabold text-sm">{learningAccuracyPct.toFixed(1)}%</span>
+          <span className="font-mono text-emerald-400 font-extrabold text-sm">{typeof learningAccuracyPct === 'number' ? learningAccuracyPct.toFixed(1) : '0.0'}%</span>
         </div>
         <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
           <div
             className="bg-gradient-to-r from-purple-500 to-emerald-400 h-1.5 rounded-full transition-all duration-500"
-            style={{ width: `${Math.min(100, learningAccuracyPct)}%` }}
+            style={{ width: `${Math.min(100, typeof learningAccuracyPct === 'number' ? learningAccuracyPct : 0)}%` }}
           />
         </div>
         <div className="flex justify-between text-[9px] font-mono text-purple-300/80 mt-1.5">
           <span>Success Indicator</span>
-          <span className="text-emerald-400 font-bold">{learningAccuracyPct.toFixed(1)}% Calibrated</span>
+          <span className="text-emerald-400 font-bold">{typeof learningAccuracyPct === 'number' ? learningAccuracyPct.toFixed(1) : '0.0'}% Calibrated</span>
         </div>
       </div>
 

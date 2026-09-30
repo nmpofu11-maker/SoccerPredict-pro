@@ -65,6 +65,10 @@ function getBaseUrl(): string {
   return (process.env.THERUNDOWN_BASE_URL || 'https://therundown.io/api/v2').replace(/\/+$/, '');
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Fetch events for a given sport ID and calendar date (YYYY-MM-DD).
  */
@@ -76,21 +80,37 @@ export async function fetchTheRundownSportEvents(sportId: number, dateStr: strin
   const key = process.env.THERUNDOWN_KEY!.trim();
   const url = `${getBaseUrl()}/sports/${sportId}/events/${encodeURIComponent(dateStr)}?include=scores+all_periods`;
 
-  const res = await fetch(url, {
-    headers: {
-      'X-TheRundown-Key': key,
-      'Accept': 'application/json',
-    },
-    signal: AbortSignal.timeout(15000),
-  });
+  // Up to 2 attempts with exponential backoff if 429 is encountered
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch(url, {
+      headers: {
+        'X-TheRundown-Key': key,
+        'Accept': 'application/json',
+      },
+      signal: AbortSignal.timeout(15000),
+    });
 
-  if (!res.ok) {
-    const errorText = await res.text().catch(() => '');
-    throw new Error(`TheRundown HTTP ${res.status}: ${errorText.slice(0, 300)}`);
+    if (res.status === 429) {
+      if (attempt === 0) {
+        // Wait 1.1s before retrying to respect the 1 req/sec rate limit
+        await delay(1100);
+        continue;
+      }
+      // Fail gracefully without flooding error boundaries
+      const errorText = await res.text().catch(() => '');
+      throw new Error(`TheRundown rate limited (HTTP 429): ${errorText.slice(0, 100)}`);
+    }
+
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => '');
+      throw new Error(`TheRundown HTTP ${res.status}: ${errorText.slice(0, 300)}`);
+    }
+
+    const data = await res.json();
+    return Array.isArray(data.events) ? data.events : [];
   }
 
-  const data = await res.json();
-  return Array.isArray(data.events) ? data.events : [];
+  return [];
 }
 
 /**
@@ -101,9 +121,13 @@ export async function fetchAllTheRundownSoccerEvents(dateStr: string): Promise<A
 
   const results: Array<TheRundownEvent & { leagueName: string; country: string }> = [];
 
-  // Query each covered sport ID with error insulation per league
-  for (const sport of THE_RUNDOWN_SOCCER_SPORTS) {
+  // Query each covered sport ID with 1.1s spacing to strictly adhere to the 1 req/sec free/starter tier limit
+  for (let i = 0; i < THE_RUNDOWN_SOCCER_SPORTS.length; i++) {
+    const sport = THE_RUNDOWN_SOCCER_SPORTS[i];
     try {
+      if (i > 0) {
+        await delay(1100);
+      }
       const events = await fetchTheRundownSportEvents(sport.id, dateStr);
       for (const ev of events) {
         results.push({
@@ -112,8 +136,14 @@ export async function fetchAllTheRundownSoccerEvents(dateStr: string): Promise<A
           country: sport.country,
         });
       }
-    } catch (err) {
-      console.warn(`[TheRundown] Failed fetching events for sport ${sport.name} (${sport.id}):`, err);
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+      if (errMsg.includes('429') || errMsg.includes('rate limited')) {
+        // If plan rate limit is fully saturated, stop hammering the API for subsequent sports in this batch
+        break;
+      } else {
+        console.warn(`[TheRundown] Notice for sport ${sport.name} (${sport.id}):`, errMsg);
+      }
     }
   }
 
