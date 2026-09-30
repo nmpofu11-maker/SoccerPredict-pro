@@ -135,7 +135,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     drawPct: 33.4,
     awayWinPct: 33.3,
     predictedWinner: 'draw' as const,
-    confidenceScore: 50,
+    modelLeaderProbabilityPct: 0,
     appliedRules: [],
     rawPoints: { home: 10, away: 8.5, draw: 6.8 },
     finalPoints: { home: 10, away: 8.5, draw: 6.8 },
@@ -233,7 +233,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     return fixture.league;
   }, [fixture.league]);
 
-  const isQuickBet = prediction.confidenceScore > 80;
+  const isQuickBet = prediction.modelLeaderProbabilityPct > 80;
 
   const isHomePick = prediction.predictedWinner === 'home';
   const isAwayPick = prediction.predictedWinner === 'away';
@@ -277,9 +277,9 @@ export const MatchCard: React.FC<MatchCardProps> = ({
       {/* Confidence Level Heatmap Top Strip */}
       <div 
         className={`absolute top-0 left-0 w-full h-1.5 rounded-t-xl opacity-90 ${
-          prediction.confidenceScore > 75 
+          prediction.modelLeaderProbabilityPct > 75 
             ? 'bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 shadow-[0_2px_10px_rgba(16,185,129,0.3)]' 
-            : prediction.confidenceScore >= 50 
+            : prediction.modelLeaderProbabilityPct >= 50 
             ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 shadow-[0_2px_10px_rgba(245,158,11,0.2)]' 
             : 'bg-gradient-to-r from-rose-500 via-red-400 to-rose-500 shadow-[0_2px_10px_rgba(239,68,68,0.2)]'
         }`}
@@ -291,27 +291,27 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           {/* Confidence Level Heatmap Pill */}
           <span
             className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-[9.5px] font-mono font-bold uppercase tracking-wide shadow-sm ${
-              prediction.confidenceScore > 75
+              prediction.modelLeaderProbabilityPct > 75
                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                : prediction.confidenceScore >= 50
+                : prediction.modelLeaderProbabilityPct >= 50
                 ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
                 : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
             }`}
-            title={`Prediction Confidence Level: ${prediction.confidenceScore}%`}
+            title={`Leading Model Probability: ${prediction.modelLeaderProbabilityPct}%`}
           >
             <span className={`w-1.5 h-1.5 rounded-full ${
-              prediction.confidenceScore > 75
+              prediction.modelLeaderProbabilityPct > 75
                 ? 'bg-emerald-400 animate-pulse'
-                : prediction.confidenceScore >= 50
+                : prediction.modelLeaderProbabilityPct >= 50
                 ? 'bg-amber-400 animate-pulse'
                 : 'bg-rose-400'
             }`} />
             <span>
-              {prediction.confidenceScore > 75
-                ? `High Conf (${prediction.confidenceScore}%)`
-                : prediction.confidenceScore >= 50
-                ? `Mod Conf (${prediction.confidenceScore}%)`
-                : `Low Conf (${prediction.confidenceScore}%)`}
+              {prediction.modelLeaderProbabilityPct > 75
+                ? `High Lead Prob (${prediction.modelLeaderProbabilityPct}%)`
+                : prediction.modelLeaderProbabilityPct >= 50
+                ? `Moderate Lead Prob (${prediction.modelLeaderProbabilityPct}%)`
+                : `Low Lead Prob (${prediction.modelLeaderProbabilityPct}%)`}
             </span>
           </span>
 
@@ -355,7 +355,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             <span
               id={`quick-bet-badge-${fixture.id}`}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-400/15 text-amber-300 border border-amber-400/40 text-[9.5px] font-mono uppercase font-black tracking-wider shadow-sm"
-              title={`Quick Bet: High certainty match with ${prediction.confidenceScore}% confidence score (>80%)`}
+              title={`Quick Bet: High leading-probability match with ${prediction.modelLeaderProbabilityPct}% leading probability (>80%)`}
             >
               <Zap className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
               Quick Bet
@@ -539,7 +539,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
               <span
                 id={`quick-bet-hero-${fixture.id}`}
                 className="inline-flex items-center gap-0.5 px-1.5 py-0.5 mb-1 rounded bg-amber-400 text-slate-950 text-[8px] font-mono font-black uppercase tracking-wider shadow"
-                title={`High Certainty Match: ${prediction.confidenceScore}% confidence score (>80%)`}
+                title={`High Lead-Probability Match: ${prediction.modelLeaderProbabilityPct}% leading probability (>80%)`}
               >
                 <Zap className="w-2 h-2 fill-slate-950" />
                 Quick Bet
@@ -556,7 +556,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
               <span>Fair <strong className="text-white">{pickFairOdds}</strong></span>
               <span>•</span>
               <span className={isQuickBet ? 'text-amber-400 font-bold' : 'text-slate-400'}>
-                {prediction.confidenceScore}%
+                {prediction.modelLeaderProbabilityPct}%
               </span>
             </div>
           </div>
