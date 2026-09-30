@@ -258,14 +258,18 @@ export function verifyAndSanitizeFixture(
   // Check 6: Head-to-Head Record Sanity
   // Validate the observed record; never invent missing outcomes.
   const cleanH2H = { ...fixture.h2h };
-  const h2hSum = (cleanH2H.homeWins || 0) + (cleanH2H.draws || 0) + (cleanH2H.awayWins || 0);
-  const h2hConsistent = cleanH2H.totalLast5 === h2hSum;
+  const h2hValuesKnown = [cleanH2H.homeWins, cleanH2H.draws, cleanH2H.awayWins, cleanH2H.totalLast5]
+    .every((value) => Number.isFinite(value));
+  const h2hSum = h2hValuesKnown
+    ? (cleanH2H.homeWins as number) + (cleanH2H.draws as number) + (cleanH2H.awayWins as number)
+    : null;
+  const h2hConsistent = h2hValuesKnown && cleanH2H.totalLast5 === h2hSum;
   checks.push({
     checkName: 'Head-to-Head Sum Integrity',
     passed: h2hConsistent,
     details: h2hConsistent
       ? `H2H record is internally consistent (${h2hSum} recorded matches)`
-      : `H2H record is inconsistent: totalLast5=${cleanH2H.totalLast5}, outcome counts=${h2hSum}; no synthetic correction applied`,
+      : 'H2H data is unavailable or inconsistent; no synthetic correction applied',
     severity: h2hConsistent ? 'info' : 'warning',
   });
 
