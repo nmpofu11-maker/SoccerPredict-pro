@@ -82,20 +82,20 @@ export function evaluateFixturePrediction(
   if (homeIsFav) favouriteTeams.push(fixture.homeTeam.name);
   if (awayIsFav) favouriteTeams.push(fixture.awayTeam.name);
 
-  // Initial baseline scores: modulated by Super-Learned home advantage multiplier
+  // Initial baseline scores: adjusted by observed team coefficients when a sufficient sample exists.
   let homePoints = w.homeAdvantageBaseline * homeLearned.home_advantage_multiplier;
   let awayPoints = w.awayAdvantageBaseline;
   let drawPoints = 6.8;
 
-  // Super-Learning Active Notification Tag
+  // Observed team-coefficient notification
   if (homeLearned.home_advantage_multiplier > 1.20 || homeLearned.form_momentum_weight > 0.88) {
     appliedRules.push({
       ruleNumber: 0,
-      ruleName: 'Aggressive Super-Learning Protocol',
-      tag: `⚡ Super-Learned: ${fixture.homeTeam.shortName || fixture.homeTeam.name} (x${homeLearned.home_advantage_multiplier.toFixed(2)} Fortress)`,
+      ruleName: 'Observed Team Coefficient',
+      tag: `Observed coefficient: ${fixture.homeTeam.shortName || fixture.homeTeam.name} (x${homeLearned.home_advantage_multiplier.toFixed(2)})`,
       impact: `Super-learned coefficients: Home multiplier x${homeLearned.home_advantage_multiplier.toFixed(2)}, Form weight x${homeLearned.form_momentum_weight.toFixed(2)}`,
       beneficiary: 'home',
-      description: `Aggressive Super-Learning Protocol active. Team coefficients continuously optimized from historical outcomes without limits.`,
+      description: `Observed team coefficients from the available training window are applied when at least three completed matches support the estimate.`,
     });
   }
 
@@ -518,21 +518,18 @@ export function evaluateFixturePrediction(
     });
   }
 
-  // Calculate standard intermediate probability distribution with complete finite safety
-  if (!Number.isFinite(homePoints) || isNaN(homePoints)) homePoints = 0;
-  if (!Number.isFinite(awayPoints) || isNaN(awayPoints)) awayPoints = 0;
-  if (!Number.isFinite(drawPoints) || isNaN(drawPoints)) drawPoints = 6.8;
-
-  const totalScore = (homePoints + awayPoints + drawPoints) || 1;
+  // Calculate the intermediate probability distribution. Inputs are sanitized upstream;
+  // do not substitute invented values if a computation is invalid.
+  if (!Number.isFinite(homePoints) || !Number.isFinite(awayPoints) || !Number.isFinite(drawPoints)) {
+    throw new Error(`Non-finite prediction score for fixture ${fixture.id}`);
+  }
+  const totalScore = homePoints + awayPoints + drawPoints;
+  if (!Number.isFinite(totalScore) || totalScore <= 0) {
+    throw new Error(`Invalid total prediction score for fixture ${fixture.id}`);
+  }
   let homeWinPct = (homePoints / totalScore) * 100;
   let awayWinPct = (awayPoints / totalScore) * 100;
   let drawPct = (drawPoints / totalScore) * 100;
-
-  if (!Number.isFinite(homeWinPct) || !Number.isFinite(awayWinPct) || !Number.isFinite(drawPct)) {
-    homeWinPct = 38.0;
-    drawPct = 30.0;
-    awayWinPct = 32.0;
-  }
 
   // ==========================================
   // RULE 7: High-Volatility League Cap
@@ -608,7 +605,7 @@ export function evaluateFixturePrediction(
           ruleNumber: 8,
           ruleName: 'Priority Favourite Win Floor',
           tag: `Rule 8: Favourite Floor (≥${floorThreshold}%)`,
-          impact: `Home win probability elevated to ${floorThreshold}% calibrated floor`,
+          impact: `Home win probability elevated to ${floorThreshold}% configured floor`,
           beneficiary: 'home',
           description: `${fixture.homeTeam.name} is one of the 80 Priority Favourite teams. Floor enforced.`,
         });
@@ -739,10 +736,9 @@ export function evaluateFixturePrediction(
     }
   }
 
-  // Safety fallback against any impossible NaN
-  if (!Number.isFinite(roundedHome) || isNaN(roundedHome)) roundedHome = 38.0;
-  if (!Number.isFinite(roundedAway) || isNaN(roundedAway)) roundedAway = 32.0;
-  if (!Number.isFinite(roundedDraw) || isNaN(roundedDraw)) roundedDraw = Math.round((100.0 - roundedHome - roundedAway) * 10) / 10;
+  if (!Number.isFinite(roundedHome) || !Number.isFinite(roundedAway) || !Number.isFinite(roundedDraw)) {
+    throw new Error(`Non-finite probability result for fixture ${fixture.id}`);
+  }
 
   // Determine predicted winner
   let predictedWinner: 'home' | 'draw' | 'away' = 'home';
