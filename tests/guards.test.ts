@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { isBlockedAddress } from '../src/services/manualDataService';
 import { HISTORICAL_MATCH_RESULTS } from '../src/data/historical_results';
 import { evaluateFixturePrediction } from '../src/engine/rulesEngine';
+import { verifyAndSanitizeFixture } from '../src/services/dataIntegrityValidator';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p: string) => fs.readFileSync(path.join(root, p), 'utf8');
@@ -66,4 +67,26 @@ test('committed learning state, if present, is untrained with auto-learning off'
   const s = JSON.parse(fs.readFileSync(p, 'utf8'));
   assert.equal(s.totalEpochsTrained ?? 0, 0);
   assert.equal(s.isAutoLearningEnabled ?? false, false);
+});
+
+
+test('validator preserves valid observed standings without claiming official verification', () => {
+  const fixture: any = {
+    id: 'fixture-1',
+    kickoffTime: '2026-10-10T15:00:00Z',
+    league: 'Test League',
+    motivation: 'regular',
+    isHighStakes: false,
+    homeTeam: { id: 'h', name: 'Home', shortName: 'HOM', leagueRank: 2, points: 30, form: ['W'], avgPossession: null, avgShotsOnTarget: null, isHomeDominant: false, hasTopTierAwayForm: false },
+    awayTeam: { id: 'a', name: 'Away', shortName: 'AWA', leagueRank: 18, points: 12, form: ['L'], avgPossession: null, avgShotsOnTarget: null, isHomeDominant: false, hasTopTierAwayForm: false },
+    h2h: { homeWins: null, draws: null, awayWins: null, totalLast5: null },
+  };
+  const { fixture: clean, stamp } = verifyAndSanitizeFixture(fixture);
+  assert.equal(clean.homeTeam.leagueRank, 2);
+  assert.equal(clean.awayTeam.leagueRank, 18);
+  assert.equal(clean.homeTeam.points, 30);
+  assert.equal(clean.awayTeam.points, 12);
+  assert.equal(clean.motivation, 'regular');
+  assert.equal(stamp.status, 'UNVERIFIED');
+  assert.equal(clean.isStandingsVerified, false);
 });
