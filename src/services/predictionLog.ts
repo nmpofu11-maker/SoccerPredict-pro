@@ -124,8 +124,11 @@ export function appendPrediction(
   if (!input.fixtureId || !Number.isFinite(kickoff)) return { status: 'invalid', detail: 'missing fixtureId or unparseable kickoff' };
   const p = input.probabilities;
   const vals = [p?.home, p?.draw, p?.away];
-  if (vals.some((v) => !Number.isFinite(v) || (v as number) < 0) || Math.abs((vals as number[]).reduce((a, b) => a + b, 0) - 100) > 1.5) {
-    return { status: 'invalid', detail: 'probabilities must be non-negative and sum to about 100' };
+  if (vals.some((v) => !Number.isFinite(v) || (v as number) < 0 || (v as number) > 100) || Math.abs((vals as number[]).reduce((a, b) => a + b, 0) - 100) > 1.5) {
+    return { status: 'invalid', detail: 'probabilities must be between 0 and 100 and sum to about 100' };
+  }
+  if (!Number.isFinite(input.inputCoverage) || input.inputCoverage < 0 || input.inputCoverage > 1) {
+    return { status: 'invalid', detail: 'inputCoverage must be between 0 and 1' };
   }
   if (!isOutcome(input.predicted)) return { status: 'invalid', detail: 'predicted must be home, draw or away' };
   if (!(now < kickoff)) return { status: 'late', detail: 'kickoff has already passed' };
@@ -256,7 +259,7 @@ function metrics(rows: Scored[], minSample: number): MetricBlock {
  * Score logged predictions against logged outcomes. Predictions whose freeze time is not strictly
  * before kickoff are excluded even if they somehow reached the file.
  */
-export function summarize(lines: LogLine[], minSample = 30, now: number = Date.now()): TrackRecord {
+export function summarize(lines: LogLine[], minSample = 30, now: number = Date.now(), logIntact = true): TrackRecord {
   const outcomes = new Map<string, OutcomeRecord>();
   for (const l of lines) if (l.type === 'outcome' && !outcomes.has(l.fixtureId)) outcomes.set(l.fixtureId, l);
 
@@ -287,8 +290,8 @@ export function summarize(lines: LogLine[], minSample = 30, now: number = Date.n
     scored: scoredRows.length,
     pending,
     excludedNotFrozenBeforeKickoff: excluded,
-    overall: metrics(scoredRows, minSample),
-    fullInputCoverageOnly: metrics(coverageFull, minSample),
+    overall: logIntact ? metrics(scoredRows, minSample) : metrics(scoredRows, Number.MAX_SAFE_INTEGER),
+    fullInputCoverageOnly: logIntact ? metrics(coverageFull, minSample) : metrics(coverageFull, Number.MAX_SAFE_INTEGER),
     generatedAt: new Date(now).toISOString(),
   };
 }
