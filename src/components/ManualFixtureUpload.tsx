@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ManualResultUpload } from './ManualResultUpload';
+import { getAdminApiHeaders } from '../services/adminAuthService';
 
 export const ManualFixtureUpload: React.FC = () => {
   const [rawData, setRawData] = useState('');
@@ -18,7 +19,7 @@ export const ManualFixtureUpload: React.FC = () => {
         // pipeline and the original working paste-flow both use.
         response = await fetch('/api/fixtures/ingest-slate', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAdminApiHeaders() },
           body: JSON.stringify({ rawText: rawData }),
         });
       } else if (type === 'file' && file) {
@@ -26,12 +27,13 @@ export const ManualFixtureUpload: React.FC = () => {
         formData.append('file', file);
         response = await fetch('/api/admin/upload-fixture-file', {
           method: 'POST',
+          headers: getAdminApiHeaders(),
           body: formData,
         });
       } else if (type === 'url') {
         response = await fetch('/api/admin/fetch-fixture-link', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAdminApiHeaders() },
           body: JSON.stringify({ url }),
         });
       }
@@ -50,7 +52,7 @@ export const ManualFixtureUpload: React.FC = () => {
         setStatus(`Error: ${result?.message || result?.error || 'Unknown error'}`);
       }
     } catch (err) {
-      setStatus('Failed to connect to server.');
+      setStatus(`Upload failed: ${err instanceof Error ? err.message : 'Unknown server error'}`);
     }
   };
 
@@ -58,7 +60,7 @@ export const ManualFixtureUpload: React.FC = () => {
     setIsSyncing(true);
     setStatus('Syncing from automated provider pipeline (SportAPI.ai / TheRundown)...');
     try {
-      const res = await fetch('/api/admin/run-ingest-now', { method: 'POST' });
+      const res = await fetch('/api/admin/run-ingest-now', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAdminApiHeaders() } });
       const data = await res.json();
       if (data.success) {
         setStatus(`Synced ${data.count} fixtures successfully. ${data.message || ''}`);
@@ -66,7 +68,7 @@ export const ManualFixtureUpload: React.FC = () => {
         setStatus(`Error: ${data.message || 'Sync failed'}`);
       }
     } catch (err) {
-      setStatus('Failed to connect to server.');
+      setStatus(`API sync failed: ${err instanceof Error ? err.message : 'Unknown server error'}`);
     } finally {
       setIsSyncing(false);
     }
