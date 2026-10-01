@@ -1990,7 +1990,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  app.listen(PORT, '127.0.0.1', () => {
     console.log(`Soccer Prediction Server running on port ${PORT}`);
 
     if (sportApiAiConfigured()) {
