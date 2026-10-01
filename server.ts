@@ -720,13 +720,25 @@ function normalizeTeamName(name: string): string {
 }
 
 /** Build an internal fixture record from a SportAPI.ai fixture. */
-function mapSportApiAiToInternalFixture(f: any): any {
+function mapSportApiAiToInternalFixture(f: any, providerDate?: string): any {
   const homeName = f.home_team?.name || f.homeTeam?.name || (typeof f.home_team === 'string' ? f.home_team : '');
   const awayName = f.away_team?.name || f.awayTeam?.name || (typeof f.away_team === 'string' ? f.away_team : '');
   if (!homeName || !awayName) return null;
   const idStr = String(f.id || `${homeName}_${awayName}`);
 
-  const kickoffTime = parseProviderKickoff(f.datetime) || parseProviderKickoff(f.kickoff_time) || parseProviderKickoff(f.utc_date) || parseProviderKickoff(f.start_time) || parseProviderKickoff(f.date) || (typeof f.date === 'string' && /^\\d{4}-\\d{2}-\\d{2}$/.test(f.date.trim()) ? `${f.date.trim()}T12:00:00.000Z` : null);
+  // SportAPI.ai currently supplies the calendar date at the response level
+  // rather than repeating it on every fixture object.
+  const fixtureDate = typeof f.date === 'string' ? f.date.trim() : '';
+  const fallbackDate = fixtureDate || (typeof providerDate === 'string' ? providerDate.trim() : '');
+  const kickoffTime =
+    parseProviderKickoff(f.datetime) ||
+    parseProviderKickoff(f.kickoff_time) ||
+    parseProviderKickoff(f.utc_date) ||
+    parseProviderKickoff(f.start_time) ||
+    parseProviderKickoff(f.date) ||
+    (fallbackDate && /^\d{4}-\d{2}-\d{2}$/.test(fallbackDate)
+      ? `${fallbackDate}T12:00:00.000Z`
+      : null);
   if (!kickoffTime) return null;
 
   const leagueName = f.league_name
@@ -860,7 +872,7 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
       try {
         const rawFixtures = await fetchSportApiAiFixturesByDate(candidateDate);
         if (rawFixtures.length > 0) {
-          const mappedForDate = rawFixtures.map(mapSportApiAiToInternalFixture).filter(Boolean);
+          const mappedForDate = rawFixtures.map((fixture) => mapSportApiAiToInternalFixture(fixture, candidateDate)).filter(Boolean);
           if (mappedForDate.length > 0) {
             mapped.push(...mappedForDate);
             sourceUsed = 'SPORTAPI_AI';
