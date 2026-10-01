@@ -128,7 +128,8 @@ function sanitizeTeamStats(
       cleanTeam.points = officialStanding.points;
     }
   } else {
-    // Unknown standings remain unknown and are never replaced with synthetic values.
+    // Without a live standings map, preserve valid provider-supplied values as observed evidence,
+    // but never upgrade them to "official" status or invent replacements.
     if (!Number.isFinite(cleanTeam.leagueRank) || cleanTeam.leagueRank < 1 || cleanTeam.leagueRank > 24) cleanTeam.leagueRank = null;
     if (!Number.isFinite(cleanTeam.points) || cleanTeam.points < 0) cleanTeam.points = null;
   }
@@ -310,14 +311,17 @@ export function verifyAndSanitizeFixture(
     }
   }
 
-  // Calculate Stakes Motivation
-  let cleanMotivation: MatchMotivation = 'regular';
+  // Calculate Stakes Motivation only from verified standings evidence. Preserve an explicit
+  // source-provided motivation otherwise; never infer a high-stakes label from unverified ranks.
+  let cleanMotivation: MatchMotivation = fixture.motivation || 'regular';
   const homeRankKnown = Number.isFinite(cleanHome.leagueRank);
   const awayRankKnown = Number.isFinite(cleanAway.leagueRank);
-  if ((homeRankKnown && (cleanHome.leagueRank as number) <= 3) || (awayRankKnown && (cleanAway.leagueRank as number) <= 3)) {
-    cleanMotivation = 'title_race';
-  } else if ((homeRankKnown && (cleanHome.leagueRank as number) >= 17) || (awayRankKnown && (cleanAway.leagueRank as number) >= 17)) {
-    cleanMotivation = 'relegation_battle';
+  if (bothTeamsCrossReferenced && homeRankKnown && awayRankKnown) {
+    if ((cleanHome.leagueRank as number) <= 3 || (cleanAway.leagueRank as number) <= 3) {
+      cleanMotivation = 'title_race';
+    } else if ((cleanHome.leagueRank as number) >= 17 || (cleanAway.leagueRank as number) >= 17) {
+      cleanMotivation = 'relegation_battle';
+    }
   }
 
   // Calculate Authenticity Score

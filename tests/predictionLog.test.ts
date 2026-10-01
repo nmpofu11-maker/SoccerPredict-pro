@@ -167,3 +167,22 @@ test('helpers: wilson interval, outcome from scores, input coverage', () => {
   assert.equal(computeInputCoverage({ homeTeam: full, awayTeam: { ...full, avgPossession: null, form: [] } }), 0.8);
   assert.equal(computeInputCoverage({}), 0);
 });
+
+
+test('prediction validation rejects impossible percentages and invalid input coverage', () => {
+  const f = tmpLog();
+  assert.equal(appendPrediction(f, pred('bad-prob', 'home', { home: 100.7, draw: 0, away: 0 }), BEFORE).status, 'invalid');
+  assert.equal(appendPrediction(f, { ...pred('bad-coverage'), inputCoverage: 1.01 }, BEFORE).status, 'invalid');
+  assert.equal(appendPrediction(f, { ...pred('bad-coverage-2'), inputCoverage: -0.01 }, BEFORE).status, 'invalid');
+});
+
+test('summarize withholds score metrics when the log integrity check fails', () => {
+  const f = tmpLog();
+  appendPrediction(f, pred('tampered'), BEFORE);
+  appendOutcome(f, { fixtureId: 'tampered', homeScore: 1, awayScore: 0 }, AFTER);
+  const report = summarize(readLog(f).lines, 1, Date.now(), false);
+  assert.equal(report.scored, 1);
+  assert.equal(report.overall.reportable, false);
+  assert.equal(report.overall.accuracyPct, null);
+  assert.equal(report.overall.brier, null);
+});

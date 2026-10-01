@@ -614,7 +614,8 @@ function runPredictionFreezeJob(now: number = Date.now()) {
       `${process.env.GIT_SHA?.slice(0, 12) || 'local'}+w${createHash('sha256').update(JSON.stringify(weights)).digest('hex').slice(0, 10)}`;
     const horizonMs = PREDICTION_HORIZON_HOURS * 3_600_000;
 
-    for (const f of readRawDiskManifest()) {
+    const { fixtures: predictionFixtures } = verifyAndSanitizeFixtures(readRawDiskManifest());
+    for (const f of predictionFixtures) {
       const kickoff = Date.parse(f?.kickoffTime);
       if (!f?.id || !Number.isFinite(kickoff) || kickoff <= now || kickoff > now + horizonMs) continue;
       summary.considered++;
@@ -1814,7 +1815,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
     try {
       const verification = verifyLog(PREDICTION_LOG_PATH);
       const { lines } = readLog(PREDICTION_LOG_PATH);
-      const report = summarize(lines, PREDICTION_MIN_SAMPLE);
+      const report = summarize(lines, PREDICTION_MIN_SAMPLE, Date.now(), verification.ok);
       return res.json({
         status: 'ok',
         logIntact: verification.ok,
