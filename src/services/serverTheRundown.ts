@@ -58,7 +58,7 @@ export const THE_RUNDOWN_SOCCER_SPORTS = [
 ];
 
 export function theRundownConfigured(): boolean {
-  return Boolean(process.env.THERUNDOWN_KEY && process.env.THERUNDOWN_KEY.trim().length > 0);
+  return Boolean((process.env.THERUNDOWN_API_KEY || process.env.THERUNDOWN_KEY)?.trim());
 }
 
 function getBaseUrl(): string {
@@ -91,7 +91,7 @@ export async function fetchTheRundownSportEvents(sportId: number, dateStr: strin
     throw new Error('THERUNDOWN_KEY is not configured in environment variables.');
   }
 
-  const key = process.env.THERUNDOWN_KEY!.trim();
+  const key = (process.env.THERUNDOWN_API_KEY || process.env.THERUNDOWN_KEY)!.trim();
   const url = `${getBaseUrl()}/sports/${sportId}/events/${encodeURIComponent(dateStr)}?include=scores+all_periods`;
 
   // Up to 2 attempts with exponential backoff if 429 is encountered
