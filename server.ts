@@ -666,6 +666,33 @@ function reconcilePredictionOutcomes(now: number = Date.now()) {
   return appended;
 }
 
+interface IngestProviderDiagnostics {
+  configured: boolean;
+  requestedDates: string[];
+  requestCount: number;
+  successfulRequests: number;
+  failedRequests: number;
+  httpErrors: string[];
+  rawRecords: number;
+  mappedRecords: number;
+  rejectedRecords: number;
+  mappingRejectReasons: Record<string, number>;
+  notes: string[];
+}
+
+interface IngestDiagnostics {
+  startedAt: string;
+  completedAt?: string;
+  timezone: string;
+  requestedDates: string[];
+  sportApiAi: IngestProviderDiagnostics;
+  theRundown: IngestProviderDiagnostics;
+  manifestBefore: number;
+  manifestAfter: number;
+  added: number;
+  sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | null;
+}
+
 interface CronStatus {
   ingest: {
     lastRunAt: string | null;
@@ -673,6 +700,7 @@ interface CronStatus {
     lastMessage: string;
     fixturesIngested: number;
     sourceUsed?: 'SPORTAPI_AI' | 'THERUNDOWN' | null;
+    diagnostics?: IngestDiagnostics;
   };
   settlement: {
     lastRunAt: string | null;
@@ -854,74 +882,158 @@ function mapTheRundownToInternalFixture(ev: any): any {
  * or TheRundown (secondary) and merges them into the disk manifest, without
  * overwriting any existing Hollywoodbets slate entries.
  */
-async function runDailyIngestJob(): Promise<{ success: boolean; message: string; count: number }> {
+async function runDailyIngestJob(): Promise<{ success: boolean; message: string; count: number; diagnostics: IngestDiagnostics }> {
   const status = readCronStatus();
+  const startedAt = new Date().toISOString();
   const baseDate = new Date();
-  const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: '2-digit', day: '2-digit' }).format(baseDate);
+  const dateFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Johannesburg',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const dateStr = dateFormatter.format(baseDate);
   const nextDate = new Date(baseDate.getTime() + 24 * 60 * 60 * 1000);
-  const nextDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: '2-digit', day: '2-digit' }).format(nextDate);
+  const nextDateStr = dateFormatter.format(nextDate);
   const ingestDates = [dateStr, nextDateStr];
+  const makeProviderDiagnostics = (configured: boolean): IngestProviderDiagnostics => ({
+    configured,
+    requestedDates: [...ingestDates],
+    requestCount: 0,
+    successfulRequests: 0,
+    failedRequests: 0,
+    httpErrors: [],
+    rawRecords: 0,
+    mappedRecords: 0,
+    rejectedRecords: 0,
+    mappingRejectReasons: {},
+    notes: [],
+  });
+
+  const diagnostics: IngestDiagnostics = {
+    startedAt,
+    timezone: 'Africa/Johannesburg',
+    requestedDates: ingestDates,
+    sportApiAi: makeProviderDiagnostics(sportApiAiConfigured()),
+    theRundown: makeProviderDiagnostics(theRundownConfigured()),
+    manifestBefore: readRawDiskManifest().length,
+    manifestAfter: readRawDiskManifest().length,
+    added: 0,
+    sourceUsed: null,
+  };
+
+  const noteReject = (provider: IngestProviderDiagnostics, reason: string) => {
+    provider.rejectedRecords++;
+    provider.mappingRejectReasons[reason] = (provider.mappingRejectReasons[reason] || 0) + 1;
+  };
 
   let mapped: any[] = [];
   let sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | null = null;
-  let primaryError: string | null = null;
 
-  // Try both today and tomorrow so provider UTC/day-boundary differences cannot hide fixtures.
-  if (sportApiAiConfigured()) {
+  if (diagnostics.sportApiAi.configured) {
     for (const candidateDate of ingestDates) {
+      diagnostics.sportApiAi.requestCount++;
       try {
         const rawFixtures = await fetchSportApiAiFixturesByDate(candidateDate);
-        if (rawFixtures.length > 0) {
-          const mappedForDate = rawFixtures.map((fixture) => mapSportApiAiToInternalFixture(fixture, candidateDate)).filter(Boolean);
-          if (mappedForDate.length > 0) {
-            mapped.push(...mappedForDate);
-            sourceUsed = 'SPORTAPI_AI';
-          } else {
-            primaryError = `SportAPI.ai returned ${rawFixtures.length} fixture record(s) for ${candidateDate}, but none matched the supported fixture schema.`;
-          }
+        diagnostics.sportApiAi.successfulRequests++;
+        diagnostics.sportApiAi.rawRecords += rawFixtures.length;
+
+        const mappedForDate: any[] = [];
+        for (const fixture of rawFixtures) {
+          const mappedFixture = mapSportApiAiToInternalFixture(fixture, candidateDate);
+          if (mappedFixture) mappedForDate.push(mappedFixture);
+          else noteReject(diagnostics.sportApiAi, 'unsupported_or_missing_team_or_kickoff');
+        }
+        diagnostics.sportApiAi.mappedRecords += mappedForDate.length;
+
+        if (mappedForDate.length > 0) {
+          mapped.push(...mappedForDate);
+          sourceUsed = 'SPORTAPI_AI';
+        } else if (rawFixtures.length > 0) {
+          diagnostics.sportApiAi.notes.push(
+            `Returned ${rawFixtures.length} record(s) for ${candidateDate}, but none mapped to the internal fixture schema.`
+          );
+        } else {
+          diagnostics.sportApiAi.notes.push(`HTTP request succeeded for ${candidateDate}, but provider returned 0 fixture records.`);
         }
       } catch (err: unknown) {
-        primaryError = err instanceof Error ? err.message : 'Unknown SportAPI.ai error';
-        console.warn(`[cron:ingest] SportAPI.ai failed for ${candidateDate}: ${primaryError}`);
+        diagnostics.sportApiAi.failedRequests++;
+        const message = err instanceof Error ? err.message : 'Unknown SportAPI.ai error';
+        diagnostics.sportApiAi.httpErrors.push(message);
+        console.warn(`[cron:ingest] SportAPI.ai failed for ${candidateDate}: ${message}`);
       }
     }
   } else {
-    primaryError = 'SPORTAPI_AI_KEY not configured';
+    diagnostics.sportApiAi.notes.push('SPORTAPI_AI_KEY not configured.');
   }
 
-  // Fall back to TheRundown for the same dates if SportAPI.ai produced no usable fixtures.
-  if (mapped.length === 0 && theRundownConfigured()) {
-    try {
-      for (const candidateDate of ingestDates) {
+  // TheRundown is used when SportAPI.ai produced no usable records.
+  if (mapped.length === 0 && diagnostics.theRundown.configured) {
+    for (const candidateDate of ingestDates) {
+      diagnostics.theRundown.requestCount++;
+      try {
         const rundownEvents = await fetchAllTheRundownSoccerEvents(candidateDate);
-        if (rundownEvents.length > 0) {
-          const mappedForDate = rundownEvents.map(mapTheRundownToInternalFixture).filter(Boolean);
-          if (mappedForDate.length > 0) {
-            mapped.push(...mappedForDate);
-            sourceUsed = 'THERUNDOWN';
-          }
+        diagnostics.theRundown.successfulRequests++;
+        diagnostics.theRundown.rawRecords += rundownEvents.length;
+
+        const mappedForDate: any[] = [];
+        for (const event of rundownEvents) {
+          const mappedFixture = mapTheRundownToInternalFixture(event);
+          if (mappedFixture) mappedForDate.push(mappedFixture);
+          else noteReject(diagnostics.theRundown, 'unsupported_or_missing_team_or_kickoff');
         }
+        diagnostics.theRundown.mappedRecords += mappedForDate.length;
+
+        if (mappedForDate.length > 0) {
+          mapped.push(...mappedForDate);
+          sourceUsed = 'THERUNDOWN';
+        } else {
+          diagnostics.theRundown.notes.push(
+            `Request succeeded for ${candidateDate}, but ${rundownEvents.length} event(s) were returned by the provider client and none mapped.`
+          );
+        }
+      } catch (err: unknown) {
+        diagnostics.theRundown.failedRequests++;
+        const message = err instanceof Error ? err.message : 'Unknown TheRundown error';
+        diagnostics.theRundown.httpErrors.push(message);
+        console.warn(`[cron:ingest] TheRundown failed for ${candidateDate}: ${message}`);
       }
-    } catch (err: unknown) {
-      const rundownErr = err instanceof Error ? err.message : 'Unknown TheRundown error';
-      const msg = `Both providers failed. SportAPI.ai: ${primaryError || 'no usable fixtures'}. TheRundown: ${rundownErr}`;
-      status.ingest = { lastRunAt: new Date().toISOString(), lastSuccess: false, lastMessage: msg, fixturesIngested: 0, sourceUsed: null };
-      writeCronStatus(status);
-      console.error(`[cron:ingest] ${msg}`);
-      return { success: false, message: msg, count: 0 };
     }
+  } else if (mapped.length === 0) {
+    diagnostics.theRundown.notes.push(
+      diagnostics.theRundown.configured
+        ? 'Not queried because SportAPI.ai produced usable fixtures.'
+        : 'THERUNDOWN_API_KEY not configured.'
+    );
   }
+
+  diagnostics.sourceUsed = sourceUsed;
+  diagnostics.completedAt = new Date().toISOString();
 
   if (mapped.length === 0) {
-    const msg = `No automated fixtures ingested for ${ingestDates.join(' or ')}. SportAPI.ai: ${primaryError || 'no fixtures returned'}. TheRundown: ${theRundownConfigured() ? 'no fixtures returned' : 'THERUNDOWN_API_KEY not configured'}.`;
-    status.ingest = { lastRunAt: new Date().toISOString(), lastSuccess: false, lastMessage: msg, fixturesIngested: 0, sourceUsed: null };
+    const sportSummary = diagnostics.sportApiAi.configured
+      ? `requests ${diagnostics.sportApiAi.successfulRequests}/${diagnostics.sportApiAi.requestCount}, raw ${diagnostics.sportApiAi.rawRecords}, mapped ${diagnostics.sportApiAi.mappedRecords}`
+      : 'not configured';
+    const rundownSummary = diagnostics.theRundown.configured
+      ? `requests ${diagnostics.theRundown.successfulRequests}/${diagnostics.theRundown.requestCount}, raw ${diagnostics.theRundown.rawRecords}, mapped ${diagnostics.theRundown.mappedRecords}`
+      : 'not configured';
+    const msg = `No automated fixtures ingested for ${ingestDates.join(' or ')}. SportAPI.ai: ${sportSummary}. TheRundown: ${rundownSummary}.`;
+    status.ingest = {
+      lastRunAt: new Date().toISOString(),
+      lastSuccess: false,
+      lastMessage: msg,
+      fixturesIngested: 0,
+      sourceUsed: null,
+      diagnostics,
+    };
     writeCronStatus(status);
-    console.warn(`[cron:ingest] ${msg}`);
-    return { success: false, message: msg, count: 0 };
+    console.warn(`[cron:ingest] ${msg}`, JSON.stringify(diagnostics));
+    return { success: false, message: msg, count: 0, diagnostics };
   }
 
   try {
     const diskFixtures = readDiskManifest();
+    diagnostics.manifestBefore = diskFixtures.length;
     const normalizeKey = (f: any) => {
       const home = normalizeTeamName(f.homeTeam?.name);
       const away = normalizeTeamName(f.awayTeam?.name);
@@ -930,14 +1042,12 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     };
 
     const mergedMap = new Map<string, any>();
-    for (const df of diskFixtures) {
-      mergedMap.set(normalizeKey(df), df);
-    }
+    for (const df of diskFixtures) mergedMap.set(normalizeKey(df), df);
+
     let newCount = 0;
     for (const mf of mapped) {
       const key = normalizeKey(mf);
       const existing = mergedMap.get(key);
-      // Never clobber a Hollywoodbets-sourced or bookmaker-protected entry
       if (existing && (existing.isBookmakerProtected || (existing.id && existing.id.startsWith('hollywoodbets_')))) {
         if (!existing.sportApiAiFixtureId && mf.sportApiAiFixtureId) existing.sportApiAiFixtureId = mf.sportApiAiFixtureId;
         if (!existing.theRundownEventId && mf.theRundownEventId) existing.theRundownEventId = mf.theRundownEventId;
@@ -949,23 +1059,41 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
 
     const combined = Array.from(mergedMap.values());
     writeDiskManifest(combined);
-    fixturesCache = null; // invalidate in-memory cache so next read picks up new data
+    fixturesCache = null;
+
+    diagnostics.added = newCount;
+    diagnostics.manifestAfter = combined.length;
+    diagnostics.completedAt = new Date().toISOString();
 
     const sourceLabel = sourceUsed === 'SPORTAPI_AI' ? 'SportAPI.ai' : 'TheRundown.io';
-    const msg = `Ingested ${mapped.length} fixtures from ${sourceLabel} for ${dateStr} (${newCount} new).`;
-    status.ingest = { lastRunAt: new Date().toISOString(), lastSuccess: true, lastMessage: msg, fixturesIngested: mapped.length, sourceUsed };
+    const msg = `Ingested ${mapped.length} fixtures from ${sourceLabel} for ${dateStr} (${newCount} new). Raw records: SportAPI.ai ${diagnostics.sportApiAi.rawRecords}; TheRundown ${diagnostics.theRundown.rawRecords}. Mapped: SportAPI.ai ${diagnostics.sportApiAi.mappedRecords}; TheRundown ${diagnostics.theRundown.mappedRecords}.`;
+    status.ingest = {
+      lastRunAt: new Date().toISOString(),
+      lastSuccess: true,
+      lastMessage: msg,
+      fixturesIngested: mapped.length,
+      sourceUsed,
+      diagnostics,
+    };
     writeCronStatus(status);
-    console.log(`[cron:ingest] ${msg}`);
-    return { success: true, message: msg, count: mapped.length };
+    console.log(`[cron:ingest] ${msg}`, JSON.stringify(diagnostics));
+    return { success: true, message: msg, count: mapped.length, diagnostics };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown ingestion error';
-    status.ingest = { lastRunAt: new Date().toISOString(), lastSuccess: false, lastMessage: msg, fixturesIngested: 0, sourceUsed };
+    diagnostics.completedAt = new Date().toISOString();
+    status.ingest = {
+      lastRunAt: new Date().toISOString(),
+      lastSuccess: false,
+      lastMessage: msg,
+      fixturesIngested: 0,
+      sourceUsed,
+      diagnostics,
+    };
     writeCronStatus(status);
-    console.error(`[cron:ingest] FAILED: ${msg}`);
-    return { success: false, message: msg, count: 0 };
+    console.error(`[cron:ingest] FAILED: ${msg}`, JSON.stringify(diagnostics));
+    return { success: false, message: msg, count: 0, diagnostics };
   }
 }
-
 /**
  * Settlement job: finds fixtures in the manifest whose kickoff has passed and
  * that haven't been settled yet, checks their real result via SportAPI.ai
