@@ -45,17 +45,63 @@ export interface TheRundownEvent {
 // Swapped the two rarely-active international tournaments (Euro Championship,
 // World Cup — only relevant every few years) for two regularly-active club
 // competitions TheRundown actually covers, since this is a daily fixture feed.
-export const THE_RUNDOWN_SOCCER_SPORTS = [
-  { id: 11, name: 'EPL', country: 'England' },
-  { id: 14, name: 'La Liga', country: 'Spain' },
-  { id: 15, name: 'Serie A', country: 'Italy' },
-  { id: 13, name: 'Bundesliga', country: 'Germany' },
-  { id: 12, name: 'Ligue 1', country: 'France' },
-  { id: 10, name: 'MLS', country: 'USA' },
-  { id: 16, name: 'UEFA Champions League', country: 'Europe' },
-  { id: 33, name: 'UEFA Europa League', country: 'Europe' },
-  { id: 34, name: 'Liga MX', country: 'Mexico' },
-];
+const SOCCER_LEAGUE_NAMES = new Set([
+  'EPL',
+  'La Liga',
+  'Bundesliga',
+  'Serie A',
+  'Ligue 1',
+  'MLS',
+  'UEFA Champions League',
+  'UEFA Europa League',
+  'UEFA Conference League',
+  'Liga MX',
+]);
+
+let rundownSportsCache: Array<{ id: number; name: string; country: string }> | null = null;
+let rundownSportsCacheAt = 0;
+const RUNDOWN_SPORTS_CACHE_MS = 6 * 60 * 60 * 1000;
+
+async function getRundownSoccerSports(): Promise<Array<{ id: number; name: string; country: string }>> {
+  if (rundownSportsCache && Date.now() - rundownSportsCacheAt < RUNDOWN_SPORTS_CACHE_MS) {
+    return rundownSportsCache;
+  }
+
+  const key = (process.env.THERUNDOWN_API_KEY || process.env.THERUNDOWN_KEY)?.trim();
+  if (!key) return [];
+
+  const res = await fetch(`${getBaseUrl()}/sports`, {
+    headers: { 'X-TheRundown-Key': key, 'Accept': 'application/json' },
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`TheRundown sports catalog HTTP ${res.status}: ${detail.slice(0, 300)}`);
+  }
+
+  const data = await res.json();
+  const sports = Array.isArray(data) ? data : Array.isArray(data.sports) ? data.sports : [];
+  const selected = sports
+    .filter((s: any) => {
+      const name = String(s.name || s.display_name || s.league_name || '').trim();
+      return SOCCER_LEAGUE_NAMES.has(name);
+    })
+    .map((s: any) => ({
+      id: Number(s.id ?? s.sport_id),
+      name: String(s.name || s.display_name || s.league_name),
+      country: String(s.country || s.region || 'International'),
+    }))
+    .filter((s: any) => Number.isInteger(s.id) && s.id > 0);
+
+  if (selected.length === 0) {
+    throw new Error('TheRundown sports catalog returned no recognized soccer leagues.');
+  }
+
+  rundownSportsCache = selected;
+  rundownSportsCacheAt = Date.now();
+  return selected;
+}
 
 export function theRundownConfigured(): boolean {
   return Boolean((process.env.THERUNDOWN_API_KEY || process.env.THERUNDOWN_KEY)?.trim());
@@ -134,10 +180,11 @@ export async function fetchAllTheRundownSoccerEvents(dateStr: string): Promise<A
   if (!theRundownConfigured()) return [];
 
   const results: Array<TheRundownEvent & { leagueName: string; country: string }> = [];
+  const sports = await getRundownSoccerSports();
 
-  // Query each covered sport ID with 1.1s spacing to strictly adhere to the 1 req/sec free/starter tier limit
-  for (let i = 0; i < THE_RUNDOWN_SOCCER_SPORTS.length; i++) {
-    const sport = THE_RUNDOWN_SOCCER_SPORTS[i];
+  // Query each live-discovered soccer sport with 1.1s spacing to respect the provider rate limit.
+  for (let i = 0; i < sports.length; i++) {
+    const sport = sports[i];
     try {
       if (i > 0) {
         await delay(requestSpacingMs());
@@ -153,7 +200,7 @@ export async function fetchAllTheRundownSoccerEvents(dateStr: string): Promise<A
     } catch (err: unknown) {
       if (err instanceof TheRundownRateLimitError) {
         // Plan limit exhausted: stop this batch, but say so, because the remaining leagues are skipped.
-        const skipped = THE_RUNDOWN_SOCCER_SPORTS.length - i;
+        const skipped = sports.length - i;
         console.warn(
           `[TheRundown] Rate limit reached at ${sport.name}; skipping ${skipped} league(s) for ${dateStr}. ` +
           `Returning ${results.length} event(s) fetched so far.`
