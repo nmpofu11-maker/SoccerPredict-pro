@@ -726,7 +726,7 @@ function mapSportApiAiToInternalFixture(f: any): any {
   if (!homeName || !awayName) return null;
   const idStr = String(f.id || `${homeName}_${awayName}`);
 
-  const kickoffTime = parseProviderKickoff(f.datetime) || parseProviderKickoff(f.kickoff_time);
+  const kickoffTime = parseProviderKickoff(f.datetime) || parseProviderKickoff(f.kickoff_time) || parseProviderKickoff(f.utc_date) || parseProviderKickoff(f.start_time) || parseProviderKickoff(f.date) || (typeof f.date === 'string' && /^\\d{4}-\\d{2}-\\d{2}$/.test(f.date.trim()) ? `${f.date.trim()}T12:00:00.000Z` : null);
   if (!kickoffTime) return null;
 
   const leagueName = f.league_name
