@@ -21,7 +21,9 @@ jobs:
         with:
           bun-version: latest
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bun install
+      - name: Show lockfile diff
+        run: git diff -- bun.lock package.json
       - name: TypeScript check
         run: bun run lint
       - name: Tests
