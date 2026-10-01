@@ -38,7 +38,7 @@ export interface SportApiAiFixture {
 }
 
 export function sportApiAiConfigured(): boolean {
-  return Boolean(process.env.SPORTAPI_AI_KEY && process.env.SPORTAPI_AI_KEY.trim().length > 0);
+  return Boolean((process.env.SPORTAPI_AI_KEY || process.env.SPORTAPI_API_KEY)?.trim());
 }
 
 function getBaseUrl(): string {
@@ -53,7 +53,7 @@ export async function fetchSportApiAiFixturesByDate(dateStr: string): Promise<an
     throw new Error('SPORTAPI_AI_KEY is not configured in environment variables.');
   }
 
-  const key = process.env.SPORTAPI_AI_KEY!.trim();
+  const key = (process.env.SPORTAPI_AI_KEY || process.env.SPORTAPI_API_KEY)!.trim();
   const url = `${getBaseUrl()}/fixtures/date/${encodeURIComponent(dateStr)}`;
 
   const res = await fetch(url, {
