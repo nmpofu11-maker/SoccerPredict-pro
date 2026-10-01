@@ -844,39 +844,55 @@ function mapTheRundownToInternalFixture(ev: any): any {
  */
 async function runDailyIngestJob(): Promise<{ success: boolean; message: string; count: number }> {
   const status = readCronStatus();
-  const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const baseDate = new Date();
+  const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: '2-digit', day: '2-digit' }).format(baseDate);
+  const nextDate = new Date(baseDate.getTime() + 24 * 60 * 60 * 1000);
+  const nextDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: '2-digit', day: '2-digit' }).format(nextDate);
+  const ingestDates = [dateStr, nextDateStr];
 
   let mapped: any[] = [];
   let sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | null = null;
   let primaryError: string | null = null;
 
-  // 1. Try SportAPI.ai first (Primary: 100+ global leagues)
+  // Try both today and tomorrow so provider UTC/day-boundary differences cannot hide fixtures.
   if (sportApiAiConfigured()) {
-    try {
-      const rawFixtures = await fetchSportApiAiFixturesByDate(dateStr);
-      if (rawFixtures && rawFixtures.length > 0) {
-        mapped = rawFixtures.map(mapSportApiAiToInternalFixture).filter(Boolean);
-        sourceUsed = 'SPORTAPI_AI';
+    for (const candidateDate of ingestDates) {
+      try {
+        const rawFixtures = await fetchSportApiAiFixturesByDate(candidateDate);
+        if (rawFixtures.length > 0) {
+          const mappedForDate = rawFixtures.map(mapSportApiAiToInternalFixture).filter(Boolean);
+          if (mappedForDate.length > 0) {
+            mapped.push(...mappedForDate);
+            sourceUsed = 'SPORTAPI_AI';
+          } else {
+            primaryError = `SportAPI.ai returned ${rawFixtures.length} fixture record(s) for ${candidateDate}, but none matched the supported fixture schema.`;
+          }
+        }
+      } catch (err: unknown) {
+        primaryError = err instanceof Error ? err.message : 'Unknown SportAPI.ai error';
+        console.warn(`[cron:ingest] SportAPI.ai failed for ${candidateDate}: ${primaryError}`);
       }
-    } catch (err: unknown) {
-      primaryError = err instanceof Error ? err.message : 'Unknown SportAPI.ai error';
-      console.warn(`[cron:ingest] SportAPI.ai failed, attempting TheRundown: ${primaryError}`);
     }
   } else {
     primaryError = 'SPORTAPI_AI_KEY not configured';
   }
 
-  // 2. Fall back to TheRundown if SportAPI.ai was not configured or produced zero/error
+  // Fall back to TheRundown for the same dates if SportAPI.ai produced no usable fixtures.
   if (mapped.length === 0 && theRundownConfigured()) {
     try {
-      const rundownEvents = await fetchAllTheRundownSoccerEvents(dateStr);
-      if (rundownEvents && rundownEvents.length > 0) {
-        mapped = rundownEvents.map(mapTheRundownToInternalFixture).filter(Boolean);
-        sourceUsed = 'THERUNDOWN';
+      for (const candidateDate of ingestDates) {
+        const rundownEvents = await fetchAllTheRundownSoccerEvents(candidateDate);
+        if (rundownEvents.length > 0) {
+          const mappedForDate = rundownEvents.map(mapTheRundownToInternalFixture).filter(Boolean);
+          if (mappedForDate.length > 0) {
+            mapped.push(...mappedForDate);
+            sourceUsed = 'THERUNDOWN';
+          }
+        }
       }
     } catch (err: unknown) {
       const rundownErr = err instanceof Error ? err.message : 'Unknown TheRundown error';
-      const msg = `Both providers failed. SportAPI.ai: ${primaryError}. TheRundown: ${rundownErr}`;
+      const msg = `Both providers failed. SportAPI.ai: ${primaryError || 'no usable fixtures'}. TheRundown: ${rundownErr}`;
       status.ingest = { lastRunAt: new Date().toISOString(), lastSuccess: false, lastMessage: msg, fixturesIngested: 0, sourceUsed: null };
       writeCronStatus(status);
       console.error(`[cron:ingest] ${msg}`);
@@ -885,7 +901,7 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
   }
 
   if (mapped.length === 0) {
-    const msg = `No automated fixtures ingested. SportAPI.ai: ${primaryError || 'no fixtures'}. TheRundown: ${theRundownConfigured() ? 'no fixtures returned' : 'THERUNDOWN_KEY not configured'}.`;
+    const msg = `No automated fixtures ingested for ${ingestDates.join(' or ')}. SportAPI.ai: ${primaryError || 'no fixtures returned'}. TheRundown: ${theRundownConfigured() ? 'no fixtures returned' : 'THERUNDOWN_API_KEY not configured'}.`;
     status.ingest = { lastRunAt: new Date().toISOString(), lastSuccess: false, lastMessage: msg, fixturesIngested: 0, sourceUsed: null };
     writeCronStatus(status);
     console.warn(`[cron:ingest] ${msg}`);
