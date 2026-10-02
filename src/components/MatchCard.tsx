@@ -502,15 +502,15 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             {/* Last Season standing, squad market value & match rating */}
             <div className="flex items-center gap-1 text-[9.5px] text-slate-400 font-mono mt-0.5 flex-wrap">
               <span title="Last Season Standing in Same Competition" className="text-sky-300/90 font-medium">
-                Prev: #{fixture.homeTeam.lastSeasonRank ?? homeProfile?.lastSeasonRank ?? 10}
+                {Number.isFinite(fixture.homeTeam.lastSeasonRank) ? `Prev: #${fixture.homeTeam.lastSeasonRank}` : 'Prev: N/A'}
               </span>
               <span>•</span>
               <span title="Total Squad Market Value" className="text-emerald-300/90 font-medium">
-                {formatSquadValue(fixture.homeTeam.totalSquadValueEur ?? homeProfile?.totalSquadValueEur ?? 200)}
+                {Number.isFinite(fixture.homeTeam.totalSquadValueEur) ? formatSquadValue(fixture.homeTeam.totalSquadValueEur as number) : 'Value: N/A'}
               </span>
               <span>•</span>
               <span title="Average Season Match Rating" className="text-amber-300/90 font-medium">
-                {((fixture.homeTeam.avgMatchRating ?? homeProfile?.avgMatchRating) || 6.85).toFixed(2)} ★
+                {Number.isFinite(fixture.homeTeam.avgMatchRating) ? `${(fixture.homeTeam.avgMatchRating as number).toFixed(2)} ★` : 'Rating: N/A'}
               </span>
             </div>
             <div className="mt-1 flex items-center">
@@ -601,15 +601,15 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             {/* Last Season standing, squad market value & match rating */}
             <div className="flex items-center justify-end gap-1 text-[9.5px] text-slate-400 font-mono mt-0.5 flex-wrap">
               <span title="Average Season Match Rating" className="text-amber-300/90 font-medium">
-                ★ {((fixture.awayTeam.avgMatchRating ?? awayProfile?.avgMatchRating) || 6.85).toFixed(2)}
+                {Number.isFinite(fixture.awayTeam.avgMatchRating) ? `★ ${(fixture.awayTeam.avgMatchRating as number).toFixed(2)}` : 'Rating: N/A'}
               </span>
               <span>•</span>
               <span title="Total Squad Market Value" className="text-emerald-300/90 font-medium">
-                {formatSquadValue(fixture.awayTeam.totalSquadValueEur ?? awayProfile?.totalSquadValueEur ?? 200)}
+                {Number.isFinite(fixture.awayTeam.totalSquadValueEur) ? formatSquadValue(fixture.awayTeam.totalSquadValueEur as number) : 'Value: N/A'}
               </span>
               <span>•</span>
               <span title="Last Season Standing in Same Competition" className="text-sky-300/90 font-medium">
-                Prev: #{fixture.awayTeam.lastSeasonRank ?? awayProfile?.lastSeasonRank ?? 10}
+                {Number.isFinite(fixture.awayTeam.lastSeasonRank) ? `Prev: #${fixture.awayTeam.lastSeasonRank}` : 'Prev: N/A'}
               </span>
             </div>
             <div className="mt-1 flex justify-end">
