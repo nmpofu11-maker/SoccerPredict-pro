@@ -765,7 +765,7 @@ function parseProviderKickoff(value: unknown): string | null {
   }
 
   // Reject calendar dates without a time component; midnight is not a real kickoff.
-  if (!/[T ]\\d{2}:\\d{2}/.test(trimmed)) return null;
+  if (!/[T ]\d{2}:\d{2}/.test(trimmed)) return null;
   const parsed = new Date(trimmed);
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }
