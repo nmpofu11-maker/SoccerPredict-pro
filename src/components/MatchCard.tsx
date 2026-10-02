@@ -726,7 +726,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
               <tbody className="divide-y divide-slate-900">
                 {directEncounters.map((encounter) => (
                   <tr key={encounter.id} className="hover:bg-slate-900/40 text-slate-300">
-                    <td className="py-1.5 text-slate-400 font-medium whitespace-nowrap">Provider record</td>
+                    <td className="py-1.5 text-slate-400 font-medium whitespace-nowrap">{fixture.h2h?.source || 'Provider record'}</td>
                     <td className="py-1.5 text-center font-black text-sky-400">{encounter.score}</td>
                   </tr>
                 ))}
