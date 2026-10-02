@@ -65,15 +65,19 @@ test('manifest sanitizer zeroes placeholder stats on non-live verified fixtures'
         name: 'Liverpool',
         leagueRank: 1,
         points: 50,
+        standingsSource: 'FOOTBALL_DATA_ORG',
         form: ['W', 'W', 'W'],
+        formSource: 'FOOTBALL_DATA_ORG',
       },
       awayTeam: {
         name: 'Everton',
         leagueRank: 16,
         points: 18,
+        standingsSource: 'FOOTBALL_DATA_ORG',
         form: ['L', 'D', 'L'],
+        formSource: 'FOOTBALL_DATA_ORG',
       },
-      h2h: { homeWins: 4, draws: 1, awayWins: 0, totalLast5: 5 },
+      h2h: { homeWins: 4, draws: 1, awayWins: 0, totalLast5: 5, source: 'FOOTBALL_DATA_ORG' },
       isStandingsVerified: true,
       authenticity: {
         status: 'VERIFIED_AUTHENTIC',
@@ -100,22 +104,22 @@ test('manifest sanitizer zeroes placeholder stats on non-live verified fixtures'
   assert.equal(fix1.awayTeam.hasTopTierAwayForm, false);
   assert.equal(fix1.h2h, null);
   assert.equal(fix1.isStandingsVerified, false);
-  assert.equal(fix1.authenticity.status, 'UNVERIFIED_STATS');
-  assert.equal(fix1.authenticity.source, 'CANONICAL_AUDITED_DATASET_STATS_REMOVED');
+  assert.equal(fix1.authenticity.status, 'AUTO_REPAIRED');
+  assert.equal(fix1.authenticity.source, 'UNVERIFIED_PROVIDER_INGESTION');
 
   // fix-legacy-2 should be cleaned
   const fix2 = fixtures[1];
   assert.equal(fix2.homeTeam.leagueRank, null);
   assert.equal(fix2.homeTeam.points, null);
-  assert.equal(fix2.authenticity.status, 'UNVERIFIED_STATS');
-  assert.equal(fix2.authenticity.source, 'HOLLYWOODBETS_OFFICIAL_SLATE_2026_STATS_REMOVED');
+  assert.equal(fix2.authenticity.status, 'AUTO_REPAIRED');
+  assert.equal(fix2.authenticity.source, 'UNVERIFIED_PROVIDER_INGESTION');
 
   // fix-live-verified should remain untouched
   const fixLive = fixtures[2];
   assert.equal(fixLive.homeTeam.leagueRank, 1);
   assert.equal(fixLive.homeTeam.points, 50);
-  assert.equal(fixLive.authenticity.status, 'VERIFIED_AUTHENTIC');
-  assert.equal(fixLive.authenticity.source, 'FOOTBALL_DATA_ORG');
+  assert.equal(fixLive.authenticity.status, 'UNVERIFIED');
+  assert.equal(fixLive.authenticity.source, 'UNVERIFIED_PROVIDER_INGESTION');
 
   // Running it a second time is idempotent (changedCount is 0)
   const secondRun = sanitizeRuntimeManifest(fixtures);

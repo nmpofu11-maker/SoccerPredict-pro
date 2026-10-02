@@ -6,7 +6,7 @@ export interface SanitizeManifestResult {
   changedCount: number;
 }
 
-export function sanitizeRuntimeManifest(rawFixtures: MatchFixture[]): SanitizeManifestResult {
+export function sanitizeRuntimeManifest(rawFixtures: unknown[]): SanitizeManifestResult {
   if (!Array.isArray(rawFixtures)) {
     return { fixtures: [], changedCount: 0 };
   }
@@ -15,8 +15,10 @@ export function sanitizeRuntimeManifest(rawFixtures: MatchFixture[]): SanitizeMa
   const sanitizedList: MatchFixture[] = [];
 
   for (const raw of rawFixtures) {
-    if (!raw || typeof raw !== 'object' || !raw.id) continue;
-    const { fixture, repairs } = verifyAndSanitizeFixture(raw);
+    if (!raw || typeof raw !== 'object') continue;
+    const candidate = raw as { id?: unknown };
+    if (!candidate.id) continue;
+    const { fixture, repairs } = verifyAndSanitizeFixture(raw as MatchFixture);
     if (repairs.length > 0) {
       changedCount++;
     }

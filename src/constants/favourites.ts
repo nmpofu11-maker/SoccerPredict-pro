@@ -1,8 +1,8 @@
 /**
  * The 80 Priority Favourite Teams Matrix as specified in system specifications.
  * If ANY match contains one of these teams (either Home or Away), the system
- * flags is_favourite = true, auto-forces win floor to >= 55% under Rule 8,
- * and routes it into the dedicated Favourites Tab view.
+ * flags is_favourite = true and routes it into the dedicated Favourites Tab view.
+ * Favourite classification does not modify prediction probabilities.
  */
 export const PRIORITY_FAVOURITE_TEAMS: readonly string[] = [
   "Bolivar", "St Patrick's Athletic", "Madura United", "Japan U", "Ahlafors IF",
@@ -60,11 +60,7 @@ export function isFavouriteTeam(teamName?: string): boolean {
   if (!teamName) return false;
   const norm = teamName.toLowerCase().replace(/\s+/g, ' ').trim();
   if (normalizedSet.has(norm)) return true;
-  // Also check direct match in case of specific typography
-  return PRIORITY_FAVOURITE_TEAMS.some(fav => {
-    const fNorm = fav.toLowerCase().replace(/\s+/g, ' ').trim();
-    return norm === fNorm || norm.includes(fNorm);
-  });
+  return false;
 }
 
 export function isHighVolatilityLeague(leagueName?: string): boolean {

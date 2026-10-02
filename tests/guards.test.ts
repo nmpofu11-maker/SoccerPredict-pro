@@ -166,3 +166,24 @@ test('prediction engine ignores numeric team stats that have no source provenanc
   assert.ok(!prediction.appliedRules.some((rule) => /H2H|Position Gap|Squad Market Value|Shot\/Possession/.test(rule.ruleName)));
   assert.ok(Math.abs(prediction.homeWinPct - prediction.awayWinPct) < 0.01);
 });
+
+
+test('priority favourite classification does not force a probability floor', () => {
+  const fixture: any = {
+    id: 'favourite-floor-regression',
+    kickoffTime: '2026-10-10T15:00:00Z',
+    league: 'Test League',
+    venue: 'Test Ground',
+    isHighStakes: false,
+    motivation: 'regular',
+    homeTeam: { id: 'h', name: 'Napoli', shortName: 'NAP', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    awayTeam: { id: 'a', name: 'Away FC', shortName: 'AWA', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    h2h: null,
+  };
+  const prediction = evaluateFixturePrediction(fixture, 'none');
+  assert.ok(prediction.isFavouriteMatch);
+  assert.ok(prediction.appliedRules.some((rule) => rule.ruleName === 'Priority Favourite Tag'));
+  assert.ok(!prediction.appliedRules.some((rule) => rule.ruleName === 'Priority Favourite Win Floor'));
+  assert.ok(Math.abs(prediction.homeWinPct - prediction.awayWinPct) < 0.01);
+  assert.ok(prediction.homeWinPct < 55);
+});

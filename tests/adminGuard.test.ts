@@ -12,15 +12,18 @@ test('adminGuard: unset key gives 503 by default', () => {
   }
 });
 
-test('adminGuard: ALLOW_OPEN_ADMIN works outside production', () => {
+test('adminGuard: ALLOW_OPEN_ADMIN cannot bypass an unset server key', () => {
   const cfg = readAdminGuardConfig({ ADMIN_API_KEY: '', ALLOW_OPEN_ADMIN: 'true', NODE_ENV: 'development' });
-  const decision = decideAdminAccess(cfg, undefined);
-  assert.equal(decision.ok, true);
+  const decision = decideAdminAccess(cfg, '');
+  assert.equal(decision.ok, false);
+  if (!decision.ok) {
+    assert.equal(decision.status, 503);
+  }
 });
 
 test('adminGuard: ALLOW_OPEN_ADMIN fails closed in production', () => {
   const cfg = readAdminGuardConfig({ ADMIN_API_KEY: '', ALLOW_OPEN_ADMIN: 'true', NODE_ENV: 'production' });
-  const decision = decideAdminAccess(cfg, undefined);
+  const decision = decideAdminAccess(cfg, '');
   assert.equal(decision.ok, false);
   if (!decision.ok) {
     assert.equal(decision.status, 503);
