@@ -22,11 +22,7 @@ import {
   isTheRundownEventFinished,
   getTheRundownScores,
 } from './src/services/serverTheRundown';
-import {
-  footballDataConfigured,
-  lookupFootballDataTeamInfo,
-  fetchFootballDataStandings,
-} from './src/services/serverFootballData';
+import { enrichFixturesWithFootballData, footballDataConfigured } from './src/services/serverFootballData';
 import { extractTextFromPDF, scrapeUrl } from './src/services/manualDataService';
 import { evaluateFixturePrediction, sanitizeEngineWeights } from './src/engine/rulesEngine';
 import {
