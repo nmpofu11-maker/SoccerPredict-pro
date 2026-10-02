@@ -24,8 +24,8 @@ test('predictions are identical with and without odds on a real-data-shaped fixt
     venue: 'Test Ground',
     isHighStakes: false,
     motivation: 'regular',
-    homeTeam: { id: 'h', name: 'Home FC', shortName: 'HOM', leagueRank: 2, points: 30, form: ['W', 'W', 'D', 'L', 'W'], avgPossession: null, avgShotsOnTarget: null },
-    awayTeam: { id: 'a', name: 'Away FC', shortName: 'AWA', leagueRank: 8, points: 22, form: ['D', 'L', 'W', 'D', 'L'], avgPossession: null, avgShotsOnTarget: null },
+    homeTeam: { id: 'h', name: 'Home FC', shortName: 'HOM', leagueRank: 2, points: 30, form: ['W', 'W', 'D', 'L', 'W'], formSource: 'API_FOOTBALL', avgPossession: null, avgShotsOnTarget: null },
+    awayTeam: { id: 'a', name: 'Away FC', shortName: 'AWA', leagueRank: 8, points: 22, form: ['D', 'L', 'W', 'D', 'L'], formSource: 'API_FOOTBALL', avgPossession: null, avgShotsOnTarget: null },
     h2h: null,
   };
   const base = evaluateFixturePrediction(fixture, 'none') as any;
