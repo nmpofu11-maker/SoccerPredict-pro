@@ -1,4 +1,5 @@
 import type { MatchFixture, TeamStats, H2HRecord } from '../types/soccer';
+import { ALL_LEAGUES_DIRECTORY } from '../constants/leagues';
 import {
   apiFootballConfigured,
   sportmonksConfigured,
@@ -164,6 +165,42 @@ function mapSportmonksFixture(raw: any): MatchFixture | null {
   } as MatchFixture;
 }
 
+const TARGET_COMPETITION_ALIASES = new Set([
+  'south african premiership',
+  'south african first division',
+  'south african mtn 8 cup',
+  'south african nedbank cup',
+  'premier soccer league',
+  'caf champions league',
+  'caf confederation cup',
+  'english premier league',
+  'premier league',
+  'spanish la liga',
+  'laliga',
+  'german bundesliga',
+  'bundesliga',
+  'italian serie a',
+  'serie a',
+  'french ligue 1',
+  'ligue 1',
+  'uefa champions league',
+  'uefa europa league',
+  'uefa conference league',
+  'uefa nations league',
+  'fifa world cup qualifying - caf',
+  'fifa world cup qualifying - uefa',
+]);
+
+function normalizeCompetitionName(value: unknown): string {
+  return typeof value === 'string' ? value.toLowerCase().replace(/[.•]/g, ' ').replace(/\s+/g, ' ').trim() : '';
+}
+
+function isTargetCompetition(raw: any, mapped: MatchFixture): boolean {
+  const leagueName = normalizeCompetitionName(raw?.league?.name || mapped.competition || mapped.league);
+  if (TARGET_COMPETITION_ALIASES.has(leagueName)) return true;
+  return Object.values(ALL_LEAGUES_DIRECTORY).some((entry) => normalizeCompetitionName(entry.name) === leagueName);
+}
+
 function fixtureKey(f: MatchFixture): string {
   return `${normalizeProviderTeamName(f.homeTeam.name)}|${normalizeProviderTeamName(f.awayTeam.name)}|${f.kickoffTime.slice(0, 10)}`;
 }
@@ -215,7 +252,7 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
   let apiFootballMappedFixtures = 0;
   for (const raw of apiRaw) {
     const mapped = mapApiFootballFixture(raw);
-    if (mapped) { apiFootballMappedFixtures++; apiByKey.set(fixtureKey(mapped), { raw, mapped }); }
+    if (mapped && isTargetCompetition(raw, mapped)) { apiFootballMappedFixtures++; apiByKey.set(fixtureKey(mapped), { raw, mapped }); }
   }
   const enriched: MatchFixture[] = Array.from(byKey.values());
   const enrichedKeys = new Set(enriched.map(fixtureKey));
@@ -322,7 +359,7 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
   // it does not overwrite a fixture already sourced from another provider.
   for (const raw of sportmonksRaw) {
     const mapped = mapSportmonksFixture(raw);
-    if (!mapped) continue;
+    if (!mapped || !isTargetCompetition(raw, mapped)) continue;
     sportmonksMappedFixtures++;
     const key = fixtureKey(mapped);
     if (!enrichedKeys.has(key)) {
