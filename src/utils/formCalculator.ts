@@ -62,8 +62,6 @@ export function matchesTeamName(name1: string, name2: string): boolean {
   return n1 === n2;
 }
 
-const historicalMatchesCache = new Map<string, FormMatchItem[]>();
-
 /**
  * Extracts all matching historical match results for a given team,
  * sorted chronologically (oldest to newest).
