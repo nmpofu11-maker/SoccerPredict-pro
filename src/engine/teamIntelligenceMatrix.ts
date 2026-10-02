@@ -240,13 +240,13 @@ export function synthesizeTeamIntelligenceMatrices(
       teamStats[aName].pointsTotal += 3;
     }
 
-    if (f.homeTeam.hasMidweekFatigue72h) {
+    if (f.homeTeam.hasMidweekFatigue72h && f.homeTeam.scheduleSource) {
       teamStats[hName].fatigueMatches++;
       if (result.actualOutcome !== 'home') {
         teamStats[hName].fatiguePointsLost += 2;
       }
     }
-    if (f.awayTeam.hasMidweekFatigue72h) {
+    if (f.awayTeam.hasMidweekFatigue72h && f.awayTeam.scheduleSource) {
       teamStats[aName].fatigueMatches++;
       if (result.actualOutcome === 'home') {
         teamStats[aName].fatiguePointsLost += 3;
