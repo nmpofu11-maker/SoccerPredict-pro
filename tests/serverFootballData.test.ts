@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   computeTeamFormFromFinishedMatches,
+  resolveCompetitionCode,
   computeH2HFromFinishedMatches,
   enrichFixturesWithFootballData,
   FootballDataRateLimitError,
