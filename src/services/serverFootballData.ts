@@ -80,7 +80,10 @@ export function normalize(value: string): string {
 }
 
 export function resolveCompetitionCode(league: string): string | null {
-  const clean = league.toLowerCase().replace(/^[^•]+•\s*/, '').trim();
+  const raw = league.toLowerCase();
+  // The unqualified alias "Premier League" must never map South African fixtures to England's PL.
+  if (/south africa|south african|\\brsa\\b/.test(raw)) return null;
+  const clean = raw.replace(/^[^•]+•\\s*/, '').trim();
   for (const [name, code] of Object.entries(FOOTBALL_DATA_COMPETITION_CODES)) {
     if (clean === name || clean.includes(name)) return code;
   }
