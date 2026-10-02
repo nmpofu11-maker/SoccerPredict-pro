@@ -25,6 +25,8 @@ import {
 import { enrichFixturesWithFootballData, footballDataConfigured } from './src/services/serverFootballData';
 import { pitchApiConfigured, fetchPitchApiFixturesByDate } from './src/services/serverPitchApi';
 import { sportDbConfigured, fetchSportDbFixturesByDate } from './src/services/serverSportDb';
+import { apiFootballConfigured, sportmonksConfigured } from './src/services/serverFootballApis';
+import { enrichFixturesWithFootballApis } from './src/services/serverFootballProviderEnrichment';
 import { extractTextFromPDF, scrapeUrl } from './src/services/manualDataService';
 import { evaluateFixturePrediction, sanitizeEngineWeights } from './src/engine/rulesEngine';
 import {
@@ -689,10 +691,12 @@ interface IngestDiagnostics {
   theRundown: IngestProviderDiagnostics;
   pitchApi: IngestProviderDiagnostics;
   sportDb: IngestProviderDiagnostics;
+  apiFootball: IngestProviderDiagnostics;
+  sportmonks: IngestProviderDiagnostics;
   manifestBefore: number;
   manifestAfter: number;
   added: number;
-  sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | null;
+  sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | 'API_FOOTBALL' | 'SPORTMONKS' | null;
 }
 
 interface CronStatus {
@@ -701,7 +705,7 @@ interface CronStatus {
     lastSuccess: boolean | null;
     lastMessage: string;
     fixturesIngested: number;
-    sourceUsed?: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | null;
+    sourceUsed?: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | 'API_FOOTBALL' | 'SPORTMONKS' | null;
     diagnostics?: IngestDiagnostics;
   };
   settlement: {
@@ -996,6 +1000,8 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     theRundown: makeProviderDiagnostics(theRundownConfigured()),
     pitchApi: makeProviderDiagnostics(pitchApiConfigured()),
     sportDb: makeProviderDiagnostics(sportDbConfigured()),
+    apiFootball: makeProviderDiagnostics(apiFootballConfigured()),
+    sportmonks: makeProviderDiagnostics(sportmonksConfigured()),
     manifestBefore: readRawDiskManifest().length,
     manifestAfter: readRawDiskManifest().length,
     added: 0,
@@ -1008,7 +1014,7 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
   };
 
   let mapped: any[] = [];
-  let sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | null = null;
+  let sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | 'API_FOOTBALL' | 'SPORTMONKS' | null = null;
 
   if (diagnostics.sportApiAi.configured) {
     for (const candidateDate of ingestDates) {
@@ -1153,6 +1159,39 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     diagnostics.sportDb.notes.push(diagnostics.sportDb.configured ? 'Not queried because another provider produced usable fixtures.' : 'SPORTDB_API_KEY not configured.');
   }
 
+  // API-Football and Sportmonks are queried as independent schedule sources,
+  // even when another provider already supplied fixtures. Exact team/date matches
+  // enrich existing records; unmatched real fixtures expand competition coverage.
+  diagnostics.apiFootball.requestCount = diagnostics.apiFootball.configured ? ingestDates.length : 0;
+  diagnostics.sportmonks.requestCount = diagnostics.sportmonks.configured ? ingestDates.length : 0;
+  try {
+    const beforeProviderEnrichment = mapped.length;
+    const providerResult = await enrichFixturesWithFootballApis(mapped as any, ingestDates);
+    mapped = providerResult.fixtures as any[];
+    if (diagnostics.apiFootball.configured) {
+      diagnostics.apiFootball.rawRecords = providerResult.apiFootballFixtures;
+      diagnostics.apiFootball.mappedRecords = providerResult.apiFootballFixtures;
+      diagnostics.apiFootball.successfulRequests = providerResult.apiFootballFixtures > 0 ? ingestDates.length : 0;
+      if (providerResult.apiFootballFixtures === 0) diagnostics.apiFootball.notes.push('No API-Football fixtures returned for requested dates.');
+    }
+    if (diagnostics.sportmonks.configured) {
+      diagnostics.sportmonks.rawRecords = providerResult.sportmonksFixtures;
+      diagnostics.sportmonks.mappedRecords = providerResult.sportmonksFixtures;
+      diagnostics.sportmonks.successfulRequests = providerResult.sportmonksFixtures > 0 ? ingestDates.length : 0;
+      if (providerResult.sportmonksFixtures === 0) diagnostics.sportmonks.notes.push('No Sportmonks fixtures returned for requested dates.');
+    }
+    diagnostics.apiFootball.notes.push(`Team-form/standings enrichment updated ${providerResult.enrichedTeams} fixture(s).`);
+    diagnostics.apiFootball.notes.push(...providerResult.errors);
+    if (beforeProviderEnrichment === 0 && providerResult.apiFootballFixtures > 0) sourceUsed = 'API_FOOTBALL';
+    if (beforeProviderEnrichment === 0 && providerResult.apiFootballFixtures === 0 && providerResult.sportmonksFixtures > 0) sourceUsed = 'SPORTMONKS';
+  } catch (err) {
+    diagnostics.apiFootball.failedRequests++;
+    diagnostics.sportmonks.failedRequests++;
+    const message = err instanceof Error ? err.message : String(err);
+    diagnostics.apiFootball.httpErrors.push(message);
+    diagnostics.sportmonks.httpErrors.push(message);
+  }
+
   // Enrich supported club competitions with verified current standings/form before persistence.
   // International and unsupported competitions remain untouched rather than receiving fabricated data.
   if (footballDataConfigured() && mapped.length > 0) {
@@ -1182,7 +1221,9 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     const rundownSummary = diagnostics.theRundown.configured ? `requests ${diagnostics.theRundown.successfulRequests}/${diagnostics.theRundown.requestCount}, raw ${diagnostics.theRundown.rawRecords}, mapped ${diagnostics.theRundown.mappedRecords}` : 'not configured';
     const pitchSummary = diagnostics.pitchApi.configured ? `requests ${diagnostics.pitchApi.successfulRequests}/${diagnostics.pitchApi.requestCount}, raw ${diagnostics.pitchApi.rawRecords}, mapped ${diagnostics.pitchApi.mappedRecords}` : 'not configured';
     const sportDbSummary = diagnostics.sportDb.configured ? `requests ${diagnostics.sportDb.successfulRequests}/${diagnostics.sportDb.requestCount}, raw ${diagnostics.sportDb.rawRecords}, mapped ${diagnostics.sportDb.mappedRecords}` : 'not configured';
-    const msg = `No automated fixtures ingested for ${ingestDates.join(' or ')}. SportAPI.ai: ${sportSummary}. TheRundown: ${rundownSummary}. PitchAPI: ${pitchSummary}. SportDB: ${sportDbSummary}.`;
+    const apiFootballSummary = diagnostics.apiFootball.configured ? `raw ${diagnostics.apiFootball.rawRecords}` : 'not configured';
+    const sportmonksSummary = diagnostics.sportmonks.configured ? `raw ${diagnostics.sportmonks.rawRecords}` : 'not configured';
+    const msg = `No automated fixtures ingested for ${ingestDates.join(' or ')}. SportAPI.ai: ${sportSummary}. TheRundown: ${rundownSummary}. PitchAPI: ${pitchSummary}. SportDB: ${sportDbSummary}. API-Football: ${apiFootballSummary}. Sportmonks: ${sportmonksSummary}.`;
     status.ingest = {
       lastRunAt: new Date().toISOString(),
       lastSuccess: false,
@@ -1230,8 +1271,8 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     diagnostics.manifestAfter = combined.length;
     diagnostics.completedAt = new Date().toISOString();
 
-    const sourceLabel = sourceUsed === 'SPORTAPI_AI' ? 'SportAPI.ai' : sourceUsed === 'THERUNDOWN' ? 'TheRundown.io' : sourceUsed === 'PITCHAPI' ? 'PitchAPI' : 'SportDB';
-    const msg = `Ingested ${mapped.length} fixtures from ${sourceLabel} for ${dateStr} (${newCount} new). Raw records: SportAPI.ai ${diagnostics.sportApiAi.rawRecords}; TheRundown ${diagnostics.theRundown.rawRecords}; PitchAPI ${diagnostics.pitchApi.rawRecords}; SportDB ${diagnostics.sportDb.rawRecords}. Mapped: SportAPI.ai ${diagnostics.sportApiAi.mappedRecords}; TheRundown ${diagnostics.theRundown.mappedRecords}; PitchAPI ${diagnostics.pitchApi.mappedRecords}; SportDB ${diagnostics.sportDb.mappedRecords}.`;
+    const sourceLabel = sourceUsed === 'SPORTAPI_AI' ? 'SportAPI.ai' : sourceUsed === 'THERUNDOWN' ? 'TheRundown.io' : sourceUsed === 'PITCHAPI' ? 'PitchAPI' : sourceUsed === 'SPORTDB' ? 'SportDB' : sourceUsed === 'API_FOOTBALL' ? 'API-Football' : 'Sportmonks';
+    const msg = `Ingested ${mapped.length} fixtures from ${sourceLabel} for ${dateStr} (${newCount} new). Raw records: SportAPI.ai ${diagnostics.sportApiAi.rawRecords}; TheRundown ${diagnostics.theRundown.rawRecords}; PitchAPI ${diagnostics.pitchApi.rawRecords}; SportDB ${diagnostics.sportDb.rawRecords}; API-Football ${diagnostics.apiFootball.rawRecords}; Sportmonks ${diagnostics.sportmonks.rawRecords}. Mapped: SportAPI.ai ${diagnostics.sportApiAi.mappedRecords}; TheRundown ${diagnostics.theRundown.mappedRecords}; PitchAPI ${diagnostics.pitchApi.mappedRecords}; SportDB ${diagnostics.sportDb.mappedRecords}.`;
     status.ingest = {
       lastRunAt: new Date().toISOString(),
       lastSuccess: true,
