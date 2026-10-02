@@ -11,8 +11,8 @@ export interface SettledResultsResponse {
 /**
  * Fetches match results settled by the server-side automated pipeline
  * (data/results-log.json, written by the daily ingest + settlement cron jobs).
- * These are real, growing results — distinct from the static seed dataset in
- * src/data/historical_results.ts, which was a one-time hand-authored snapshot.
+ * These are the only historical outcomes used for model evaluation and learning.
+ * Unverified hard-coded historical records are intentionally excluded.
  */
 export async function fetchSettledResults(): Promise<HistoricalMatchResult[]> {
   try {
