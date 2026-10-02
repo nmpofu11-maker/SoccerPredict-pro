@@ -142,9 +142,25 @@ function sanitizeTeamStats(
       .slice(0, 5) as ('W' | 'D' | 'L')[];
   }
 
-  // 2b. Form score sequence inspection (only preserve authentic full-time scores, never fabricate)
-  if (!Array.isArray(cleanTeam.formScores)) {
+  // Form is usable only when a known provider provenance accompanies it.
+  const trustedFormSources = new Set(['API_FOOTBALL', 'FOOTBALL_DATA_ORG', 'ESPN', 'SPORTMONKS', 'SPORTAPI_AI', 'THERUNDOWN', 'PITCHAPI', 'SPORTDB']);
+  if (cleanTeam.form.length > 0 && (!cleanTeam.formSource || !trustedFormSources.has(cleanTeam.formSource))) {
+    repairsLog.push({
+      field: `${team.name} (form)`,
+      originalValue: cleanTeam.form,
+      repairedValue: [],
+      reason: 'Removed form without recognized provider provenance',
+    });
+    cleanTeam.form = [];
     cleanTeam.formScores = [];
+    cleanTeam.formDetails = [];
+    cleanTeam.formSource = undefined;
+  }
+
+  // Legacy formScores alone do not carry opponent/date/source provenance.
+  if (cleanTeam.formSource !== 'FOOTBALL_DATA_ORG') {
+    cleanTeam.formScores = [];
+    cleanTeam.formDetails = [];
   }
 
   // 3. Tactical possession and shots remain unknown unless supplied by a trusted source.
@@ -258,7 +274,9 @@ export function verifyAndSanitizeFixture(
 
   // Check 6: Head-to-Head Record Sanity
   // Validate the observed record; never invent missing outcomes.
-  let cleanH2H = fixture.h2h ? { ...fixture.h2h } : null;
+  let cleanH2H = fixture.h2h && ['FOOTBALL_DATA_ORG', 'API_FOOTBALL', 'SPORTMONKS'].includes(fixture.h2h.source || '')
+    ? { ...fixture.h2h }
+    : null;
   // Older manifests may contain all-zero H2H objects created by the previous
   // mapper as placeholders. They represent missing data, not a real 0-0 record.
   if (cleanH2H && cleanH2H.homeWins === 0 && cleanH2H.draws === 0 && cleanH2H.awayWins === 0 &&
