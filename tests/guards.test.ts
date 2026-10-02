@@ -86,7 +86,7 @@ test('validator preserves valid observed standings without claiming official ver
     isHighStakes: false,
     homeTeam: { id: 'h', name: 'Home', shortName: 'HOM', leagueRank: 2, points: 30, standingsSource: 'API_FOOTBALL', form: ['W'], formSource: 'API_FOOTBALL', avgPossession: null, avgShotsOnTarget: null, isHomeDominant: false, hasTopTierAwayForm: false },
     awayTeam: { id: 'a', name: 'Away', shortName: 'AWA', leagueRank: 18, points: 12, standingsSource: 'API_FOOTBALL', form: ['L'], formSource: 'API_FOOTBALL', avgPossession: null, avgShotsOnTarget: null, isHomeDominant: false, hasTopTierAwayForm: false },
-    h2h: { homeWins: null, draws: null, awayWins: null, totalLast5: null },
+    h2h: null,
   };
   const { fixture: clean, stamp } = verifyAndSanitizeFixture(fixture);
   assert.equal(clean.homeTeam.leagueRank, 2);
