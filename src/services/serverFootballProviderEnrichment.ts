@@ -3,7 +3,6 @@ import {
   apiFootballConfigured,
   sportmonksConfigured,
   apiFootballGet,
-  sportmonksGet,
   fetchApiFootballFixturesByDate,
   fetchApiFootballHeadToHead,
   fetchSportmonksFixturesByDate,
@@ -229,23 +228,36 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
     if (apiFixture.venue && fixture.venue === 'Unknown Venue') update.venue = apiFixture.venue;
 
     if (Number.isInteger(leagueId) && Number.isInteger(season) && Number.isInteger(homeId) && Number.isInteger(awayId)) {
+      let standings = new Map<string, { rank: number; points: number | null }>();
       try {
-        const standings = await getApiFootballStandings(leagueId, season);
-        const [homeStats, awayStats] = await Promise.all([
-          getApiFootballTeamStats(homeId, leagueId, season),
-          getApiFootballTeamStats(awayId, leagueId, season),
-        ]);
-        const homeRank = standings.get(String(homeId));
-        const awayRank = standings.get(String(awayId));
-        update.homeTeam = { ...fixture.homeTeam, ...teamStatsFromApiFootball(homeStats, homeRank) };
-        update.awayTeam = { ...fixture.awayTeam, ...teamStatsFromApiFootball(awayStats, awayRank) };
+        standings = await getApiFootballStandings(leagueId, season);
+      } catch (err) {
+        errors.push(`API-Football standings ${leagueId}/${season}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      const [homeStatsResult, awayStatsResult] = await Promise.allSettled([
+        getApiFootballTeamStats(homeId, leagueId, season),
+        getApiFootballTeamStats(awayId, leagueId, season),
+      ]);
+      const homeRank = standings.get(String(homeId));
+      const awayRank = standings.get(String(awayId));
+      if (homeStatsResult.status === 'fulfilled') {
+        update.homeTeam = { ...fixture.homeTeam, ...teamStatsFromApiFootball(homeStatsResult.value, homeRank) };
+      } else {
+        errors.push(`API-Football team stats ${fixture.homeTeam.name}: ${String(homeStatsResult.reason)}`);
+        if (homeRank) update.homeTeam = { ...fixture.homeTeam, ...teamStatsFromApiFootball(null, homeRank) };
+      }
+      if (awayStatsResult.status === 'fulfilled') {
+        update.awayTeam = { ...fixture.awayTeam, ...teamStatsFromApiFootball(awayStatsResult.value, awayRank) };
+      } else {
+        errors.push(`API-Football team stats ${fixture.awayTeam.name}: ${String(awayStatsResult.reason)}`);
+        if (awayRank) update.awayTeam = { ...fixture.awayTeam, ...teamStatsFromApiFootball(null, awayRank) };
+      }
 
-        // South African Premiership is not covered by Football-Data.org.
-        // Use API-Football's actual direct-match records rather than placeholder zeroes.
-        if (!fixture.h2h && /south african premiership|betway premiership/i.test(fixture.league)) {
+      // South African Premiership is not covered by Football-Data.org.
+      // Use API-Football's actual direct-match records rather than placeholder zeroes.
+      if (!fixture.h2h && /south african premiership|betway premiership/i.test(fixture.league)) {
+        try {
           const rawH2H = await fetchApiFootballHeadToHead(homeId, awayId);
-          const homeNameId = homeId;
-          const awayNameId = awayId;
           let homeWins = 0;
           let draws = 0;
           let awayWins = 0;
@@ -258,9 +270,9 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
             if (Number.isFinite(playedAt) && playedAt >= new Date(fixture.kickoffTime).getTime()) continue;
             const recordHomeId = Number(record?.teams?.home?.id);
             const recordAwayId = Number(record?.teams?.away?.id);
-            const currentHomeAtVenue = recordHomeId === homeNameId;
-            const samePair = (recordHomeId === homeNameId && recordAwayId === awayNameId) ||
-              (recordHomeId === awayNameId && recordAwayId === homeNameId);
+            const currentHomeAtVenue = recordHomeId === homeId;
+            const samePair = (recordHomeId === homeId && recordAwayId === awayId) ||
+              (recordHomeId === awayId && recordAwayId === homeId);
             if (!samePair) continue;
             scoresLast5.push(`${homeGoals}-${awayGoals}`);
             if (homeGoals === awayGoals) draws++;
@@ -270,9 +282,9 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
           if (scoresLast5.length > 0) {
             update.h2h = { homeWins, draws, awayWins, totalLast5: scoresLast5.length, scoresLast5 } as H2HRecord;
           }
+        } catch (err) {
+          errors.push(`API-Football H2H ${fixture.homeTeam.name} / ${fixture.awayTeam.name}: ${err instanceof Error ? err.message : String(err)}`);
         }
-      } catch (err) {
-        errors.push(`API-Football team enrichment ${fixture.homeTeam.name} / ${fixture.awayTeam.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
     Object.assign(fixture, update);
