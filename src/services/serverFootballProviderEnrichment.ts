@@ -208,6 +208,14 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
   }
   const enriched: MatchFixture[] = Array.from(byKey.values());
   const enrichedKeys = new Set(enriched.map(fixtureKey));
+  // Add API-Football-only fixtures before enrichment so they receive the same
+  // verified standings/form processing as fixtures from the other feeds.
+  for (const [key, match] of apiByKey) {
+    if (!enrichedKeys.has(key)) {
+      enriched.push(match.mapped);
+      enrichedKeys.add(key);
+    }
+  }
 
   for (const fixture of enriched) {
     const match = apiByKey.get(fixtureKey(fixture));
@@ -227,7 +235,9 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
     };
     if (apiFixture.venue && fixture.venue === 'Unknown Venue') update.venue = apiFixture.venue;
 
-    if (Number.isInteger(leagueId) && Number.isInteger(season) && Number.isInteger(homeId) && Number.isInteger(awayId)) {
+    const competitionText = `${raw.league?.name || ''} ${raw.league?.country || ''} ${fixture.league || ''}`;
+    const isPriorityCompetition = /south africa.*premier|premier.*south africa|premier soccer league|premier league|la liga|serie a|bundesliga|ligue 1|champions league|world cup|afcon|nations league|copa america|euro/i.test(competitionText);
+    if (isPriorityCompetition && Number.isInteger(leagueId) && Number.isInteger(season) && Number.isInteger(homeId) && Number.isInteger(awayId)) {
       let standings = new Map<string, { rank: number; points: number | null }>();
       try {
         standings = await getApiFootballStandings(leagueId, season);
@@ -255,7 +265,7 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
 
       // South African Premiership is not covered by Football-Data.org.
       // Use API-Football's actual direct-match records rather than placeholder zeroes.
-      if (!fixture.h2h && /south african premiership|betway premiership/i.test(fixture.league)) {
+      if (!fixture.h2h && /south africa.*premier|premier.*south africa|premier soccer league|south african premiership|betway premiership/i.test(competitionText)) {
         try {
           const rawH2H = await fetchApiFootballHeadToHead(homeId, awayId);
           let homeWins = 0;
@@ -310,16 +320,7 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
     }
   }
 
-  // API-Football may also contribute new fixtures not supplied by other configured feeds.
-  for (const raw of apiRaw) {
-    const mapped = mapApiFootballFixture(raw);
-    if (!mapped) continue;
-    const key = fixtureKey(mapped);
-    if (!enrichedKeys.has(key)) {
-      enriched.push(mapped);
-      enrichedKeys.add(key);
-    }
-  }
+
 
   const enrichedTeams = enriched.filter((f) => Array.isArray(f.homeTeam.form) && f.homeTeam.form.length > 0 &&
     Array.isArray(f.awayTeam.form) && f.awayTeam.form.length > 0).length;
