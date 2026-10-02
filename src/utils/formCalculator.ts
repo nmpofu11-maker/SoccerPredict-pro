@@ -172,9 +172,9 @@ export function calculateTeamForm(
   finalMatches.forEach((m, idx) => {
     m.index = idx;
     if (!m.score) {
-      if (teamStats?.formScores && teamStats.formScores[idx]) {
-        m.score = teamStats.formScores[idx];
-      } else if (teamStats?.formDetails && teamStats.formDetails[idx]?.score) {
+      // Only formDetails carries opponent/venue/date provenance. Legacy formScores
+      // arrays are unproven and must not be displayed as authentic full-time scores.
+      if (teamStats?.formDetails && teamStats.formDetails[idx]?.score) {
         m.score = teamStats.formDetails[idx].score;
         m.opponent = m.opponent || teamStats.formDetails[idx].opponent;
         m.venue = m.venue || teamStats.formDetails[idx].venue;
@@ -269,7 +269,7 @@ export function calculateMatchFormComparison(
 
 export interface FormResultBadgeData {
   result: 'W' | 'D' | 'L';
-  score: string; // FT score, e.g. "2-1", "1-0", "0-0"
+  score: string; // Observed FT score; empty when no sourced score is available
   opponent?: string;
   venue?: 'H' | 'A';
   date?: string;
