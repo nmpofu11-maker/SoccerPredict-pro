@@ -190,7 +190,8 @@ function sanitizeTeamStats(
 
   // Advanced ratings, xG, market value and prior-season data are not currently
   // populated by a trusted provider in this pipeline. Drop legacy unproven values.
-  if (!cleanTeam.advancedStatsSource) {
+  const trustedAdvancedSources = ['API_FOOTBALL', 'SPORTMONKS', 'FOOTBALL_DATA_ORG'];
+  if (!cleanTeam.advancedStatsSource || !trustedAdvancedSources.includes(cleanTeam.advancedStatsSource)) {
     const hadAdvancedStats = [cleanTeam.lastSeasonRank, cleanTeam.lastSeasonPoints, cleanTeam.totalSquadValueEur, cleanTeam.avgMatchRating, cleanTeam.expectedGoalsAvg].some((v) => v !== undefined && v !== null) || Boolean(cleanTeam.lastSeasonStanding) || Boolean(cleanTeam.keyPlayerAbsenceSeverity);
     if (hadAdvancedStats) repairsLog.push({ field: `${team.name} (advanced stats)`, originalValue: 'unverified advanced team data', repairedValue: null, reason: 'Removed advanced team metrics without recognized provider provenance' });
     cleanTeam.lastSeasonRank = undefined;
@@ -200,17 +201,22 @@ function sanitizeTeamStats(
     cleanTeam.avgMatchRating = undefined;
     cleanTeam.expectedGoalsAvg = undefined;
     cleanTeam.keyPlayerAbsenceSeverity = undefined;
+    cleanTeam.advancedStatsSource = undefined;
   }
 
   // Split-form and schedule flags remain off until a provider explicitly supplies them.
-  if (!cleanTeam.homeAwayFormSource) {
+  const trustedSplitSources = ['API_FOOTBALL', 'SPORTMONKS', 'FOOTBALL_DATA_ORG'];
+  if (!cleanTeam.homeAwayFormSource || !trustedSplitSources.includes(cleanTeam.homeAwayFormSource)) {
     if (cleanTeam.isHomeDominant || cleanTeam.hasTopTierAwayForm) repairsLog.push({ field: `${team.name} (home/away split flags)`, originalValue: { isHomeDominant: cleanTeam.isHomeDominant, hasTopTierAwayForm: cleanTeam.hasTopTierAwayForm }, repairedValue: false, reason: 'Removed home/away split flags without split-form provenance' });
     cleanTeam.isHomeDominant = false;
     cleanTeam.hasTopTierAwayForm = false;
+    cleanTeam.homeAwayFormSource = undefined;
   }
-  if (!cleanTeam.scheduleSource) {
+  const trustedScheduleSources = ['API_FOOTBALL', 'SPORTMONKS', 'ESPN'];
+  if (!cleanTeam.scheduleSource || !trustedScheduleSources.includes(cleanTeam.scheduleSource)) {
     if (cleanTeam.hasMidweekFatigue72h) repairsLog.push({ field: `${team.name} (schedule fatigue)`, originalValue: true, repairedValue: false, reason: 'Removed fatigue flag without schedule-source provenance' });
     cleanTeam.hasMidweekFatigue72h = false;
+    cleanTeam.scheduleSource = undefined;
   }
 
   return { team: cleanTeam, matchedOfficialTable };
