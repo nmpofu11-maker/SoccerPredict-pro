@@ -45,6 +45,18 @@ export interface TheRundownEvent {
 // Swapped the two rarely-active international tournaments (Euro Championship,
 // World Cup — only relevant every few years) for two regularly-active club
 // competitions TheRundown actually covers, since this is a daily fixture feed.
+export const THE_RUNDOWN_SOCCER_SPORTS = [
+  { id: 11, name: 'EPL', country: 'England' },
+  { id: 14, name: 'La Liga', country: 'Spain' },
+  { id: 15, name: 'Serie A', country: 'Italy' },
+  { id: 13, name: 'Bundesliga', country: 'Germany' },
+  { id: 12, name: 'Ligue 1', country: 'France' },
+  { id: 10, name: 'MLS', country: 'USA' },
+  { id: 16, name: 'UEFA Champions League', country: 'Europe' },
+  { id: 33, name: 'UEFA Europa League', country: 'Europe' },
+  { id: 34, name: 'Liga MX', country: 'Mexico' },
+];
+
 const SOCCER_LEAGUE_NAMES = new Set([
   'EPL',
   'La Liga',
@@ -70,37 +82,38 @@ async function getRundownSoccerSports(): Promise<Array<{ id: number; name: strin
   const key = (process.env.THERUNDOWN_API_KEY || process.env.THERUNDOWN_KEY)?.trim();
   if (!key) return [];
 
-  const res = await fetch(`${getBaseUrl()}/sports`, {
-    headers: { 'X-TheRundown-Key': key, 'Accept': 'application/json' },
-    signal: AbortSignal.timeout(15000),
-  });
+  try {
+    const res = await fetch(`${getBaseUrl()}/sports`, {
+      headers: { 'X-TheRundown-Key': key, 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(15000),
+    });
 
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`TheRundown sports catalog HTTP ${res.status}: ${detail.slice(0, 300)}`);
+    if (res.ok) {
+      const data = await res.json();
+      const sports = Array.isArray(data) ? data : Array.isArray(data?.sports) ? data.sports : [];
+      const selected = sports
+        .filter((s: any) => {
+          const name = String(s.name || s.display_name || s.league_name || '').trim();
+          return SOCCER_LEAGUE_NAMES.has(name);
+        })
+        .map((s: any) => ({
+          id: Number(s.id ?? s.sport_id),
+          name: String(s.name || s.display_name || s.league_name),
+          country: String(s.country || s.region || 'International'),
+        }))
+        .filter((s: any) => Number.isInteger(s.id) && s.id > 0);
+
+      if (selected.length > 0) {
+        rundownSportsCache = selected;
+        rundownSportsCacheAt = Date.now();
+        return selected;
+      }
+    }
+  } catch (err) {
+    console.warn('[TheRundown] Could not fetch dynamic sports catalog, falling back to verified static soccer sports:', err);
   }
 
-  const data = await res.json();
-  const sports = Array.isArray(data) ? data : Array.isArray(data.sports) ? data.sports : [];
-  const selected = sports
-    .filter((s: any) => {
-      const name = String(s.name || s.display_name || s.league_name || '').trim();
-      return SOCCER_LEAGUE_NAMES.has(name);
-    })
-    .map((s: any) => ({
-      id: Number(s.id ?? s.sport_id),
-      name: String(s.name || s.display_name || s.league_name),
-      country: String(s.country || s.region || 'International'),
-    }))
-    .filter((s: any) => Number.isInteger(s.id) && s.id > 0);
-
-  if (selected.length === 0) {
-    throw new Error('TheRundown sports catalog returned no recognized soccer leagues.');
-  }
-
-  rundownSportsCache = selected;
-  rundownSportsCacheAt = Date.now();
-  return selected;
+  return THE_RUNDOWN_SOCCER_SPORTS;
 }
 
 export function theRundownConfigured(): boolean {

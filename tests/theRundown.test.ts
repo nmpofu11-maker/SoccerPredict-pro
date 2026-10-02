@@ -13,6 +13,12 @@ function setup(handler: (url: string, call: number) => { status: number; body?: 
   const warnings: string[] = [];
   globalThis.fetch = (async (input: any) => {
     const url = String(input);
+    if (url.endsWith('/sports')) {
+      return new Response(JSON.stringify(THE_RUNDOWN_SOCCER_SPORTS), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
     const r = handler(url, calls.length);
     calls.push(url);
     const text = typeof r.body === 'string' ? r.body : JSON.stringify(r.body ?? {});

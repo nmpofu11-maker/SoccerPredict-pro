@@ -22,6 +22,11 @@ import {
   isTheRundownEventFinished,
   getTheRundownScores,
 } from './src/services/serverTheRundown';
+import {
+  footballDataConfigured,
+  lookupFootballDataTeamInfo,
+  fetchFootballDataStandings,
+} from './src/services/serverFootballData';
 import { extractTextFromPDF, scrapeUrl } from './src/services/manualDataService';
 import { evaluateFixturePrediction, sanitizeEngineWeights } from './src/engine/rulesEngine';
 import {
@@ -738,9 +743,24 @@ function writeCronStatus(status: CronStatus): void {
 
 function parseProviderKickoff(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const normalized = value.trim().replace(' ', 'T');
-  if (!normalized || !/(Z|[+-]\d{2}:?\d{2})$/i.test(normalized)) return null;
-  const parsed = new Date(normalized);
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  // Format with explicit timezone (e.g., 2026-10-01T18:00:00Z or +02:00)
+  const normalizedWithT = trimmed.replace(' ', 'T');
+  if (/(Z|[+-]\d{2}:?\d{2})$/i.test(normalizedWithT)) {
+    const parsed = new Date(normalizedWithT);
+    return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+  }
+
+  // Format like '2026-10-01 18:00:00' or '2026-10-01T18:00:00' (SportAPI.ai supplies UTC without timezone suffix)
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/.test(trimmed)) {
+    const isoUtc = `${normalizedWithT.length === 16 ? normalizedWithT + ':00' : normalizedWithT}Z`;
+    const parsed = new Date(isoUtc);
+    return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+  }
+
+  const parsed = new Date(trimmed);
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }
 
@@ -1063,6 +1083,32 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
 
     const mergedMap = new Map<string, any>();
     for (const df of diskFixtures) mergedMap.set(normalizeKey(df), df);
+
+    // If Football-Data.org is configured, enrich incoming fixtures with authentic standings & form
+    if (footballDataConfigured()) {
+      for (const f of mapped) {
+        try {
+          if (!f.homeTeam?.leagueRank && f.homeTeam?.name) {
+            const hInfo = await lookupFootballDataTeamInfo(f.homeTeam.name, f.league);
+            if (hInfo) {
+              f.homeTeam.leagueRank = hInfo.rank;
+              f.homeTeam.points = hInfo.points;
+              if (hInfo.form && hInfo.form.length > 0) f.homeTeam.form = hInfo.form;
+            }
+          }
+          if (!f.awayTeam?.leagueRank && f.awayTeam?.name) {
+            const aInfo = await lookupFootballDataTeamInfo(f.awayTeam.name, f.league);
+            if (aInfo) {
+              f.awayTeam.leagueRank = aInfo.rank;
+              f.awayTeam.points = aInfo.points;
+              if (aInfo.form && aInfo.form.length > 0) f.awayTeam.form = aInfo.form;
+            }
+          }
+        } catch {
+          // Keep resilient
+        }
+      }
+    }
 
     let newCount = 0;
     for (const mf of mapped) {
