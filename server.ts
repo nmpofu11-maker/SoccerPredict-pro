@@ -771,19 +771,13 @@ function mapSportApiAiToInternalFixture(f: any, providerDate?: string): any {
   if (!homeName || !awayName) return null;
   const idStr = String(f.id || `${homeName}_${awayName}`);
 
-  // SportAPI.ai currently supplies the calendar date at the response level
-  // rather than repeating it on every fixture object.
-  const fixtureDate = typeof f.date === 'string' ? f.date.trim() : '';
-  const fallbackDate = fixtureDate || (typeof providerDate === 'string' ? providerDate.trim() : '');
+  // Date-only provider records do not contain a real kickoff time; reject them.
   const kickoffTime =
     parseProviderKickoff(f.datetime) ||
     parseProviderKickoff(f.kickoff_time) ||
     parseProviderKickoff(f.utc_date) ||
     parseProviderKickoff(f.start_time) ||
-    parseProviderKickoff(f.date) ||
-    (fallbackDate && /^\d{4}-\d{2}-\d{2}$/.test(fallbackDate)
-      ? `${fallbackDate}T12:00:00.000Z`
-      : null);
+    (typeof f.date === 'string' && /[T ]\\d{2}:\\d{2}/.test(f.date) ? parseProviderKickoff(f.date) : null);
   if (!kickoffTime) return null;
 
   const leagueName = f.league_name
@@ -930,8 +924,11 @@ function mapSportDbToInternalFixture(match: any, fallbackDateStr: string): any {
   const awayName = typeof match?.away_team === 'string' ? match.away_team : (match?.away_team?.name || '');
   if (!homeName || !awayName) return null;
 
-  const rawKickoff = match?.utc_date || match?.kickoff_time || match?.date || fallbackDateStr;
-  const kickoffTime = parseProviderKickoff(rawKickoff) || `${fallbackDateStr}T15:00:00.000Z`;
+  const rawKickoff = match?.utc_date || match?.kickoff_time || match?.date;
+  const kickoffTime = typeof rawKickoff === 'string' && /[T ]\\d{2}:\\d{2}/.test(rawKickoff)
+    ? parseProviderKickoff(rawKickoff)
+    : null;
+  if (!kickoffTime) return null;
 
   const homeScore = Number(match?.score?.home ?? match?.score?.fulltime?.home ?? match?.score_home);
   const awayScore = Number(match?.score?.away ?? match?.score?.fulltime?.away ?? match?.score_away);
