@@ -98,6 +98,12 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
               </span>
             </div>
             <div className="flex flex-col items-end">
+              <span className="text-[10px] text-slate-400 font-sans">Football-Data</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.footballDataConfigured ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                {status.footballDataConfigured ? 'CONNECTED' : 'UNSET'}
+              </span>
+            </div>
+            <div className="flex flex-col items-end">
               <span className="text-[10px] text-slate-400 font-sans">TheRundown</span>
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.theRundownConfigured ? 'bg-blue-500/20 border-blue-500/40 text-blue-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
                 {status.theRundownConfigured ? 'CONNECTED' : 'UNSET'}
