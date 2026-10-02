@@ -1,7 +1,9 @@
 import type { MatchFixture } from '../types/soccer';
 
 const BASE_URL = 'https://api.football-data.org/v4';
-const API_KEY = process.env.FOOTBALL_DATA_KEY?.trim() || '';
+function getApiKey(): string {
+  return process.env.FOOTBALL_DATA_KEY?.trim() || '';
+}
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const standingsCache = new Map<string, { expiresAt: number; teams: Map<string, { rank: number; points: number | null; form: ('W' | 'D' | 'L')[] }> }>();
@@ -25,7 +27,7 @@ export const FOOTBALL_DATA_COMPETITION_CODES: Record<string, string> = {
 };
 
 export function footballDataConfigured(): boolean {
-  return API_KEY.length > 0;
+  return getApiKey().length > 0;
 }
 
 function normalize(value: string): string {
@@ -45,7 +47,7 @@ async function fetchStandings(competitionCode: string) {
   if (cached && cached.expiresAt > Date.now()) return cached.teams;
 
   const res = await fetch(`${BASE_URL}/competitions/${encodeURIComponent(competitionCode)}/standings`, {
-    headers: { 'X-Auth-Token': API_KEY, Accept: 'application/json' },
+    headers: { 'X-Auth-Token': getApiKey(), Accept: 'application/json' },
     signal: AbortSignal.timeout(8000),
   });
 
@@ -85,8 +87,9 @@ export async function enrichFixturesWithFootballData(fixtures: MatchFixture[]): 
   skippedCount: number;
   errors: string[];
 }> {
-  if (!API_KEY || fixtures.length === 0) {
-    return { fixtures, enrichedCount: 0, skippedCount: fixtures.length, errors: API_KEY ? [] : ['FOOTBALL_DATA_KEY is not configured'] };
+  const apiKey = getApiKey();
+  if (!apiKey || fixtures.length === 0) {
+    return { fixtures, enrichedCount: 0, skippedCount: fixtures.length, errors: apiKey ? [] : ['FOOTBALL_DATA_KEY is not configured'] };
   }
 
   const grouped = new Map<string, MatchFixture[]>();
