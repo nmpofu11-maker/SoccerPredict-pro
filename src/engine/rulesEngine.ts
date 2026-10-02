@@ -87,12 +87,12 @@ export function evaluateFixturePrediction(
   // an invented home-team advantage. A schedule-only feed cannot justify it.
   const homeHasVerifiedStrength =
     (Number.isFinite(fixture.homeTeam.leagueRank) && fixture.homeTeam.leagueRank >= 1) ||
-    (Array.isArray(fixture.homeTeam.form) && fixture.homeTeam.form.length > 0) ||
+    (Array.isArray(fixture.homeTeam.form) && fixture.homeTeam.form.length > 0 && Boolean(fixture.homeTeam.formSource)) ||
     Number.isFinite(fixture.homeTeam.avgMatchRating) ||
     Number.isFinite(fixture.homeTeam.totalSquadValueEur);
   const awayHasVerifiedStrength =
     (Number.isFinite(fixture.awayTeam.leagueRank) && fixture.awayTeam.leagueRank >= 1) ||
-    (Array.isArray(fixture.awayTeam.form) && fixture.awayTeam.form.length > 0) ||
+    (Array.isArray(fixture.awayTeam.form) && fixture.awayTeam.form.length > 0 && Boolean(fixture.awayTeam.formSource)) ||
     Number.isFinite(fixture.awayTeam.avgMatchRating) ||
     Number.isFinite(fixture.awayTeam.totalSquadValueEur);
 
@@ -261,8 +261,8 @@ export function evaluateFixturePrediction(
   // RULE 3: Form Trajectory, Home Dominance Bias & Away Road Form
   // ==========================================
   // Part A: Recent 5-Game Form Trajectory (only applied when authentic form exists)
-  const homeForm = Array.isArray(fixture.homeTeam.form) ? fixture.homeTeam.form : [];
-  const awayForm = Array.isArray(fixture.awayTeam.form) ? fixture.awayTeam.form : [];
+  const homeForm = fixture.homeTeam.formSource && Array.isArray(fixture.homeTeam.form) ? fixture.homeTeam.form : [];
+  const awayForm = fixture.awayTeam.formSource && Array.isArray(fixture.awayTeam.form) ? fixture.awayTeam.form : [];
 
   if (homeForm.length > 0) {
     const homeFormPts = homeForm.reduce((acc, res) => acc + (res === 'W' ? (w.formWinPoints ?? 1.20) : res === 'D' ? (w.formDrawPoints ?? 0.40) : 0), 0);
@@ -315,8 +315,9 @@ export function evaluateFixturePrediction(
   // RULE 4: Historical Head-to-Head (H2H) Weighting
   // ==========================================
   const h2hBonus = w.h2hMultiplier;
-  const h2hHomeWins = fixture.h2h?.homeWins ?? 0;
-  const h2hAwayWins = fixture.h2h?.awayWins ?? 0;
+  const trustedH2H = fixture.h2h?.source ? fixture.h2h : null;
+  const h2hHomeWins = trustedH2H?.homeWins ?? 0;
+  const h2hAwayWins = trustedH2H?.awayWins ?? 0;
   if (h2hHomeWins >= 4) {
     homePoints += h2hBonus;
     appliedRules.push({
@@ -325,7 +326,7 @@ export function evaluateFixturePrediction(
       tag: `Rule 4: H2H Dominance (+${h2hBonus.toFixed(1)} pts Home)`,
       impact: `+${h2hBonus.toFixed(1)} points override bonus to Home team`,
       beneficiary: 'home',
-      description: `Home team won ${h2hHomeWins} of the last ${fixture.h2h?.totalLast5 ?? 'unknown'} recorded head-to-head encounters.`,
+      description: `Home team won ${h2hHomeWins} of the last ${trustedH2H?.totalLast5 ?? 'unknown'} recorded head-to-head encounters.`,
     });
   } else if (h2hAwayWins >= 4) {
     awayPoints += h2hBonus;
