@@ -26,7 +26,7 @@ function teamStatsFromApiFootball(
   const form = rawForm.split('').filter((v: string) => v === 'W' || v === 'D' || v === 'L').slice(-5) as ('W'|'D'|'L')[];
   return {
     ...(rank ? { leagueRank: rank.rank, points: rank.points } : {}),
-    ...(form.length ? { form } : {}),
+    ...(form.length ? { form, formSource: 'API_FOOTBALL' as const } : {}),
   };
 }
 
@@ -290,7 +290,7 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
             else awayWins++;
           }
           if (scoresLast5.length > 0) {
-            update.h2h = { homeWins, draws, awayWins, totalLast5: scoresLast5.length, scoresLast5 } as H2HRecord;
+            update.h2h = { homeWins, draws, awayWins, totalLast5: scoresLast5.length, scoresLast5, source: 'API_FOOTBALL' } as H2HRecord;
           }
         } catch (err) {
           errors.push(`API-Football H2H ${fixture.homeTeam.name} / ${fixture.awayTeam.name}: ${err instanceof Error ? err.message : String(err)}`);
