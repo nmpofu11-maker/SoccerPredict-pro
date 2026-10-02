@@ -25,9 +25,9 @@ export const PredictionShareModal: React.FC<PredictionShareModalProps> = ({
   const timeStr = kickoffDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const dateStr = kickoffDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 
-  const safeHome = Number.isFinite(prediction.homeWinPct) ? prediction.homeWinPct : 38;
-  const safeDraw = Number.isFinite(prediction.drawPct) ? prediction.drawPct : 30;
-  const safeAway = Number.isFinite(prediction.awayWinPct) ? prediction.awayWinPct : 32;
+  const safeHome = Number.isFinite(prediction.homeWinPct) ? prediction.homeWinPct : null;
+  const safeDraw = Number.isFinite(prediction.drawPct) ? prediction.drawPct : null;
+  const safeAway = Number.isFinite(prediction.awayWinPct) ? prediction.awayWinPct : null;
 
   const pickName = prediction.predictedWinner === 'home'
     ? `${fixture.homeTeam.name} (Home Win)`
@@ -35,11 +35,12 @@ export const PredictionShareModal: React.FC<PredictionShareModalProps> = ({
     ? `${fixture.awayTeam.name} (Away Win)`
     : `Draw (Parity)`;
 
-  const fairOdds = prediction.predictedWinner === 'home'
-    ? (100 / safeHome).toFixed(2)
-    : prediction.predictedWinner === 'away'
-    ? (100 / safeAway).toFixed(2)
-    : (100 / safeDraw).toFixed(2);
+  const pickProbability =
+    prediction.predictedWinner === 'home' ? safeHome :
+    prediction.predictedWinner === 'away' ? safeAway : safeDraw;
+  const fairOdds = pickProbability !== null && pickProbability > 0
+    ? (100 / pickProbability).toFixed(2)
+    : '--';
 
   const cardText = [
     `🔥 FOOTBALL PULSE AI PREDICTION CARD 🔥`,
@@ -49,9 +50,9 @@ export const PredictionShareModal: React.FC<PredictionShareModalProps> = ({
     `📅 Kickoff: ${dateStr} at ${timeStr}`,
     `----------------------------------------`,
     `📊 AI Probabilities:`,
-    `   • Home Win (${fixture.homeTeam.name}): ${safeHome}%`,
-    `   • Draw: ${safeDraw}%`,
-    `   • Away Win (${fixture.awayTeam.name}): ${safeAway}%`,
+    `   • Home Win (${fixture.homeTeam.name}): ${safeHome !== null ? `${safeHome !== null ? `${safeHome}%` : 'Unavailable'}` : 'Unavailable'}`,
+    `   • Draw: ${safeDraw !== null ? `${safeDraw !== null ? `${safeDraw}%` : 'Unavailable'}` : 'Unavailable'}`,
+    `   • Away Win (${fixture.awayTeam.name}): ${safeAway !== null ? `${safeAway !== null ? `${safeAway}%` : 'Unavailable'}` : 'Unavailable'}`,
     `----------------------------------------`,
     `⭐ AI Predicted Pick: ${pickName}`,
     `💡 Fair Value Odds: @${fairOdds}`,
@@ -105,14 +106,14 @@ export const PredictionShareModal: React.FC<PredictionShareModalProps> = ({
             {/* Probabilities Bar */}
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs font-semibold">
-                <span className="text-emerald-400">Home: {safeHome}%</span>
-                <span className="text-amber-400">Draw: {safeDraw}%</span>
-                <span className="text-blue-400">Away: {safeAway}%</span>
+                <span className="text-emerald-400">Home: {safeHome !== null ? `${safeHome}%` : 'Unavailable'}</span>
+                <span className="text-amber-400">Draw: {safeDraw !== null ? `${safeDraw}%` : 'Unavailable'}</span>
+                <span className="text-blue-400">Away: {safeAway !== null ? `${safeAway}%` : 'Unavailable'}</span>
               </div>
               <div className="h-2.5 w-full bg-slate-950 rounded-full overflow-hidden flex border border-slate-800">
-                <div style={{ width: `${safeHome}%` }} className="bg-emerald-500 h-full transition-all" />
-                <div style={{ width: `${safeDraw}%` }} className="bg-amber-500 h-full transition-all" />
-                <div style={{ width: `${safeAway}%` }} className="bg-blue-500 h-full transition-all" />
+                <div style={{ width: `${safeHome !== null ? `${safeHome !== null ? `${safeHome}%` : 'Unavailable'}` : 'Unavailable'}` }} className="bg-emerald-500 h-full transition-all" />
+                <div style={{ width: `${safeDraw !== null ? `${safeDraw !== null ? `${safeDraw}%` : 'Unavailable'}` : 'Unavailable'}` }} className="bg-amber-500 h-full transition-all" />
+                <div style={{ width: `${safeAway !== null ? `${safeAway !== null ? `${safeAway}%` : 'Unavailable'}` : 'Unavailable'}` }} className="bg-blue-500 h-full transition-all" />
               </div>
             </div>
 
