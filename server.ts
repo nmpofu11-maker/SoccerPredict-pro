@@ -781,7 +781,7 @@ function mapSportApiAiToInternalFixture(f: any, providerDate?: string): any {
     parseProviderKickoff(f.kickoff_time) ||
     parseProviderKickoff(f.utc_date) ||
     parseProviderKickoff(f.start_time) ||
-    (typeof f.date === 'string' && /[T ]\\d{2}:\\d{2}/.test(f.date) ? parseProviderKickoff(f.date) : null);
+    (typeof f.date === 'string' && /[T ]\d{2}:\d{2}/.test(f.date) ? parseProviderKickoff(f.date) : null);
   if (!kickoffTime) return null;
 
   const leagueName = f.league_name
@@ -929,7 +929,7 @@ function mapSportDbToInternalFixture(match: any, fallbackDateStr: string): any {
   if (!homeName || !awayName) return null;
 
   const rawKickoff = match?.utc_date || match?.kickoff_time || match?.date;
-  const kickoffTime = typeof rawKickoff === 'string' && /[T ]\\d{2}:\\d{2}/.test(rawKickoff)
+  const kickoffTime = typeof rawKickoff === 'string' && /[T ]\d{2}:\d{2}/.test(rawKickoff)
     ? parseProviderKickoff(rawKickoff)
     : null;
   if (!kickoffTime) return null;
