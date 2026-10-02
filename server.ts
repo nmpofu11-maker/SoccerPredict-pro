@@ -2216,6 +2216,8 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
         theRundownConfigured: theRundownConfigured(),
         pitchApiConfigured: pitchApiConfigured(),
         sportDbConfigured: sportDbConfigured(),
+        apiFootballConfigured: apiFootballConfigured(),
+        sportmonksConfigured: sportmonksConfigured(),
         footballDataConfigured: footballDataConfigured(),
         cron: readCronStatus(),
       });
