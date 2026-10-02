@@ -102,21 +102,22 @@ export function evaluateFixturePrediction(
     Number.isFinite(fixture.awayTeam.avgMatchRating) ||
     Number.isFinite(fixture.awayTeam.totalSquadValueEur);
 
-  const insufficientInternationalData =
-    isInternationalFixture && !homeHasVerifiedStrength && !awayHasVerifiedStrength;
+  // Do not generate a directional prediction from home advantage alone when neither
+  // side has any observed strength evidence. This applies to club and international matches.
+  const insufficientTeamData = !homeHasVerifiedStrength && !awayHasVerifiedStrength;
 
-  let homePoints = insufficientInternationalData ? 8.0 : w.homeAdvantageBaseline * homeLearned.home_advantage_multiplier;
-  let awayPoints = insufficientInternationalData ? 8.0 : w.awayAdvantageBaseline;
-  let drawPoints = insufficientInternationalData ? 7.0 : 6.8;
+  let homePoints = insufficientTeamData ? 8.0 : w.homeAdvantageBaseline * homeLearned.home_advantage_multiplier;
+  let awayPoints = insufficientTeamData ? 8.0 : w.awayAdvantageBaseline;
+  let drawPoints = insufficientTeamData ? 7.0 : 6.8;
 
-  if (insufficientInternationalData) {
+  if (insufficientTeamData) {
     appliedRules.push({
       ruleNumber: 0,
-      ruleName: 'International Data Sufficiency Guard',
-      tag: 'Insufficient verified team-strength data',
-      impact: 'Home advantage neutralized; unsupported national/youth-team strength assumptions withheld',
+      ruleName: 'Team Data Sufficiency Guard',
+      tag: 'Insufficient observed team-strength data',
+      impact: 'Directional home advantage withheld until either team has observed strength evidence',
       beneficiary: 'neutral',
-      description: 'No verified rank, recent form, rating, or squad-value evidence was available for either side. The engine uses a neutral international starting prior rather than inventing a home-team edge.',
+      description: 'No observed rank, recent form, rating, or squad-value evidence was available for either side. The engine uses a neutral starting prior rather than inventing a directional edge.',
     });
   }
 
