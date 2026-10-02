@@ -91,9 +91,9 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
   const prediction = rawPrediction || {
     matchId,
-    homeWinPct: 33.3,
-    drawPct: 33.4,
-    awayWinPct: 33.3,
+    homeWinPct: NaN,
+    drawPct: NaN,
+    awayWinPct: NaN,
     predictedWinner: 'draw' as const,
     modelLeaderProbabilityPct: 0,
     appliedRules: [],
@@ -199,9 +199,9 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   const isAwayPick = prediction.predictedWinner === 'away';
   const isDrawPick = prediction.predictedWinner === 'draw';
 
-  const safeHomePct = Number.isFinite(prediction.homeWinPct) ? prediction.homeWinPct : 38.0;
-  const safeDrawPct = Number.isFinite(prediction.drawPct) ? prediction.drawPct : 30.0;
-  const safeAwayPct = Number.isFinite(prediction.awayWinPct) ? prediction.awayWinPct : 32.0;
+  const safeHomePct = Number.isFinite(prediction.homeWinPct) ? prediction.homeWinPct : null;
+  const safeDrawPct = Number.isFinite(prediction.drawPct) ? prediction.drawPct : null;
+  const safeAwayPct = Number.isFinite(prediction.awayWinPct) ? prediction.awayWinPct : null;
 
   const pickProbability = isHomePick
     ? safeHomePct
@@ -209,7 +209,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     ? safeAwayPct
     : safeDrawPct;
 
-  const pickFairOdds = pickProbability > 0 ? (100 / pickProbability).toFixed(2) : '--';
+  const pickFairOdds = pickProbability !== null && pickProbability > 0 ? (100 / pickProbability).toFixed(2) : '--';
 
   const homeOdds = fixture.odds?.home && Number(fixture.odds.home) > 1.05
     ? Number(fixture.odds.home).toFixed(2)
@@ -597,17 +597,17 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           <div
             className="bg-emerald-500 h-full transition-all duration-300"
             style={{ width: `${Math.max(4, safeHomePct)}%` }}
-            title={`Home Win: ${safeHomePct.toFixed(1)}%`}
+            title={`Home Win: ${safeHomePct !== null ? safeHomePct.toFixed(1) : '--'}%`}
           />
           <div
             className="bg-sky-400 h-full transition-all duration-300"
             style={{ width: `${Math.max(4, safeDrawPct)}%` }}
-            title={`Draw: ${safeDrawPct.toFixed(1)}%`}
+            title={`Draw: ${safeDrawPct !== null ? safeDrawPct.toFixed(1) : '--'}%`}
           />
           <div
             className="bg-rose-500 h-full transition-all duration-300"
             style={{ width: `${Math.max(4, safeAwayPct)}%` }}
-            title={`Away Win: ${safeAwayPct.toFixed(1)}%`}
+            title={`Away Win: ${safeAwayPct !== null ? safeAwayPct.toFixed(1) : '--'}%`}
           />
         </div>
 
