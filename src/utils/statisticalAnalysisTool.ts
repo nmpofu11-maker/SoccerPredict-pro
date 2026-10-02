@@ -436,11 +436,11 @@ export function runStatisticalEvaluation(
     },
     {
       ruleId: 8,
-      ruleName: 'Rule 8: 80 Priority Favourite Win Floor',
-      parametersAblated: 'favouriteWinFloor',
-      description: 'Enforces a 55% win probability floor when elite tier favourites meet distinct underdogs.',
-      overrides: { favouriteWinFloor: 0 },
-      ablationCategory: 'Favourite',
+      ruleName: 'Rule 8: Manual Selection Override',
+      parametersAblated: 'manualOverride',
+      description: 'Tests explicit user-triggered force-home/force-away overrides; favourite classification does not modify probabilities.',
+      overrides: {},
+      ablationCategory: 'Manual Override',
     },
     {
       ruleId: 9,
