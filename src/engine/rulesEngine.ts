@@ -85,12 +85,6 @@ export function evaluateFixturePrediction(
   // Initial baseline scores: adjusted by observed team coefficients when a sufficient sample exists.
   // International/youth fixtures with no verified strength evidence must not receive
   // an invented home-team advantage. A schedule-only feed cannot justify it.
-  const competitionText = String(fixture.competition || fixture.league || '').toLowerCase();
-  const teamText = `${fixture.homeTeam.name} ${fixture.awayTeam.name}`.toLowerCase();
-  const isInternationalFixture =
-    /world cup|qualif|nations league|afcon|africa cup|copa america|international|friendly|euro|uefa/.test(competitionText) ||
-    /u18|u19|u20|u21|u23/.test(teamText);
-
   const homeHasVerifiedStrength =
     (Number.isFinite(fixture.homeTeam.leagueRank) && fixture.homeTeam.leagueRank >= 1) ||
     (Array.isArray(fixture.homeTeam.form) && fixture.homeTeam.form.length > 0) ||
