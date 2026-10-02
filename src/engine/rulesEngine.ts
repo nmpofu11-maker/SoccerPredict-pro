@@ -83,9 +83,42 @@ export function evaluateFixturePrediction(
   if (awayIsFav) favouriteTeams.push(fixture.awayTeam.name);
 
   // Initial baseline scores: adjusted by observed team coefficients when a sufficient sample exists.
-  let homePoints = w.homeAdvantageBaseline * homeLearned.home_advantage_multiplier;
-  let awayPoints = w.awayAdvantageBaseline;
-  let drawPoints = 6.8;
+  // International/youth fixtures with no verified strength evidence must not receive
+  // an invented home-team advantage. A schedule-only feed cannot justify it.
+  const competitionText = String(fixture.competition || fixture.league || '').toLowerCase();
+  const teamText = `${fixture.homeTeam.name} ${fixture.awayTeam.name}`.toLowerCase();
+  const isInternationalFixture =
+    /world cup|qualif|nations league|afcon|africa cup|copa america|international|friendly|euro|uefa/.test(competitionText) ||
+    /u18|u19|u20|u21|u23/.test(teamText);
+
+  const homeHasVerifiedStrength =
+    (Number.isFinite(fixture.homeTeam.leagueRank) && fixture.homeTeam.leagueRank >= 1) ||
+    (Array.isArray(fixture.homeTeam.form) && fixture.homeTeam.form.length > 0) ||
+    Number.isFinite(fixture.homeTeam.avgMatchRating) ||
+    Number.isFinite(fixture.homeTeam.totalSquadValueEur);
+  const awayHasVerifiedStrength =
+    (Number.isFinite(fixture.awayTeam.leagueRank) && fixture.awayTeam.leagueRank >= 1) ||
+    (Array.isArray(fixture.awayTeam.form) && fixture.awayTeam.form.length > 0) ||
+    Number.isFinite(fixture.awayTeam.avgMatchRating) ||
+    Number.isFinite(fixture.awayTeam.totalSquadValueEur);
+
+  const insufficientInternationalData =
+    isInternationalFixture && !homeHasVerifiedStrength && !awayHasVerifiedStrength;
+
+  let homePoints = insufficientInternationalData ? 8.0 : w.homeAdvantageBaseline * homeLearned.home_advantage_multiplier;
+  let awayPoints = insufficientInternationalData ? 8.0 : w.awayAdvantageBaseline;
+  let drawPoints = insufficientInternationalData ? 7.0 : 6.8;
+
+  if (insufficientInternationalData) {
+    appliedRules.push({
+      ruleNumber: 0,
+      ruleName: 'International Data Sufficiency Guard',
+      tag: 'Insufficient verified team-strength data',
+      impact: 'Home advantage neutralized; unsupported national/youth-team strength assumptions withheld',
+      beneficiary: 'neutral',
+      description: 'No verified rank, recent form, rating, or squad-value evidence was available for either side. The engine uses a neutral international starting prior rather than inventing a home-team edge.',
+    });
+  }
 
   // Observed team-coefficient notification
   if (homeLearned.home_advantage_multiplier > 1.20 || homeLearned.form_momentum_weight > 0.88) {
