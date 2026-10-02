@@ -79,52 +79,12 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [showH2H, setShowH2H] = useState(false);
 
-  // Derive the last 3 direct encounters
-  const directEncounters = useMemo(() => {
-    const scores = fixture.h2h?.scoresLast5 || [];
-    
-    // Fallback if scoresLast5 is empty but h2h stats exist
-    const finalScores = scores;
-    
-    // Take up to last 3 scores
-    return finalScores.slice(0, 3).map((scoreStr, idx) => {
-      // Parse goals e.g. "2-1"
-      const [homeG, awayG] = scoreStr.split('-').map(Number);
-      
-      // We can generate some realistic seasons / dates
-      const seasons = ["Last Matchup", "Two Matchups Ago", "Three Matchups Ago"];
-      const season = seasons[idx] || "Recent Encounter";
-
-      // Let's alternate home and away venues to make it look extremely realistic
-      const isHomeVenue = idx % 2 === 0; 
-      
-      // Let's determine outcome label relative to the Home team of the fixture
-      let outcomeLabel = "DRAW";
-      let outcomeColor = "text-slate-300 bg-slate-800/40 border-slate-800/60";
-      
-      if (homeG > awayG) {
-        outcomeLabel = isHomeVenue ? "HOME WIN" : "AWAY WIN";
-        outcomeColor = isHomeVenue 
-          ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" 
-          : "text-rose-400 bg-rose-500/10 border-rose-500/20";
-      } else if (homeG < awayG) {
-        outcomeLabel = isHomeVenue ? "AWAY WIN" : "HOME WIN";
-        outcomeColor = isHomeVenue 
-          ? "text-rose-400 bg-rose-500/10 border-rose-500/20" 
-          : "text-emerald-400 bg-emerald-500/10 border-emerald-500/20";
-      }
-
-      return {
-        id: `${fixture.id}-h2h-match-${idx}`,
-        season,
-        homeTeam: isHomeVenue ? fixture.homeTeam?.name || '' : fixture.awayTeam?.name || '',
-        awayTeam: isHomeVenue ? fixture.awayTeam?.name || '' : fixture.homeTeam?.name || '',
-        score: isHomeVenue ? `${homeG} - ${awayG}` : `${awayG} - ${homeG}`,
-        outcomeLabel,
-        outcomeColor,
-      };
-    });
-  }, [fixture.h2h, fixture.homeTeam?.name, fixture.awayTeam?.name, fixture.id]);
+  // Render only observed score strings. The legacy schema does not retain
+  // home/away orientation, dates or venues for each H2H result.
+  const directEncounters = (fixture.h2h?.scoresLast5 || [])
+    .filter((score) => /^\d+\s*-\s*\d+$/.test(score))
+    .slice(0, 5)
+    .map((score, idx) => ({ id: `${fixture.id}-h2h-${idx}`, score: score.replace(/\s+/g, '') }));
 
   const safeFixture = fixture;
   const matchId = safeFixture?.id || '';
@@ -748,7 +708,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
               Direct Encounters History
             </span>
             <span className="text-[10px] text-slate-400">
-              Total H2H Wins: H {fixture.h2h?.homeWins || 0} - D {fixture.h2h?.draws || 0} - A {fixture.h2h?.awayWins || 0}
+              {fixture.h2h && fixture.h2h.totalLast5 !== null && fixture.h2h.totalLast5 > 0 ? `Recorded H2H: ${fixture.h2h.totalLast5} match(es)` : 'H2H data unavailable'}
             </span>
           </div>
 
@@ -756,25 +716,15 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             <table className="w-full text-left border-collapse text-[11px] font-mono">
               <thead>
                 <tr className="border-b border-slate-800 text-slate-500 font-bold">
-                  <th className="py-1">TIMELINE</th>
-                  <th className="py-1">MATCHUP</th>
-                  <th className="py-1 text-center">SCORE</th>
-                  <th className="py-1 text-right">OUTCOME</th>
+                  <th className="py-1">SOURCE</th>
+                  <th className="py-1 text-center">RECORDED SCORE</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-900">
                 {directEncounters.map((encounter) => (
                   <tr key={encounter.id} className="hover:bg-slate-900/40 text-slate-300">
-                    <td className="py-1.5 text-slate-400 font-medium whitespace-nowrap">{encounter.season}</td>
-                    <td className="py-1.5 truncate max-w-[150px] font-bold text-white">
-                      {encounter.homeTeam} vs {encounter.awayTeam}
-                    </td>
+                    <td className="py-1.5 text-slate-400 font-medium whitespace-nowrap">Provider record</td>
                     <td className="py-1.5 text-center font-black text-sky-400">{encounter.score}</td>
-                    <td className="py-1.5 text-right whitespace-nowrap">
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold border ${encounter.outcomeColor}`}>
-                        {encounter.outcomeLabel}
-                      </span>
-                    </td>
                   </tr>
                 ))}
               </tbody>
