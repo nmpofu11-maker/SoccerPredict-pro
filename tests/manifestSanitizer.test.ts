@@ -65,15 +65,19 @@ test('manifest sanitizer zeroes placeholder stats on non-live verified fixtures'
         name: 'Liverpool',
         leagueRank: 1,
         points: 50,
+        standingsSource: 'FOOTBALL_DATA_ORG',
         form: ['W', 'W', 'W'],
+        formSource: 'FOOTBALL_DATA_ORG',
       },
       awayTeam: {
         name: 'Everton',
         leagueRank: 16,
         points: 18,
+        standingsSource: 'FOOTBALL_DATA_ORG',
         form: ['L', 'D', 'L'],
+        formSource: 'FOOTBALL_DATA_ORG',
       },
-      h2h: { homeWins: 4, draws: 1, awayWins: 0, totalLast5: 5 },
+      h2h: { homeWins: 4, draws: 1, awayWins: 0, totalLast5: 5, source: 'FOOTBALL_DATA_ORG' },
       isStandingsVerified: true,
       authenticity: {
         status: 'VERIFIED_AUTHENTIC',
@@ -114,8 +118,8 @@ test('manifest sanitizer zeroes placeholder stats on non-live verified fixtures'
   const fixLive = fixtures[2];
   assert.equal(fixLive.homeTeam.leagueRank, 1);
   assert.equal(fixLive.homeTeam.points, 50);
-  assert.equal(fixLive.authenticity.status, 'VERIFIED_AUTHENTIC');
-  assert.equal(fixLive.authenticity.source, 'FOOTBALL_DATA_ORG');
+  assert.equal(fixLive.authenticity.status, 'UNVERIFIED');
+  assert.equal(fixLive.authenticity.source, 'UNVERIFIED_PROVIDER_INGESTION');
 
   // Running it a second time is idempotent (changedCount is 0)
   const secondRun = sanitizeRuntimeManifest(fixtures);
