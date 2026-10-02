@@ -157,6 +157,11 @@ test('serverFootballData: HTTP 429 retries once and then logs warning and stops 
   }
 });
 
+test('South African Premier League is not mistaken for the English Premier League', () => {
+  assert.equal(resolveCompetitionCode('South Africa • Premier League'), null);
+  assert.equal(resolveCompetitionCode('England • Premier League'), 'PL');
+});
+
 test('Rule 4 H2H: null h2h cleanly skips Rule 4; populated 4+ home wins triggers Rule 4', () => {
   const baseFixture: MatchFixture = {
     id: 'h2h-test',
