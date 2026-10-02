@@ -428,14 +428,14 @@ export async function enrichFixturesWithFootballData(fixtures: MatchFixture[]): 
       ...fixture,
       homeTeam: {
         ...fixture.homeTeam,
-        ...(homeStanding ? { leagueRank: homeStanding.rank, points: homeStanding.points } : {}),
+        ...(homeStanding ? { leagueRank: homeStanding.rank, points: homeStanding.points, standingsSource: 'FOOTBALL_DATA_ORG' as const } : {}),
         ...(homeFormRes && homeFormRes.form.length > 0
           ? { form: homeFormRes.form, formSource: 'FOOTBALL_DATA_ORG' as const, formScores: homeFormRes.formScores, formDetails: homeFormRes.formDetails }
           : {}),
       },
       awayTeam: {
         ...fixture.awayTeam,
-        ...(awayStanding ? { leagueRank: awayStanding.rank, points: awayStanding.points } : {}),
+        ...(awayStanding ? { leagueRank: awayStanding.rank, points: awayStanding.points, standingsSource: 'FOOTBALL_DATA_ORG' as const } : {}),
         ...(awayFormRes && awayFormRes.form.length > 0
           ? { form: awayFormRes.form, formSource: 'FOOTBALL_DATA_ORG' as const, formScores: awayFormRes.formScores, formDetails: awayFormRes.formDetails }
           : {}),
