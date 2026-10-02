@@ -33,6 +33,7 @@ import {
   verifyLog,
 } from './src/services/predictionLog';
 import { parseRawResults } from './src/services/resultParserService';
+import { enrichFixturesWithFootballData, footballDataConfigured } from './src/services/serverFootballData';
 
 dotenv.config();
 
@@ -1005,6 +1006,25 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
         ? 'Not queried because SportAPI.ai produced usable fixtures.'
         : 'THERUNDOWN_API_KEY not configured.'
     );
+  }
+
+  // Enrich supported club competitions with verified current standings/form before persistence.
+  // International and unsupported competitions remain untouched rather than receiving fabricated data.
+  if (footballDataConfigured() && mapped.length > 0) {
+    try {
+      const enrichment = await enrichFixturesWithFootballData(mapped);
+      mapped = enrichment.fixtures;
+      diagnostics.sportApiAi.notes.push(
+        `Football-Data enrichment: ${enrichment.enrichedCount} fixture(s) updated; ${enrichment.errors.length} competition error(s).`
+      );
+      if (enrichment.errors.length > 0) diagnostics.sportApiAi.notes.push(...enrichment.errors);
+    } catch (err) {
+      diagnostics.sportApiAi.notes.push(
+        `Football-Data enrichment failed safely: ${err instanceof Error ? err.message : 'unknown error'}`
+      );
+    }
+  } else if (!footballDataConfigured()) {
+    diagnostics.sportApiAi.notes.push('Football-Data enrichment unavailable: FOOTBALL_DATA_KEY is not configured.');
   }
 
   diagnostics.sourceUsed = sourceUsed;
