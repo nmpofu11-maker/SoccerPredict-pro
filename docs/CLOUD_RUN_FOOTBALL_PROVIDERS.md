@@ -7,7 +7,9 @@ The server-only provider clients read these environment variables:
 | `API_FOOTBALL_USE_RAPIDAPI` | `API_FOOTBALL_USE_RAPIDAPI` |
 | `SPORTMONKS_API_KEY` | `SPORTMONKS_API_KEY` |
 
-No secret values belong in this repository, `.env.example`, browser code, or build-time Vite variables.
+The API-Football secret must contain the RapidAPI credential used for the
+API-Football RapidAPI host. No secret values belong in this repository,
+`.env.example`, browser code, or build-time Vite variables.
 
 ## Attach the existing secrets to a Cloud Run service
 
@@ -27,13 +29,32 @@ version for reproducible rollbacks rather than relying on `latest`.
 Updating the service creates a new Cloud Run revision. This repository change
 does not update Cloud Run or deploy a revision.
 
-## Provider client scope
+## What the application now uses
 
-`src/services/serverFootballApis.ts` contains server-only request helpers for:
-- API-Football fixtures by date, head-to-head, team statistics, and fixture statistics.
-- Sportmonks fixtures by date and fixture statistics.
+`src/services/serverFootballApis.ts` contains server-only authenticated clients.
+`src/services/serverFootballProviderEnrichment.ts` is connected to the daily
+ingestion pipeline and:
 
-These helpers are a provider-access layer, not yet wired into fixture normalization,
-prediction enrichment, or production ingestion. Provider coverage, plan entitlements,
-and real API responses must be verified against the credentials and competitions
-configured in the deployed project before enabling them in prediction calculations.
+- Queries API-Football fixtures for the requested South African local dates.
+- Adds exact team/date matches from API-Football to existing provider fixtures.
+- Enriches matched teams with API-Football current standings and the provider's
+  recent W/D/L form when those endpoints return the required data.
+- Retrieves actual API-Football head-to-head results for South African Premiership
+  fixtures when the API returns completed records.
+- Queries Sportmonks fixtures independently and adds genuinely new fixtures
+  without replacing an existing provider's fixture record.
+- Keeps missing stats unavailable. Possession, shots on target and xG are not
+  fabricated when the configured plan/provider does not return them.
+
+Football-Data.org enrichment remains enabled for competitions it supports. API
+coverage depends on each provider's plan, season availability, and competition
+coverage; successful authentication does not prove every competition is covered.
+
+## Verification still required in the deployed project
+
+The repository includes mocked client tests, but real provider calls require the
+Cloud Run secrets and cannot be authenticated from a source-only repository
+change. After attaching secrets, trigger the daily ingestion job and inspect
+`/api/cron/status` (or the app's ingestion diagnostics) for each provider's
+request counts, mapped fixtures and errors. Confirm Betway Premiership plus
+international competitions separately before treating a provider as authoritative.
