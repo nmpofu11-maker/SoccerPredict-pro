@@ -166,6 +166,12 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
   fixtures: MatchFixture[];
   apiFootballFixtures: number;
   sportmonksFixtures: number;
+  apiFootballMappedFixtures: number;
+  sportmonksMappedFixtures: number;
+  apiFootballSuccessfulRequests: number;
+  sportmonksSuccessfulRequests: number;
+  apiFootballFailedRequests: number;
+  sportmonksFailedRequests: number;
   enrichedTeams: number;
   errors: string[];
 }> {
@@ -176,24 +182,29 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
 
   const apiRaw: any[] = [];
   const sportmonksRaw: any[] = [];
+  let apiFootballSuccessfulRequests = 0;
+  let sportmonksSuccessfulRequests = 0;
+  let apiFootballFailedRequests = 0;
+  let sportmonksFailedRequests = 0;
   if (apiFootballConfigured()) {
     for (const date of dates) {
-      try { apiRaw.push(...await fetchApiFootballFixturesByDate(date)); }
-      catch (err) { errors.push(`API-Football ${date}: ${err instanceof Error ? err.message : String(err)}`); }
+      try { apiRaw.push(...await fetchApiFootballFixturesByDate(date)); apiFootballSuccessfulRequests++; }
+      catch (err) { apiFootballFailedRequests++; errors.push(`API-Football ${date}: ${err instanceof Error ? err.message : String(err)}`); }
     }
   }
   if (sportmonksConfigured()) {
     for (const date of dates) {
-      try { sportmonksRaw.push(...await fetchSportmonksFixturesByDate(date)); }
-      catch (err) { errors.push(`Sportmonks ${date}: ${err instanceof Error ? err.message : String(err)}`); }
+      try { sportmonksRaw.push(...await fetchSportmonksFixturesByDate(date)); sportmonksSuccessfulRequests++; }
+      catch (err) { sportmonksFailedRequests++; errors.push(`Sportmonks ${date}: ${err instanceof Error ? err.message : String(err)}`); }
     }
   }
 
   // Preserve the original provider's fixture record; attach matching API IDs to it.
   const apiByKey = new Map<string, any>();
+  let apiFootballMappedFixtures = 0;
   for (const raw of apiRaw) {
     const mapped = mapApiFootballFixture(raw);
-    if (mapped) apiByKey.set(fixtureKey(mapped), { raw, mapped });
+    if (mapped) { apiFootballMappedFixtures++; apiByKey.set(fixtureKey(mapped), { raw, mapped }); }
   }
   const enriched: MatchFixture[] = Array.from(byKey.values());
   const enrichedKeys = new Set(enriched.map(fixtureKey));
@@ -234,11 +245,13 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
     Object.assign(fixture, update);
   }
 
+  let sportmonksMappedFixtures = 0;
   // Sportmonks is an independent schedule source. Add only genuinely new pairings;
   // it does not overwrite a fixture already sourced from another provider.
   for (const raw of sportmonksRaw) {
     const mapped = mapSportmonksFixture(raw);
     if (!mapped) continue;
+    sportmonksMappedFixtures++;
     const key = fixtureKey(mapped);
     if (!enrichedKeys.has(key)) {
       enriched.push(mapped);
@@ -265,5 +278,5 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
 
   const enrichedTeams = enriched.filter((f) => Array.isArray(f.homeTeam.form) && f.homeTeam.form.length > 0 &&
     Array.isArray(f.awayTeam.form) && f.awayTeam.form.length > 0).length;
-  return { fixtures: enriched, apiFootballFixtures: apiRaw.length, sportmonksFixtures: sportmonksRaw.length, enrichedTeams, errors };
+  return { fixtures: enriched, apiFootballFixtures: apiRaw.length, sportmonksFixtures: sportmonksRaw.length, apiFootballMappedFixtures, sportmonksMappedFixtures, apiFootballSuccessfulRequests, sportmonksSuccessfulRequests, apiFootballFailedRequests, sportmonksFailedRequests, enrichedTeams, errors };
 }
