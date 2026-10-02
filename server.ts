@@ -1170,18 +1170,21 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     mapped = providerResult.fixtures as any[];
     if (diagnostics.apiFootball.configured) {
       diagnostics.apiFootball.rawRecords = providerResult.apiFootballFixtures;
-      diagnostics.apiFootball.mappedRecords = providerResult.apiFootballFixtures;
-      diagnostics.apiFootball.successfulRequests = providerResult.apiFootballFixtures > 0 ? ingestDates.length : 0;
+      diagnostics.apiFootball.mappedRecords = providerResult.apiFootballMappedFixtures;
+      diagnostics.apiFootball.successfulRequests = providerResult.apiFootballSuccessfulRequests;
+      diagnostics.apiFootball.failedRequests = providerResult.apiFootballFailedRequests;
       if (providerResult.apiFootballFixtures === 0) diagnostics.apiFootball.notes.push('No API-Football fixtures returned for requested dates.');
     }
     if (diagnostics.sportmonks.configured) {
       diagnostics.sportmonks.rawRecords = providerResult.sportmonksFixtures;
-      diagnostics.sportmonks.mappedRecords = providerResult.sportmonksFixtures;
-      diagnostics.sportmonks.successfulRequests = providerResult.sportmonksFixtures > 0 ? ingestDates.length : 0;
+      diagnostics.sportmonks.mappedRecords = providerResult.sportmonksMappedFixtures;
+      diagnostics.sportmonks.successfulRequests = providerResult.sportmonksSuccessfulRequests;
+      diagnostics.sportmonks.failedRequests = providerResult.sportmonksFailedRequests;
       if (providerResult.sportmonksFixtures === 0) diagnostics.sportmonks.notes.push('No Sportmonks fixtures returned for requested dates.');
     }
     diagnostics.apiFootball.notes.push(`Team-form/standings enrichment updated ${providerResult.enrichedTeams} fixture(s).`);
-    diagnostics.apiFootball.notes.push(...providerResult.errors);
+    diagnostics.apiFootball.notes.push(...providerResult.errors.filter((e) => e.startsWith('API-Football')));
+    diagnostics.sportmonks.notes.push(...providerResult.errors.filter((e) => e.startsWith('Sportmonks')));
     if (beforeProviderEnrichment === 0 && providerResult.apiFootballFixtures > 0) sourceUsed = 'API_FOOTBALL';
     if (beforeProviderEnrichment === 0 && providerResult.apiFootballFixtures === 0 && providerResult.sportmonksFixtures > 0) sourceUsed = 'SPORTMONKS';
   } catch (err) {
