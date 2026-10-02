@@ -184,6 +184,7 @@ test('Rule 4 H2H: null h2h cleanly skips Rule 4; populated 4+ home wins triggers
       awayWins: 0,
       totalLast5: 5,
       scoresLast5: ['2-0', '1-0', '2-1', '0-0', '3-1'],
+      source: 'API_FOOTBALL',
     },
   };
 
