@@ -174,7 +174,7 @@ export function calculateTeamForm(
     if (!m.score) {
       // Only formDetails carries opponent/venue/date provenance. Legacy formScores
       // arrays are unproven and must not be displayed as authentic full-time scores.
-      if (teamStats?.formDetails && teamStats.formDetails[idx]?.score) {
+      if (teamStats?.formSource === 'FOOTBALL_DATA_ORG' && teamStats.formDetails && teamStats.formDetails[idx]?.score) {
         m.score = teamStats.formDetails[idx].score;
         m.opponent = m.opponent || teamStats.formDetails[idx].opponent;
         m.venue = m.venue || teamStats.formDetails[idx].venue;
