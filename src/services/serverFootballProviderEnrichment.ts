@@ -313,7 +313,7 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
       enrichedKeys.add(key);
     } else {
       const existing = enriched.find((f) => fixtureKey(f) === key);
-      if (existing && !existing.sportmonksFixtureId) {
+      if (existing && !(existing as any).sportmonksFixtureId) {
         (existing as any).sportmonksFixtureId = (mapped as any).sportmonksFixtureId;
         (existing as any).sportmonksLeagueId = (mapped as any).sportmonksLeagueId;
       }
