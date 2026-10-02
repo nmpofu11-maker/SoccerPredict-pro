@@ -258,7 +258,13 @@ export function verifyAndSanitizeFixture(
 
   // Check 6: Head-to-Head Record Sanity
   // Validate the observed record; never invent missing outcomes.
-  const cleanH2H = fixture.h2h ? { ...fixture.h2h } : null;
+  let cleanH2H = fixture.h2h ? { ...fixture.h2h } : null;
+  // Older manifests may contain all-zero H2H objects created by the previous
+  // mapper as placeholders. They represent missing data, not a real 0-0 record.
+  if (cleanH2H && cleanH2H.homeWins === 0 && cleanH2H.draws === 0 && cleanH2H.awayWins === 0 &&
+      cleanH2H.totalLast5 === 0 && (!Array.isArray(cleanH2H.scoresLast5) || cleanH2H.scoresLast5.length === 0)) {
+    cleanH2H = null;
+  }
   const h2hValuesKnown = Boolean(cleanH2H) && [cleanH2H!.homeWins, cleanH2H!.draws, cleanH2H!.awayWins, cleanH2H!.totalLast5]
     .every((value) => Number.isFinite(value));
   const h2hSum = h2hValuesKnown
