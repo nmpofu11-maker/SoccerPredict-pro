@@ -9,11 +9,15 @@ const API_FOOTBALL_DEFAULT_BASE_URL = 'https://api-football-v1.p.rapidapi.com/v3
 const SPORTMONKS_DEFAULT_BASE_URL = 'https://api.sportmonks.com/v3/football';
 
 function getApiFootballKey(): string {
-  return process.env.API_FOOTBALL_USE_RAPIDAPI?.trim() || '';
+  return process.env.API_FOOTBALL_USE_RAPIDAPI?.trim() || process.env.API_FOOTBALL_KEY?.trim() || '';
+}
+
+function isRapidApiMode(): boolean {
+  return Boolean(process.env.API_FOOTBALL_USE_RAPIDAPI?.trim()) || Boolean(process.env.API_FOOTBALL_RAPIDAPI_HOST?.trim());
 }
 
 function getSportmonksKey(): string {
-  return process.env.SPORTMONKS_API_KEY?.trim() || '';
+  return process.env.SPORTMONKS_API_KEY?.trim() || process.env.SPORTMONKS_API_TOKEN?.trim() || '';
 }
 
 function getBaseUrl(value: string | undefined, fallback: string): string {
@@ -65,10 +69,13 @@ export async function apiFootballGet(path: string, params: Record<string, string
     if (value !== undefined && value !== '') url.searchParams.set(name, String(value));
   }
   const host = new URL(base).host;
-  return requestJson(url, {
-    'x-rapidapi-key': key,
-    'x-rapidapi-host': process.env.API_FOOTBALL_RAPIDAPI_HOST?.trim() || host,
-  }, 'API-Football');
+  const headers = isRapidApiMode()
+    ? {
+        'x-rapidapi-key': key,
+        'x-rapidapi-host': process.env.API_FOOTBALL_RAPIDAPI_HOST?.trim() || host,
+      }
+    : { 'x-apisports-key': key };
+  return requestJson(url, headers, 'API-Football');
 }
 
 export async function fetchApiFootballFixturesByDate(date: string): Promise<any[]> {
