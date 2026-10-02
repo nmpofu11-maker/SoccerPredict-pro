@@ -31,7 +31,7 @@ export interface RuleAblationItem {
   deltaRPS: number;
   ablatedBrier: number;
   deltaBrier: number;
-  ablationCategory: 'Motivation' | 'Standings' | 'Form' | 'Venue' | 'Tactical' | 'Fatigue' | 'Volatility' | 'Favourite' | 'Draw';
+  ablationCategory: 'Motivation' | 'Standings' | 'Form' | 'Venue' | 'Tactical' | 'Fatigue' | 'Volatility' | 'Favourite' | 'Manual Override' | 'Draw';
   descriptiveRank: number;
 }
 
