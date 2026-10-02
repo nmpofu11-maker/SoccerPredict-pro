@@ -35,6 +35,14 @@ test('API-Football fixture, standings, team form and South African H2H are norma
         fixture: { id: 700, date: '2026-10-10T15:00:00Z', status: { short: 'NS' }, venue: { name: 'FNB Stadium' } },
         league: { id: 288, name: 'Premier Soccer League', country: 'South Africa', season: 2026, round: 'Regular Season' },
         teams: { home: { id: 1, name: 'Orlando Pirates' }, away: { id: 2, name: 'Mamelodi Sundowns' } },
+      }, {
+        fixture: { id: 701, date: '2026-10-10T13:00:00Z', status: { short: 'FT' }, venue: { name: 'Old Ground' } },
+        league: { id: 288, name: 'Premier Soccer League', country: 'South Africa', season: 2026 },
+        teams: { home: { id: 3, name: 'Finished FC' }, away: { id: 4, name: 'Old United' } },
+      }, {
+        fixture: { id: 702, date: '2026-10-10', status: { short: 'NS' }, venue: { name: 'Date Only Ground' } },
+        league: { id: 288, name: 'Premier Soccer League', country: 'South Africa', season: 2026 },
+        teams: { home: { id: 5, name: 'No Time FC' }, away: { id: 6, name: 'No Time United' } },
       }] }), { status: 200 });
     }
     if (url.pathname.endsWith('/standings')) {
@@ -64,7 +72,7 @@ test('API-Football fixture, standings, team form and South African H2H are norma
 
   try {
     const result = await enrichFixturesWithFootballApis([], ['2026-10-10']);
-    assert.equal(result.apiFootballFixtures, 1);
+    assert.equal(result.apiFootballFixtures, 3);
     assert.equal(result.apiFootballMappedFixtures, 1);
     assert.equal(result.fixtures.length, 1);
     const fixture = result.fixtures[0];
