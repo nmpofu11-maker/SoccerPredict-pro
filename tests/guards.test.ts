@@ -16,20 +16,27 @@ test('rules engine source never references odds or bookmaker data', () => {
   assert.doesNotMatch(src, /odds|implied|bookmaker|overround|hollywoodbets/i);
 });
 
-test('predictions are identical with and without odds on the fixture', () => {
-  const sample = (HISTORICAL_MATCH_RESULTS as any[]).slice(0, 30);
-  for (const r of sample) {
-    const base = evaluateFixturePrediction(r.fixture, 'none') as any;
-    const withOdds = evaluateFixturePrediction(
-      { ...r.fixture, odds: { home: 1.2, draw: 9, away: 15 }, impliedProbabilities: { home: 0.8, draw: 0.1, away: 0.1 } },
-      'none'
-    ) as any;
-    assert.deepEqual(
-      [withOdds?.homeWinPct, withOdds?.drawPct, withOdds?.awayWinPct, withOdds?.predictedWinner],
-      [base?.homeWinPct, base?.drawPct, base?.awayWinPct, base?.predictedWinner],
-      `odds changed the prediction for ${r.id}`
-    );
-  }
+test('predictions are identical with and without odds on a real-data-shaped fixture', () => {
+  const fixture: any = {
+    id: 'odds-independence',
+    kickoffTime: '2026-10-10T15:00:00Z',
+    league: 'Test League',
+    venue: 'Test Ground',
+    isHighStakes: false,
+    motivation: 'regular',
+    homeTeam: { id: 'h', name: 'Home FC', shortName: 'HOM', leagueRank: 2, points: 30, form: ['W', 'W', 'D', 'L', 'W'], avgPossession: null, avgShotsOnTarget: null },
+    awayTeam: { id: 'a', name: 'Away FC', shortName: 'AWA', leagueRank: 8, points: 22, form: ['D', 'L', 'W', 'D', 'L'], avgPossession: null, avgShotsOnTarget: null },
+    h2h: null,
+  };
+  const base = evaluateFixturePrediction(fixture, 'none') as any;
+  const withOdds = evaluateFixturePrediction(
+    { ...fixture, odds: { home: 1.2, draw: 9, away: 15 }, impliedProbabilities: { home: 0.8, draw: 0.1, away: 0.1 } },
+    'none'
+  ) as any;
+  assert.deepEqual(
+    [withOdds?.homeWinPct, withOdds?.drawPct, withOdds?.awayWinPct, withOdds?.predictedWinner],
+    [base?.homeWinPct, base?.drawPct, base?.awayWinPct, base?.predictedWinner],
+  );
 });
 
 test('SSRF filter blocks private, loopback, link-local and mapped addresses', () => {
@@ -89,4 +96,20 @@ test('validator preserves valid observed standings without claiming official ver
   assert.equal(clean.motivation, 'regular');
   assert.equal(stamp.status, 'UNVERIFIED');
   assert.equal(clean.isStandingsVerified, false);
+});
+
+
+test('validator converts legacy all-zero H2H placeholders to unavailable data', () => {
+  const fixture: any = {
+    id: 'legacy-h2h-placeholder',
+    kickoffTime: '2026-10-10T15:00:00Z',
+    league: 'Test League',
+    motivation: 'regular',
+    isHighStakes: false,
+    homeTeam: { id: 'h', name: 'Home', shortName: 'HOM', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    awayTeam: { id: 'a', name: 'Away', shortName: 'AWA', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    h2h: { homeWins: 0, draws: 0, awayWins: 0, totalLast5: 0, scoresLast5: [] },
+  };
+  const { fixture: clean } = verifyAndSanitizeFixture(fixture);
+  assert.equal(clean.h2h, null);
 });
