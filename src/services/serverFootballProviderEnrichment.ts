@@ -256,12 +256,15 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
             if (!Number.isInteger(homeGoals) || !Number.isInteger(awayGoals)) continue;
             const playedAt = new Date(record?.fixture?.date || '').getTime();
             if (Number.isFinite(playedAt) && playedAt >= new Date(fixture.kickoffTime).getTime()) continue;
-            const currentHomeAtVenue = Number(record?.teams?.home?.id) === homeNameId;
-            const currentAwayAtVenue = Number(record?.teams?.away?.id) === awayNameId;
-            if (!currentHomeAtVenue && !currentAwayAtVenue) continue;
+            const recordHomeId = Number(record?.teams?.home?.id);
+            const recordAwayId = Number(record?.teams?.away?.id);
+            const currentHomeAtVenue = recordHomeId === homeNameId;
+            const samePair = (recordHomeId === homeNameId && recordAwayId === awayNameId) ||
+              (recordHomeId === awayNameId && recordAwayId === homeNameId);
+            if (!samePair) continue;
             scoresLast5.push(`${homeGoals}-${awayGoals}`);
             if (homeGoals === awayGoals) draws++;
-            else if ((currentHomeAtVenue && homeGoals > awayGoals) || (currentAwayAtVenue && awayGoals > homeGoals)) homeWins++;
+            else if ((currentHomeAtVenue && homeGoals > awayGoals) || (!currentHomeAtVenue && awayGoals > homeGoals)) homeWins++;
             else awayWins++;
           }
           if (scoresLast5.length > 0) {
