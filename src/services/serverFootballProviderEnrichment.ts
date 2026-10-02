@@ -83,7 +83,7 @@ function mapApiFootballFixture(raw: any): MatchFixture | null {
   const home = raw?.teams?.home;
   const away = raw?.teams?.away;
   const league = raw?.league;
-  const kickoffTime = typeof fixture?.date === 'string' && /[T ]\\d{2}:\\d{2}/.test(fixture.date) ? new Date(fixture.date) : null;
+  const kickoffTime = typeof fixture?.date === 'string' && /[T ]\d{2}:\d{2}/.test(fixture.date) ? new Date(fixture.date) : null;
   if (!fixture?.id || !home?.id || !away?.id || !home?.name || !away?.name ||
       !kickoffTime || !Number.isFinite(kickoffTime.getTime()) || !league?.name ||
       kickoffTime.getTime() < Date.now() - 3 * 60 * 60 * 1000) return null;
@@ -128,7 +128,7 @@ function mapSportmonksFixture(raw: any): MatchFixture | null {
     Array.isArray(raw?.participants) ? raw.participants : [];
   const home = participants.find((p: any) => p?.meta?.location === 'home' || p?.pivot?.location === 'home');
   const away = participants.find((p: any) => p?.meta?.location === 'away' || p?.pivot?.location === 'away');
-  const kickoffTime = typeof raw?.starting_at === 'string' && /[T ]\\d{2}:\\d{2}/.test(raw.starting_at) ? new Date(raw.starting_at) : null;
+  const kickoffTime = typeof raw?.starting_at === 'string' && /[T ]\d{2}:\d{2}/.test(raw.starting_at) ? new Date(raw.starting_at) : null;
   const leagueName = raw?.league?.data?.name || raw?.league?.name;
   if (!fixtureId || !home?.name || !away?.name || !kickoffTime ||
       !Number.isFinite(kickoffTime.getTime()) || kickoffTime.getTime() < Date.now() - 3 * 60 * 60 * 1000 ||
