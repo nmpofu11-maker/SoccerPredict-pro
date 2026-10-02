@@ -435,10 +435,12 @@ export function verifyAndSanitizeFixtures(
     const passedMono = stamp.checks.find((c) => c.checkName === 'Standings Monotonicity Check')?.passed;
     if (passedMono) passedMonotonicityTotal++;
 
-    if (repairs.length === 0) {
+    if (stamp.status === 'VERIFIED_AUTHENTIC') {
       fullyAuthenticCount++;
-    } else {
+    } else if (stamp.status === 'AUTO_REPAIRED') {
       autoRepairedCount++;
+    }
+    if (repairs.length > 0) {
       for (const r of repairs) {
         repairedLog.push({
           fixtureId: f.id,
