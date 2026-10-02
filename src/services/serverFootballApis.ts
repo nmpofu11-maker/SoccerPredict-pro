@@ -17,7 +17,7 @@ function getSportmonksKey(): string {
 }
 
 function getBaseUrl(value: string | undefined, fallback: string): string {
-  return (value?.trim() || fallback).replace(/\\/+$/, '');
+  return (value?.trim() || fallback).replace(/\/+$/, '');
 }
 
 export function apiFootballConfigured(): boolean {
@@ -29,7 +29,7 @@ export function sportmonksConfigured(): boolean {
 }
 
 function assertDate(date: string): void {
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     throw new Error('Date must be YYYY-MM-DD');
   }
 }
@@ -60,7 +60,7 @@ export async function apiFootballGet(path: string, params: Record<string, string
   if (!key) throw new Error('API_FOOTBALL_USE_RAPIDAPI is not configured');
 
   const base = getBaseUrl(process.env.API_FOOTBALL_BASE_URL, API_FOOTBALL_DEFAULT_BASE_URL);
-  const url = new URL(`${base}/${path.replace(/^\\/+/, '')}`);
+  const url = new URL(`${base}/${path.replace(/^\/+/, '')}`);
   for (const [name, value] of Object.entries(params)) {
     if (value !== undefined && value !== '') url.searchParams.set(name, String(value));
   }
@@ -103,7 +103,7 @@ export async function sportmonksGet(path: string, params: Record<string, string 
   if (!key) throw new Error('SPORTMONKS_API_KEY is not configured');
 
   const base = getBaseUrl(process.env.SPORTMONKS_BASE_URL, SPORTMONKS_DEFAULT_BASE_URL);
-  const url = new URL(`${base}/${path.replace(/^\\/+/, '')}`);
+  const url = new URL(`${base}/${path.replace(/^\/+/, '')}`);
   url.searchParams.set('api_token', key);
   for (const [name, value] of Object.entries(params)) {
     if (value !== undefined && value !== '') url.searchParams.set(name, String(value));
