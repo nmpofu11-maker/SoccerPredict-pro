@@ -81,7 +81,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
   // Render only observed score strings. The legacy schema does not retain
   // home/away orientation, dates or venues for each H2H result.
-  const directEncounters = (fixture.h2h?.scoresLast5 || [])
+  const directEncounters = (fixture.h2h?.source ? fixture.h2h.scoresLast5 || [] : [])
     .filter((score) => /^\d+\s*-\s*\d+$/.test(score))
     .slice(0, 5)
     .map((score, idx) => ({ id: `${fixture.id}-h2h-${idx}`, score: score.replace(/\s+/g, '') }));
@@ -711,7 +711,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
               Direct Encounters History
             </span>
             <span className="text-[10px] text-slate-400">
-              {fixture.h2h && fixture.h2h.totalLast5 !== null && fixture.h2h.totalLast5 > 0 ? `Recorded H2H: ${fixture.h2h.totalLast5} match(es)` : 'H2H data unavailable'}
+              {fixture.h2h?.source && fixture.h2h.totalLast5 !== null && fixture.h2h.totalLast5 > 0 ? `Recorded H2H: ${fixture.h2h.totalLast5} match(es)` : 'H2H data unavailable'}
             </span>
           </div>
 
