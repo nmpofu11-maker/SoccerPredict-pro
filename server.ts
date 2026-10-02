@@ -693,7 +693,7 @@ interface IngestDiagnostics {
   manifestBefore: number;
   manifestAfter: number;
   added: number;
-  sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | null;
+  sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | null;
 }
 
 interface CronStatus {
@@ -702,7 +702,7 @@ interface CronStatus {
     lastSuccess: boolean | null;
     lastMessage: string;
     fixturesIngested: number;
-    sourceUsed?: 'SPORTAPI_AI' | 'THERUNDOWN' | null;
+    sourceUsed?: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | null;
     diagnostics?: IngestDiagnostics;
   };
   settlement: {
