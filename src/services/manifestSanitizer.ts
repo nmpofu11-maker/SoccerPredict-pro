@@ -15,7 +15,9 @@ export function sanitizeRuntimeManifest(rawFixtures: unknown[]): SanitizeManifes
   const sanitizedList: MatchFixture[] = [];
 
   for (const raw of rawFixtures) {
-    if (!raw || typeof raw !== 'object' || !raw.id) continue;
+    if (!raw || typeof raw !== 'object') continue;
+    const candidate = raw as { id?: unknown };
+    if (!candidate.id) continue;
     const { fixture, repairs } = verifyAndSanitizeFixture(raw as MatchFixture);
     if (repairs.length > 0) {
       changedCount++;
