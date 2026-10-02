@@ -131,7 +131,7 @@ function sanitizeTeamStats(
   } else {
     const trustedStandingsSources = new Set(['API_FOOTBALL', 'FOOTBALL_DATA_ORG', 'ESPN', 'SPORTMONKS']);
     if (!cleanTeam.standingsSource || !trustedStandingsSources.has(cleanTeam.standingsSource)) {
-      if (cleanTeam.leagueRank !== null || cleanTeam.points !== null) {
+      if ((cleanTeam.leagueRank !== null && cleanTeam.leagueRank !== undefined) || (cleanTeam.points !== null && cleanTeam.points !== undefined)) {
         repairsLog.push({ field: `${team.name} (standings)`, originalValue: { rank: cleanTeam.leagueRank, points: cleanTeam.points }, repairedValue: null, reason: 'Removed standings without recognized provider provenance' });
       }
       cleanTeam.leagueRank = null;
@@ -177,7 +177,7 @@ function sanitizeTeamStats(
 
   // 3. Tactical metrics require explicit provider provenance.
   if (!cleanTeam.matchStatsSource || !['API_FOOTBALL', 'SPORTMONKS', 'ESPN'].includes(cleanTeam.matchStatsSource)) {
-    if (cleanTeam.avgPossession !== null || cleanTeam.avgShotsOnTarget !== null) {
+    if ((cleanTeam.avgPossession !== null && cleanTeam.avgPossession !== undefined) || (cleanTeam.avgShotsOnTarget !== null && cleanTeam.avgShotsOnTarget !== undefined)) {
       repairsLog.push({ field: `${team.name} (match metrics)`, originalValue: { avgPossession: cleanTeam.avgPossession, avgShotsOnTarget: cleanTeam.avgShotsOnTarget }, repairedValue: null, reason: 'Removed match metrics without recognized provider provenance' });
     }
     cleanTeam.avgPossession = null;
