@@ -168,12 +168,18 @@ function sanitizeTeamStats(
 
   // Legacy formScores alone do not carry opponent/date/source provenance.
   if (cleanTeam.formSource !== 'FOOTBALL_DATA_ORG') {
+    if ((cleanTeam.formScores?.length || 0) > 0 || (cleanTeam.formDetails?.length || 0) > 0) {
+      repairsLog.push({ field: `${team.name} (form scores)`, originalValue: { formScores: cleanTeam.formScores, formDetails: cleanTeam.formDetails }, repairedValue: [], reason: 'Removed score details without a provenance-rich match record source' });
+    }
     cleanTeam.formScores = [];
     cleanTeam.formDetails = [];
   }
 
   // 3. Tactical metrics require explicit provider provenance.
   if (!cleanTeam.matchStatsSource || !['API_FOOTBALL', 'SPORTMONKS', 'ESPN'].includes(cleanTeam.matchStatsSource)) {
+    if (cleanTeam.avgPossession !== null || cleanTeam.avgShotsOnTarget !== null) {
+      repairsLog.push({ field: `${team.name} (match metrics)`, originalValue: { avgPossession: cleanTeam.avgPossession, avgShotsOnTarget: cleanTeam.avgShotsOnTarget }, repairedValue: null, reason: 'Removed match metrics without recognized provider provenance' });
+    }
     cleanTeam.avgPossession = null;
     cleanTeam.avgShotsOnTarget = null;
     cleanTeam.matchStatsSource = undefined;
@@ -185,6 +191,8 @@ function sanitizeTeamStats(
   // Advanced ratings, xG, market value and prior-season data are not currently
   // populated by a trusted provider in this pipeline. Drop legacy unproven values.
   if (!cleanTeam.advancedStatsSource) {
+    const hadAdvancedStats = [cleanTeam.lastSeasonRank, cleanTeam.lastSeasonPoints, cleanTeam.totalSquadValueEur, cleanTeam.avgMatchRating, cleanTeam.expectedGoalsAvg].some((v) => v !== undefined && v !== null) || Boolean(cleanTeam.lastSeasonStanding) || Boolean(cleanTeam.keyPlayerAbsenceSeverity);
+    if (hadAdvancedStats) repairsLog.push({ field: `${team.name} (advanced stats)`, originalValue: 'unverified advanced team data', repairedValue: null, reason: 'Removed advanced team metrics without recognized provider provenance' });
     cleanTeam.lastSeasonRank = undefined;
     cleanTeam.lastSeasonStanding = undefined;
     cleanTeam.lastSeasonPoints = undefined;
@@ -196,10 +204,14 @@ function sanitizeTeamStats(
 
   // Split-form and schedule flags remain off until a provider explicitly supplies them.
   if (!cleanTeam.homeAwayFormSource) {
+    if (cleanTeam.isHomeDominant || cleanTeam.hasTopTierAwayForm) repairsLog.push({ field: `${team.name} (home/away split flags)`, originalValue: { isHomeDominant: cleanTeam.isHomeDominant, hasTopTierAwayForm: cleanTeam.hasTopTierAwayForm }, repairedValue: false, reason: 'Removed home/away split flags without split-form provenance' });
     cleanTeam.isHomeDominant = false;
     cleanTeam.hasTopTierAwayForm = false;
   }
-  if (!cleanTeam.scheduleSource) cleanTeam.hasMidweekFatigue72h = false;
+  if (!cleanTeam.scheduleSource) {
+    if (cleanTeam.hasMidweekFatigue72h) repairsLog.push({ field: `${team.name} (schedule fatigue)`, originalValue: true, repairedValue: false, reason: 'Removed fatigue flag without schedule-source provenance' });
+    cleanTeam.hasMidweekFatigue72h = false;
+  }
 
   return { team: cleanTeam, matchedOfficialTable };
 }
@@ -301,6 +313,7 @@ export function verifyAndSanitizeFixture(
   let cleanH2H = fixture.h2h && ['FOOTBALL_DATA_ORG', 'API_FOOTBALL', 'SPORTMONKS'].includes(fixture.h2h.source || '')
     ? { ...fixture.h2h }
     : null;
+  if (fixture.h2h && !cleanH2H) repairs.push({ field: 'h2h', originalValue: fixture.h2h, repairedValue: null, reason: 'Removed H2H record without recognized provider provenance' });
   // Older manifests may contain all-zero H2H objects created by the previous
   // mapper as placeholders. They represent missing data, not a real 0-0 record.
   if (cleanH2H && cleanH2H.homeWins === 0 && cleanH2H.draws === 0 && cleanH2H.awayWins === 0 &&
