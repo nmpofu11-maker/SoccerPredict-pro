@@ -29,6 +29,7 @@ test('form badges never display W/D/L letters as fabricated full-time scores', (
     leagueRank: null,
     points: null,
     form: ['W', 'D', 'L'],
+    formSource: 'API_FOOTBALL',
     avgPossession: null,
     avgShotsOnTarget: null,
   };
