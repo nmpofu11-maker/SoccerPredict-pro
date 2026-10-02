@@ -7,7 +7,7 @@ import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
 import { HistoricalMatchResult } from '../types/soccer';
 import { getAdminApiHeaders } from '../services/adminAuthService';
 
-const STORAGE_KEY_TEAM_MATRICES = 'football_pulse_team_matrices_v2';
+const STORAGE_KEY_TEAM_MATRICES = 'football_pulse_team_matrices_v3';
 
 export const DEFAULT_LEARNED_COEFFICIENTS: LearnedCoefficients = {
   home_advantage_multiplier: 1.15,
