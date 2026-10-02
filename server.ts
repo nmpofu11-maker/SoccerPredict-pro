@@ -61,7 +61,8 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
   next();
 }
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
 const MANIFEST_PATH = path.join(process.cwd(), 'data', 'fixtures-manifest.json');
 const SRC_FIXTURES_PATH = path.join(process.cwd(), 'src', 'data', 'upcoming_fixtures.json');
@@ -2248,7 +2249,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
     });
   }
 
-  app.listen(PORT, '127.0.0.1', () => {
+  app.listen(PORT, HOST, () => {
     console.log(`Soccer Prediction Server running on port ${PORT}`);
 
     if (sportApiAiConfigured()) {
