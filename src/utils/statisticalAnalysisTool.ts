@@ -31,7 +31,7 @@ export interface RuleAblationItem {
   deltaRPS: number;
   ablatedBrier: number;
   deltaBrier: number;
-  ablationCategory: 'Motivation' | 'Standings' | 'Form' | 'Venue' | 'Tactical' | 'Fatigue' | 'Volatility' | 'Favourite' | 'Manual Override' | 'Draw';
+  ablationCategory: 'Motivation' | 'Standings' | 'Form' | 'Venue' | 'Tactical' | 'Fatigue' | 'Volatility' | 'Favourite' | 'Draw';
   descriptiveRank: number;
 }
 
@@ -440,7 +440,7 @@ export function runStatisticalEvaluation(
       parametersAblated: 'manualOverride',
       description: 'Tests explicit user-triggered force-home/force-away overrides; favourite classification does not modify probabilities.',
       overrides: {},
-      ablationCategory: 'Manual Override',
+      ablationCategory: 'Favourite',
     },
     {
       ruleId: 9,
