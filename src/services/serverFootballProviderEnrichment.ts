@@ -71,14 +71,22 @@ async function getApiFootballTeamStats(teamId: number, leagueId: number, season:
   return value;
 }
 
+function isCompletedOrCancelledStatus(status: unknown): boolean {
+  const value = typeof status === 'string' ? status.toUpperCase() : '';
+  return ['FT', 'AET', 'PEN', 'CANC', 'ABD', 'AWD', 'WO', 'PST'].includes(value) ||
+    /finished|full time|completed|cancelled|abandoned|postponed/i.test(value);
+}
+
 function mapApiFootballFixture(raw: any): MatchFixture | null {
   const fixture = raw?.fixture;
+  if (isCompletedOrCancelledStatus(fixture?.status?.short)) return null;
   const home = raw?.teams?.home;
   const away = raw?.teams?.away;
   const league = raw?.league;
   const kickoffTime = typeof fixture?.date === 'string' ? new Date(fixture.date) : null;
   if (!fixture?.id || !home?.id || !away?.id || !home?.name || !away?.name ||
-      !kickoffTime || !Number.isFinite(kickoffTime.getTime()) || !league?.name) return null;
+      !kickoffTime || !Number.isFinite(kickoffTime.getTime()) || !league?.name ||
+      kickoffTime.getTime() < Date.now() - 3 * 60 * 60 * 1000) return null;
   const name = league.country ? `${league.country} • ${league.name}` : league.name;
   const makeTeam = (team: any, side: 'home' | 'away'): TeamStats => ({
     id: `api_football_team_${team.id}`,
@@ -114,6 +122,8 @@ function mapApiFootballFixture(raw: any): MatchFixture | null {
 
 function mapSportmonksFixture(raw: any): MatchFixture | null {
   const fixtureId = raw?.id;
+  const state = raw?.state?.data || raw?.state;
+  if (isCompletedOrCancelledStatus(state?.short_name || state?.name)) return null;
   const participants = Array.isArray(raw?.participants?.data) ? raw.participants.data :
     Array.isArray(raw?.participants) ? raw.participants : [];
   const home = participants.find((p: any) => p?.meta?.location === 'home' || p?.pivot?.location === 'home');
@@ -121,7 +131,8 @@ function mapSportmonksFixture(raw: any): MatchFixture | null {
   const kickoffTime = typeof raw?.starting_at === 'string' ? new Date(raw.starting_at) : null;
   const leagueName = raw?.league?.data?.name || raw?.league?.name;
   if (!fixtureId || !home?.name || !away?.name || !kickoffTime ||
-      !Number.isFinite(kickoffTime.getTime()) || typeof leagueName !== 'string') return null;
+      !Number.isFinite(kickoffTime.getTime()) || kickoffTime.getTime() < Date.now() - 3 * 60 * 60 * 1000 ||
+      typeof leagueName !== 'string') return null;
   const makeTeam = (team: any, side: 'home' | 'away'): TeamStats => ({
     id: `sportmonks_team_${team.id || normalizeProviderTeamName(team.name)}`,
     name: team.name,
