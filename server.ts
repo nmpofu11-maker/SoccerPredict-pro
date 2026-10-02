@@ -1184,7 +1184,7 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
       diagnostics.sportmonks.failedRequests = providerResult.sportmonksFailedRequests;
       if (providerResult.sportmonksFixtures === 0) diagnostics.sportmonks.notes.push('No Sportmonks fixtures returned for requested dates.');
     }
-    diagnostics.apiFootball.notes.push(`Team-form/standings enrichment updated ${providerResult.enrichedTeams} fixture(s).`);
+    if (diagnostics.apiFootball.configured) diagnostics.apiFootball.notes.push(`Team-form/standings enrichment updated ${providerResult.enrichedTeams} fixture(s).`);
     diagnostics.apiFootball.notes.push(...providerResult.errors.filter((e) => e.startsWith('API-Football')));
     diagnostics.sportmonks.notes.push(...providerResult.errors.filter((e) => e.startsWith('Sportmonks')));
     if (beforeProviderEnrichment === 0 && providerResult.apiFootballFixtures > 0) sourceUsed = 'API_FOOTBALL';
@@ -1277,7 +1277,7 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     diagnostics.completedAt = new Date().toISOString();
 
     const sourceLabel = sourceUsed === 'SPORTAPI_AI' ? 'SportAPI.ai' : sourceUsed === 'THERUNDOWN' ? 'TheRundown.io' : sourceUsed === 'PITCHAPI' ? 'PitchAPI' : sourceUsed === 'SPORTDB' ? 'SportDB' : sourceUsed === 'API_FOOTBALL' ? 'API-Football' : 'Sportmonks';
-    const msg = `Ingested ${mapped.length} fixtures from ${sourceLabel} for ${dateStr} (${newCount} new). Raw records: SportAPI.ai ${diagnostics.sportApiAi.rawRecords}; TheRundown ${diagnostics.theRundown.rawRecords}; PitchAPI ${diagnostics.pitchApi.rawRecords}; SportDB ${diagnostics.sportDb.rawRecords}; API-Football ${diagnostics.apiFootball.rawRecords}; Sportmonks ${diagnostics.sportmonks.rawRecords}. Mapped: SportAPI.ai ${diagnostics.sportApiAi.mappedRecords}; TheRundown ${diagnostics.theRundown.mappedRecords}; PitchAPI ${diagnostics.pitchApi.mappedRecords}; SportDB ${diagnostics.sportDb.mappedRecords}.`;
+    const msg = `Ingested ${mapped.length} fixtures from ${sourceLabel} for ${dateStr} (${newCount} new). Raw records: SportAPI.ai ${diagnostics.sportApiAi.rawRecords}; TheRundown ${diagnostics.theRundown.rawRecords}; PitchAPI ${diagnostics.pitchApi.rawRecords}; SportDB ${diagnostics.sportDb.rawRecords}; API-Football ${diagnostics.apiFootball.rawRecords}; Sportmonks ${diagnostics.sportmonks.rawRecords}. Mapped: SportAPI.ai ${diagnostics.sportApiAi.mappedRecords}; TheRundown ${diagnostics.theRundown.mappedRecords}; PitchAPI ${diagnostics.pitchApi.mappedRecords}; SportDB ${diagnostics.sportDb.mappedRecords}; API-Football ${diagnostics.apiFootball.mappedRecords}; Sportmonks ${diagnostics.sportmonks.mappedRecords}.`;
     status.ingest = {
       lastRunAt: new Date().toISOString(),
       lastSuccess: true,
