@@ -267,31 +267,6 @@ export function calculateMatchFormComparison(
   };
 }
 
-/**
- * Generates a stable, realistic full-time score matching the match result
- */
-export function getDeterministicFtScore(
-  teamName: string,
-  idx: number,
-  result: 'W' | 'D' | 'L'
-): string {
-  let hash = 0;
-  const str = `${teamName}_${idx}`;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash * 33 + str.charCodeAt(i)) % 10000;
-  }
-  if (result === 'W') {
-    const winScores = ['2-1', '1-0', '3-1', '2-0', '3-2', '4-1', '3-0', '1-0', '2-1'];
-    return winScores[hash % winScores.length];
-  } else if (result === 'D') {
-    const drawScores = ['1-1', '0-0', '2-2', '1-1', '0-0', '2-2', '3-3'];
-    return drawScores[hash % drawScores.length];
-  } else {
-    const lossScores = ['1-2', '0-1', '1-3', '0-2', '2-3', '0-3', '1-4', '0-1', '1-2'];
-    return lossScores[hash % lossScores.length];
-  }
-}
-
 export interface FormResultBadgeData {
   result: 'W' | 'D' | 'L';
   score: string; // FT score, e.g. "2-1", "1-0", "0-0"
