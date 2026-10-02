@@ -249,29 +249,35 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
     const competitionText = `${raw.league?.name || ''} ${raw.league?.country || ''} ${fixture.league || ''}`;
     const isPriorityCompetition = /south africa.*premier|premier.*south africa|premier soccer league|premier league|la liga|serie a|bundesliga|ligue 1|champions league|world cup|afcon|nations league|copa america|euro/i.test(competitionText);
     if (isPriorityCompetition && Number.isInteger(leagueId) && Number.isInteger(season) && Number.isInteger(homeId) && Number.isInteger(awayId)) {
-      let standings = new Map<string, { rank: number; points: number | null }>();
-      try {
-        standings = await getApiFootballStandings(leagueId, season);
-      } catch (err) {
-        errors.push(`API-Football standings ${leagueId}/${season}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-      const [homeStatsResult, awayStatsResult] = await Promise.allSettled([
-        getApiFootballTeamStats(homeId, leagueId, season),
-        getApiFootballTeamStats(awayId, leagueId, season),
-      ]);
-      const homeRank = standings.get(String(homeId));
-      const awayRank = standings.get(String(awayId));
-      if (homeStatsResult.status === 'fulfilled') {
-        update.homeTeam = { ...fixture.homeTeam, ...teamStatsFromApiFootball(homeStatsResult.value, homeRank) };
-      } else {
-        errors.push(`API-Football team stats ${fixture.homeTeam.name}: ${String(homeStatsResult.reason)}`);
-        if (homeRank) update.homeTeam = { ...fixture.homeTeam, ...teamStatsFromApiFootball(null, homeRank) };
-      }
-      if (awayStatsResult.status === 'fulfilled') {
-        update.awayTeam = { ...fixture.awayTeam, ...teamStatsFromApiFootball(awayStatsResult.value, awayRank) };
-      } else {
-        errors.push(`API-Football team stats ${fixture.awayTeam.name}: ${String(awayStatsResult.reason)}`);
-        if (awayRank) update.awayTeam = { ...fixture.awayTeam, ...teamStatsFromApiFootball(null, awayRank) };
+      const hasCompleteTeamEvidence = Boolean(
+        fixture.homeTeam.formSource && fixture.homeTeam.standingsSource &&
+        fixture.awayTeam.formSource && fixture.awayTeam.standingsSource
+      );
+      if (!hasCompleteTeamEvidence) {
+        let standings = new Map<string, { rank: number; points: number | null }>();
+        try {
+          standings = await getApiFootballStandings(leagueId, season);
+        } catch (err) {
+          errors.push(`API-Football standings ${leagueId}/${season}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+        const [homeStatsResult, awayStatsResult] = await Promise.allSettled([
+          getApiFootballTeamStats(homeId, leagueId, season),
+          getApiFootballTeamStats(awayId, leagueId, season),
+        ]);
+        const homeRank = standings.get(String(homeId));
+        const awayRank = standings.get(String(awayId));
+        if (homeStatsResult.status === 'fulfilled') {
+          update.homeTeam = { ...fixture.homeTeam, ...teamStatsFromApiFootball(homeStatsResult.value, homeRank) };
+        } else {
+          errors.push(`API-Football team stats ${fixture.homeTeam.name}: ${String(homeStatsResult.reason)}`);
+          if (homeRank) update.homeTeam = { ...fixture.homeTeam, ...teamStatsFromApiFootball(null, homeRank) };
+        }
+        if (awayStatsResult.status === 'fulfilled') {
+          update.awayTeam = { ...fixture.awayTeam, ...teamStatsFromApiFootball(awayStatsResult.value, awayRank) };
+        } else {
+          errors.push(`API-Football team stats ${fixture.awayTeam.name}: ${String(awayStatsResult.reason)}`);
+          if (awayRank) update.awayTeam = { ...fixture.awayTeam, ...teamStatsFromApiFootball(null, awayRank) };
+        }
       }
 
       // South African Premiership is not covered by Football-Data.org.
