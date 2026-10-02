@@ -593,10 +593,12 @@ export function evaluateFixturePrediction(
   }
 
   // ==========================================
-  // RULE 8: Manual Overwrite & Forced Selection Override
+  // RULE 8: Manual Selection Override
   // ==========================================
+  // Favourite-team status is a UI/filter classification only.
+  // It MUST NOT force or floor a probability because the designation is
+  // not current match evidence and can otherwise manufacture directional output.
   let finalOverrideApplied = false;
-  const floorThreshold = w.favouriteWinFloor;
 
   if (manualOverride === 'force_home') {
     homeWinPct = 75.0;
@@ -625,83 +627,14 @@ export function evaluateFixturePrediction(
       description: 'User initiated manual override via device localStorage.',
     });
   } else if (isFavouriteMatch) {
-    if (homeIsFav && !awayIsFav) {
-      if (homeWinPct < floorThreshold) {
-        const remaining = 100.0 - floorThreshold;
-        const currentOtherTotal = (awayWinPct + drawPct) || 1;
-        awayWinPct = (awayWinPct / currentOtherTotal) * remaining;
-        drawPct = (drawPct / currentOtherTotal) * remaining;
-        homeWinPct = floorThreshold;
-
-        appliedRules.push({
-          ruleNumber: 8,
-          ruleName: 'Priority Favourite Win Floor',
-          tag: `Rule 8: Favourite Floor (≥${floorThreshold}%)`,
-          impact: `Home win probability elevated to ${floorThreshold}% configured floor`,
-          beneficiary: 'home',
-          description: `${fixture.homeTeam.name} is one of the 80 Priority Favourite teams. Floor enforced.`,
-        });
-      } else {
-        appliedRules.push({
-          ruleNumber: 8,
-          ruleName: 'Priority Favourite Validated',
-          tag: `Rule 8: Favourite Confirmed (>${floorThreshold}%)`,
-          impact: `Natural win probability (${homeWinPct.toFixed(1)}%) exceeds ${floorThreshold}% floor`,
-          beneficiary: 'home',
-          description: `${fixture.homeTeam.name} priority favourite status verified.`,
-        });
-      }
-    } else if (awayIsFav && !homeIsFav) {
-      if (awayWinPct < floorThreshold) {
-        const remaining = 100.0 - floorThreshold;
-        const currentOtherTotal = (homeWinPct + drawPct) || 1;
-        homeWinPct = (homeWinPct / currentOtherTotal) * remaining;
-        drawPct = (drawPct / currentOtherTotal) * remaining;
-        awayWinPct = floorThreshold;
-
-        appliedRules.push({
-          ruleNumber: 8,
-          ruleName: 'Priority Favourite Win Floor',
-          tag: `Rule 8: Favourite Floor (≥${floorThreshold}%)`,
-          impact: `Away win probability elevated to ${floorThreshold}% calibrated floor`,
-          beneficiary: 'away',
-          description: `${fixture.awayTeam.name} is one of the 80 Priority Favourite teams. Floor enforced.`,
-        });
-      } else {
-        appliedRules.push({
-          ruleNumber: 8,
-          ruleName: 'Priority Favourite Validated',
-          tag: `Rule 8: Favourite Confirmed (>${floorThreshold}%)`,
-          impact: `Natural win probability (${awayWinPct.toFixed(1)}%) exceeds ${floorThreshold}% floor`,
-          beneficiary: 'away',
-          description: `${fixture.awayTeam.name} priority favourite status verified.`,
-        });
-      }
-    } else if (homeIsFav && awayIsFav) {
-      // Both are in the 80 favourites list (Clash of Titans)
-      // Whichever has higher mathematical points gets the floor advantage
-      if (homePoints > awayPoints && homeWinPct < 50.0) {
-        homeWinPct = 52.0;
-        awayWinPct = 32.0;
-        drawPct = 16.0;
-      } else if (awayPoints > homePoints && awayWinPct < 50.0) {
-        awayWinPct = 52.0;
-        homeWinPct = 32.0;
-        drawPct = 16.0;
-      } else if (homePoints === awayPoints) {
-        homeWinPct = 36.0;
-        awayWinPct = 36.0;
-        drawPct = 28.0;
-      }
-      appliedRules.push({
-        ruleNumber: 8,
-        ruleName: 'Dual Favourite Clash',
-        tag: 'Rule 8: Dual Favourite Clash',
-        impact: 'Both competitors belong to Priority Favourite matrix',
-        beneficiary: 'both',
-        description: `Direct clash between priority favourites: ${fixture.homeTeam.name} vs ${fixture.awayTeam.name}.`,
-      });
-    }
+    appliedRules.push({
+      ruleNumber: 8,
+      ruleName: 'Priority Favourite Tag',
+      tag: 'Rule 8: Favourite Classification Only',
+      impact: 'No probability adjustment applied; favourite status is not match evidence',
+      beneficiary: 'neutral',
+      description: `Fixture tagged for the Favourites tab: ${favouriteTeams.join(' / ')}. Probability remains driven only by verified match/team evidence and model priors.`,
+    });
   }
 
   // Ensure exact rounding to 1 decimal place summing to 100%
