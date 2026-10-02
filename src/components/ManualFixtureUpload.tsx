@@ -38,10 +38,10 @@ export const ManualFixtureUpload: React.FC = () => {
         });
       }
 
-      const result = await response?.json();
+      const result = await response?.json().catch(() => ({}));
       // /api/fixtures/ingest-slate returns { status: 'success', ingestedCount },
       // the file/url endpoints return { success: true, count } — handle both.
-      const isSuccess = result?.status === 'success' || result?.success === true;
+      const isSuccess = (response?.ok && (result?.status === 'success' || result?.success === true));
       const count = result?.ingestedCount ?? result?.count ?? 0;
       if (isSuccess) {
         setStatus(`Successfully ingested ${count} fixtures. They're now live in the app.`);
@@ -49,7 +49,8 @@ export const ManualFixtureUpload: React.FC = () => {
         setFile(null);
         setUrl('');
       } else {
-        setStatus(`Error: ${result?.message || result?.error || 'Unknown error'}`);
+        const errorDetail = result?.message || result?.error || (response ? `Server error (HTTP ${response.status})` : 'No response from server');
+        setStatus(`Error: ${errorDetail}`);
       }
     } catch (err) {
       setStatus(`Upload failed: ${err instanceof Error ? err.message : 'Unknown server error'}`);

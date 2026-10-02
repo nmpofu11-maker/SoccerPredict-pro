@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getAdminApiHeaders } from '../services/adminAuthService';
 
 export const ManualResultUpload: React.FC = () => {
   const [rawData, setRawData] = useState('');
@@ -9,18 +10,18 @@ export const ManualResultUpload: React.FC = () => {
     try {
       const response = await fetch('/api/admin/upload-results', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAdminApiHeaders() },
         body: JSON.stringify({ rawData }),
       });
-      const result = await response.json();
-      if (result.success) {
+      const result = await response.json().catch(() => ({}));
+      if (response.ok && result.success) {
         setStatus(`Successfully uploaded ${result.count} results.`);
         setRawData('');
       } else {
-        setStatus(`Error: ${result.error}`);
+        setStatus(`Error: ${result.error || result.message || `HTTP ${response.status}`}`);
       }
     } catch (err) {
-      setStatus('Failed to connect to server.');
+      setStatus(`Failed to connect to server: ${err instanceof Error ? err.message : 'Network error'}`);
     }
   };
 

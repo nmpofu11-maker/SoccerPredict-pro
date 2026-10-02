@@ -11,7 +11,7 @@ export function pitchApiConfigured(): boolean {
 export async function fetchPitchApiFixturesByDate(date: string): Promise<any[]> {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error('PITCHAPI_API_KEY is not configured');
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) throw new Error('PitchAPI date must be YYYY-MM-DD');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('PitchAPI date must be YYYY-MM-DD');
 
   const url = BASE_URL + '/v1/date/' + encodeURIComponent(date) + '?status=upcoming';
   const res = await fetch(url, {

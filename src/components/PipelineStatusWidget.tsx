@@ -110,9 +110,15 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
               </span>
             </div>
             <div className="flex flex-col items-end">
-              <span className="text-[10px] text-slate-400 font-sans">Football-Data</span>
-              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.footballDataConfigured ? 'bg-teal-500/20 border-teal-500/40 text-teal-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
-                {status.footballDataConfigured ? 'CONNECTED' : 'UNSET'}
+              <span className="text-[10px] text-slate-400 font-sans">PitchAPI</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.pitchApiConfigured ? 'bg-purple-500/20 border-purple-500/40 text-purple-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                {status.pitchApiConfigured ? 'CONNECTED' : 'UNSET'}
+              </span>
+            </div>
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] text-slate-400 font-sans">SportDB</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.sportDbConfigured ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                {status.sportDbConfigured ? 'CONNECTED' : 'UNSET'}
               </span>
             </div>
           </div>

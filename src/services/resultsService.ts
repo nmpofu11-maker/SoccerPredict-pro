@@ -64,6 +64,7 @@ export interface CronStatusResponse {
   sportApiAiConfigured: boolean;
   theRundownConfigured: boolean;
   pitchApiConfigured: boolean;
+  sportDbConfigured: boolean;
   footballDataConfigured: boolean;
   cron: {
     ingest: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; fixturesIngested: number; sourceUsed?: string | null };
