@@ -2011,6 +2011,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
         status: 'success',
         sportApiAiConfigured: sportApiAiConfigured(),
         theRundownConfigured: theRundownConfigured(),
+        footballDataConfigured: footballDataConfigured(),
         cron: readCronStatus(),
       });
     } catch (err: unknown) {
