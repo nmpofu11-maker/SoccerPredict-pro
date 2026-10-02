@@ -94,14 +94,19 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
       });
       if (res.ok) {
         setStatusMessage('✓ Observed team coefficients synchronized to persistent server.');
+      } else if (res.status === 401) {
+        setStatusMessage('Authentication required (401): Please enter the server ADMIN_API_KEY in the Manual Upload tab.');
+      } else if (res.status === 503) {
+        setStatusMessage('Admin service unavailable (503): ADMIN_API_KEY is not configured on the server.');
       } else {
-        setStatusMessage('Sync cached locally (server offline fallback active).');
+        const errData = await res.json().catch(() => ({}));
+        setStatusMessage(`Sync failed (${res.status}): ${errData.message || errData.error || 'Server rejected request'}`);
       }
-    } catch {
-      setStatusMessage('Sync cached in browser localStorage.');
+    } catch (err) {
+      setStatusMessage(`Sync error: ${err instanceof Error ? err.message : 'Network error'}`);
     } finally {
       setIsSyncingServer(false);
-      setTimeout(() => setStatusMessage(null), 4000);
+      setTimeout(() => setStatusMessage(null), 5000);
     }
   };
 

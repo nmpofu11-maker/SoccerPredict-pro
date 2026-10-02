@@ -110,7 +110,13 @@ export async function ingestSlateToServer(payload: { rawText?: string; fixtures?
 
   if (!response.ok) {
     const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.message || `HTTP error ${response.status}`);
+    if (response.status === 401) {
+      throw new Error('Authentication required (401): Please enter the server ADMIN_API_KEY in the upload panel.');
+    }
+    if (response.status === 503) {
+      throw new Error('Service unavailable (503): ADMIN_API_KEY is not configured on the server.');
+    }
+    throw new Error(errData.message || errData.error || `HTTP error ${response.status}`);
   }
 
   const data = await response.json();
@@ -126,11 +132,18 @@ export async function ingestSlateToServer(payload: { rawText?: string; fixtures?
 export async function purgeFixturesOnServer(): Promise<{ status: string; message: string; count: number; fixtures: MatchFixture[] }> {
   const response = await fetch('/api/fixtures/purge', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAdminApiHeaders() },
   });
 
   if (!response.ok) {
-    throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+    const errData = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      throw new Error('Authentication required (401): Please enter the server ADMIN_API_KEY in the upload panel.');
+    }
+    if (response.status === 503) {
+      throw new Error('Service unavailable (503): ADMIN_API_KEY is not configured on the server.');
+    }
+    throw new Error(errData.message || errData.error || `HTTP error ${response.status}`);
   }
 
   const data = await response.json();
@@ -144,13 +157,19 @@ export async function purgeFixturesOnServer(): Promise<{ status: string; message
 export async function deleteFixtureOnServer(matchId: string): Promise<DeleteFixtureResponse> {
   const response = await fetch('/api/fixtures/delete', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAdminApiHeaders() },
     body: JSON.stringify({ matchId }),
   });
 
   if (!response.ok) {
     const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.message || `HTTP error ${response.status}`);
+    if (response.status === 401) {
+      throw new Error('Authentication required (401): Please enter the server ADMIN_API_KEY in the upload panel.');
+    }
+    if (response.status === 503) {
+      throw new Error('Service unavailable (503): ADMIN_API_KEY is not configured on the server.');
+    }
+    throw new Error(errData.message || errData.error || `HTTP error ${response.status}`);
   }
 
   const data = await response.json();

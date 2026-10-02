@@ -88,7 +88,17 @@ export async function fetchCronStatus(): Promise<CronStatusResponse | null> {
 export async function triggerIngestNow(): Promise<{ success: boolean; message: string; count: number }> {
   try {
     const res = await fetch('/api/admin/run-ingest-now', { method: 'POST', headers: getAdminApiHeaders() });
-    return await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      return { success: false, message: 'Authentication required (401): Please configure ADMIN_API_KEY in session.', count: 0 };
+    }
+    if (res.status === 503) {
+      return { success: false, message: 'Service unavailable (503): ADMIN_API_KEY is not configured on the server.', count: 0 };
+    }
+    if (!res.ok) {
+      return { success: false, message: data.message || data.error || `HTTP error ${res.status}`, count: 0 };
+    }
+    return data;
   } catch (err) {
     return { success: false, message: err instanceof Error ? err.message : 'Request failed', count: 0 };
   }

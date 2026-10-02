@@ -36,6 +36,8 @@ import {
   verifyLog,
 } from './src/services/predictionLog';
 import { parseRawResults } from './src/services/resultParserService';
+import { readAdminGuardConfig, decideAdminAccess } from './src/services/adminGuard';
+import { sanitizeRuntimeManifest } from './src/services/manifestSanitizer';
 
 dotenv.config();
 
@@ -44,20 +46,13 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
 });
 
-const ADMIN_API_KEY = process.env.ADMIN_API_KEY?.trim() || '';
-
 function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction): void {
-  // If ADMIN_API_KEY is not set in environment (common in standard studio dev/deployment),
-  // allow administrative operations so operators are not locked out of manual uploads or syncing.
-  if (!ADMIN_API_KEY) {
-    return next();
-  }
-
+  const cfg = readAdminGuardConfig(process.env);
   const supplied = req.get('x-admin-api-key') || '';
-  const expected = Buffer.from(ADMIN_API_KEY);
-  const actual = Buffer.from(supplied);
-  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
-    res.status(401).json({ error: 'Administrative authorization required.' });
+  const decision = decideAdminAccess(cfg, supplied);
+
+  if (decision.ok === false) {
+    res.status(decision.status).json({ error: decision.message, message: decision.message });
     return;
   }
   next();
@@ -1440,6 +1435,20 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
 async function startServer() {
   const app = express();
   app.use(express.json());
+
+  // Idempotent migration: sanitize existing runtime fixtures-manifest.json
+  try {
+    const rawFixtures = readRawDiskManifest();
+    if (rawFixtures.length > 0) {
+      const { fixtures: sanitized, changedCount } = sanitizeRuntimeManifest(rawFixtures);
+      if (changedCount > 0) {
+        writeDiskManifest(sanitized);
+        console.log(`[migration] Sanitized ${changedCount} fixtures with unverified/placeholder stats in runtime manifest.`);
+      }
+    }
+  } catch (err) {
+    console.error('[migration] Error running startup manifest sanitization migration:', err);
+  }
 
   // Health check endpoint
   app.get('/api/health', (_req, res) => {

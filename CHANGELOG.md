@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Security & Access Control
+- Restored fail-closed admin guard (`src/services/adminGuard.ts`):
+  - When `ADMIN_API_KEY` is unset, administrative endpoints reject requests with HTTP 503 unless `ALLOW_OPEN_ADMIN="true"` is explicitly enabled outside production (`NODE_ENV !== "production"`).
+  - Key validation uses constant-time comparison via `crypto.timingSafeEqual`.
+  - Operator key entry UI in `ManualFixtureUpload.tsx` with `sessionStorage` persistence replaces blocked `window.prompt` in iframes.
+  - Server returns informative error/status messages (401/503) and admin UI prompts for operator key entry.
+
+### Data Integrity & Provenance
+- **Committed Seed Data Sanitization (Step 1)**:
+  - Nullified fabricated stats (leagueRank, points, avgPossession, avgShotsOnTarget, expectedGoalsAvg, totalSquadValueEur, lastSeasonRank) and reset form to `[]` across all 116 seed fixtures in `src/data/upcoming_fixtures.json`.
+  - Set authenticity stamps to `UNVERIFIED_STATS` (score 0, isAuthentic: false).
+  - Updated `scripts/build_hollywoodbets_fixtures.cjs` to emit neutral null/empty stats.
+  - Made `h2h` nullable (`H2HRecord | null`) across types and guarded Rule 4 evaluation in `src/engine/rulesEngine.ts`.
+- **Real Recent Form & Standings Computation (Step 4)**:
+  - Implemented `src/services/serverFootballData.ts` to compute authentic 5-match form sequences (W/D/L and final scores) from finished matches fetched via official Football-Data.org `/v4/competitions/{code}/matches?status=FINISHED`.
+  - Filtered matches to strictly before fixture kickoff; unmatched teams default safely to `[]`.
+  - Standings enriched via `/standings`; verified stamps (`VERIFIED_AUTHENTIC`) only applied when verified live from the provider in the current run.
+  - Implemented request spacing and single-retry error handling on HTTP 429 rate limits.
+- **Real Head-to-Head (Step 5)**:
+  - H2H records computed strictly from real matches or head2head endpoints; unobserved H2H remains null and skips Rule 4.
+- **Rule 5 Inactivity (Step 6)**:
+  - Per-team possession, shots on target, and xG averages remain `null` when not provided by active feeds, keeping Rule 5 dormant and displaying "data unavailable" rather than fabricated 50%/4.5 SOT numbers.
+- **Runtime Manifest Sanitization Migration (Step 7)**:
+  - Added server boot migration (`src/services/manifestSanitizer.ts`) to clean legacy unverified stats from `data/fixtures-manifest.json`.
+  - Ensured `scraperService.ts` and `hollywoodbetsParser.ts` persist null/empty unobserved fields.
+- **Honest UI Output (Step 8)**:
+  - Updated match cards, rule chips, form guides, and trend displays to clearly render "data unavailable" instead of fabricated defaults.
+  - Display authentic verification badges (VERIFIED vs UNVERIFIED) per fixture.
+
 ### Security
 - Server-side URL scraping now rejects non-public destinations for IPv4 **and** IPv6
   (loopback, private, link-local, unique-local, carrier-grade NAT, multicast, IPv4-mapped IPv6).

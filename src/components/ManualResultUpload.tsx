@@ -17,11 +17,15 @@ export const ManualResultUpload: React.FC = () => {
       if (response.ok && result.success) {
         setStatus(`Successfully uploaded ${result.count} results.`);
         setRawData('');
+      } else if (response.status === 401) {
+        setStatus('Authentication error (401): Please enter the server ADMIN_API_KEY above to authorize result uploads.');
+      } else if (response.status === 503) {
+        setStatus('Admin service unavailable (503): ADMIN_API_KEY is not configured on the server.');
       } else {
         setStatus(`Error: ${result.error || result.message || `HTTP ${response.status}`}`);
       }
     } catch (err) {
-      setStatus(`Failed to connect to server: ${err instanceof Error ? err.message : 'Network error'}`);
+      setStatus(`Upload failed: ${err instanceof Error ? err.message : 'Network error'}`);
     }
   };
 

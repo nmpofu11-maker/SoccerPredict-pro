@@ -80,7 +80,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               {cumulativeSuccessRate != null ? `${cumulativeSuccessRate.toFixed(1)}% Accuracy` : 'Accuracy: n/a'}
             </span>
             <span className="hidden md:inline">•</span>
-            <span className="hidden md:inline">46 Leagues</span>
+            <span className="hidden md:inline text-sky-300 font-semibold">All Hollywoodbets Leagues</span>
           </div>
         </div>
       </div>

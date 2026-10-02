@@ -236,16 +236,21 @@ export function sanitizeLiveIncomingFixtures(rawItems: any[]): LiveSanitizationR
           : null,
     };
 
-    // Build fully compliant H2H Record
-    const rawH2H = item.h2h || {};
-    const scoresLast5 = Array.isArray(rawH2H.scoresLast5) ? rawH2H.scoresLast5 : [];
-    const cleanH2H: H2HRecord = {
-      homeWins: typeof rawH2H.homeWins === 'number' ? rawH2H.homeWins : 0,
-      draws: typeof rawH2H.draws === 'number' ? rawH2H.draws : 0,
-      awayWins: typeof rawH2H.awayWins === 'number' ? rawH2H.awayWins : 0,
-      totalLast5: scoresLast5.length,
-      scoresLast5,
-    };
+    // Build fully compliant H2H Record (null if not observed)
+    let cleanH2H: H2HRecord | null = null;
+    if (item.h2h && typeof item.h2h === 'object') {
+      const rawH2H = item.h2h;
+      if (typeof rawH2H.homeWins === 'number' && typeof rawH2H.awayWins === 'number') {
+        const scoresLast5 = Array.isArray(rawH2H.scoresLast5) ? rawH2H.scoresLast5 : [];
+        cleanH2H = {
+          homeWins: rawH2H.homeWins,
+          draws: typeof rawH2H.draws === 'number' ? rawH2H.draws : 0,
+          awayWins: rawH2H.awayWins,
+          totalLast5: typeof rawH2H.totalLast5 === 'number' ? rawH2H.totalLast5 : scoresLast5.length,
+          scoresLast5,
+        };
+      }
+    }
 
     // Build compliant Motivation
     const cleanMotivation: MatchMotivation =

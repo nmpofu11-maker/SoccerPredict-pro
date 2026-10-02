@@ -175,20 +175,20 @@ export function deriveTeamMetricsFromOdds(homeDec?: number, drawDec?: number, aw
     marginPercent = Number(((marginSum - 1) * 100).toFixed(2));
   }
 
-  // Neutral, odds-independent placeholder baselines
-  const homePossession = 50;
-  const awayPossession = 50;
-  const homeShots = 4.5;
-  const awayShots = 4.5;
-  const homeRank = 8;
-  const homePoints = 18;
-  const awayRank = 9;
-  const awayPoints = 17;
-  const homeForm: ('W' | 'D' | 'L')[] = ['W', 'D', 'W', 'D', 'L'];
-  const awayForm: ('W' | 'D' | 'L')[] = ['D', 'W', 'L', 'W', 'D'];
-  const homeH2HWins = 2;
-  const drawH2H = 1;
-  const awayH2HWins = 2;
+  // Neutral, unobserved baselines when external provider supplies odds only
+  const homePossession = null;
+  const awayPossession = null;
+  const homeShots = null;
+  const awayShots = null;
+  const homeRank = null;
+  const homePoints = null;
+  const awayRank = null;
+  const awayPoints = null;
+  const homeForm: ('W' | 'D' | 'L')[] = [];
+  const awayForm: ('W' | 'D' | 'L')[] = [];
+  const homeH2HWins = null;
+  const drawH2H = null;
+  const awayH2HWins = null;
   const motivation: MatchMotivation = 'regular';
   const isHighStakes = false;
 

@@ -60,12 +60,12 @@ export function calculateHomeWinProbabilityTrend(
   const points: ProbabilityTrendPoint[] = [];
 
   // If we have actual historical matches in dataset, evaluate their assessed win probability
-  const formList = fixture.homeTeam.form || ['W', 'D', 'W', 'W', 'D'];
+  const formList = Array.isArray(fixture.homeTeam.form) ? fixture.homeTeam.form : [];
   const last3Form = formList.slice(-3);
 
   for (let i = 0; i < 3; i++) {
     const historicalMatch = recentHistorical[i];
-    const formResult = last3Form[i] || (i % 2 === 0 ? 'W' : 'D');
+    const formResult = last3Form[i] || 'D';
     const label = i === 0 ? '3 Matches Ago' : i === 1 ? '2 Matches Ago' : 'Last Match';
     const shortLabel = `M-${3 - i}`;
 

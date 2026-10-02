@@ -148,22 +148,16 @@ export function calculateTeamForm(
   historicalResults: HistoricalMatchResult[] = HISTORICAL_MATCH_RESULTS
 ): CalculatedTeamForm {
   const historicalMatches = getHistoricalMatchesForTeam(teamName, historicalResults);
-  const baselineForm = teamStats.form && teamStats.form.length > 0
-    ? teamStats.form
-    : (['W', 'D', 'W', 'L', 'W'] as const);
+  const baselineForm = Array.isArray(teamStats?.form) ? teamStats.form : [];
 
   const finalMatches: FormMatchItem[] = [];
 
   // Determine how many historical matches we can use (up to 5, newest ones)
   const recentHistorical = historicalMatches.slice(-5);
-  const neededFromBaseline = Math.max(0, 5 - recentHistorical.length);
+  const neededFromBaseline = Math.max(0, baselineForm.length - recentHistorical.length);
 
-  // Fill earlier matches from the baseline recorded league form
-  const baselineSlice = baselineForm.slice(-neededFromBaseline);
-  // In case baseline was shorter than needed
-  while (baselineSlice.length < neededFromBaseline) {
-    baselineSlice.unshift('D');
-  }
+  // Fill earlier matches only from authentic recorded league form (if any)
+  const baselineSlice = baselineForm.slice(0, neededFromBaseline);
 
   // Prepend earlier baseline matches
   for (let i = 0; i < baselineSlice.length; i++) {
@@ -182,18 +176,16 @@ export function calculateTeamForm(
     });
   }
 
-  // Re-index so 0 is oldest and 4 is most recent, ensuring every match has a verified FT score
+  // Re-index so 0 is oldest and N-1 is most recent, attaching scores only when known
   finalMatches.forEach((m, idx) => {
     m.index = idx;
     if (!m.score) {
-      if (teamStats.formScores && teamStats.formScores[idx]) {
+      if (teamStats?.formScores && teamStats.formScores[idx]) {
         m.score = teamStats.formScores[idx];
-      } else if (teamStats.formDetails && teamStats.formDetails[idx]?.score) {
+      } else if (teamStats?.formDetails && teamStats.formDetails[idx]?.score) {
         m.score = teamStats.formDetails[idx].score;
         m.opponent = m.opponent || teamStats.formDetails[idx].opponent;
         m.venue = m.venue || teamStats.formDetails[idx].venue;
-      } else {
-        m.score = getDeterministicFtScore(teamName, idx, m.result);
       }
     }
   });
@@ -209,11 +201,12 @@ export function calculateTeamForm(
     else if (m.result === 'L') losses++;
   }
 
+  const matchCount = finalMatches.length;
   const points = wins * 3 + draws * 1;
-  const pointsPercentage = Math.round((points / 15) * 100);
-  const pointsPerGame = (points / 5).toFixed(1);
+  const pointsPercentage = matchCount > 0 ? Math.round((points / (matchCount * 3)) * 100) : 0;
+  const pointsPerGame = matchCount > 0 ? (points / matchCount).toFixed(1) : '0.0';
 
-  // Calculate current unbeaten streak counting backwards from the most recent match (index 4)
+  // Calculate current unbeaten streak counting backwards from the most recent match
   let unbeatenStreak = 0;
   for (let i = finalMatches.length - 1; i >= 0; i--) {
     if (finalMatches[i].result === 'W' || finalMatches[i].result === 'D') {
@@ -224,16 +217,16 @@ export function calculateTeamForm(
   }
 
   // Streak Label
-  let streakLabel = `${wins}W ${draws}D ${losses}L`;
-  if (wins === 5) {
+  let streakLabel = matchCount > 0 ? `${wins}W ${draws}D ${losses}L` : 'No Match Form';
+  if (matchCount >= 5 && wins === 5) {
     streakLabel = '5W Win Streak 🔥';
-  } else if (unbeatenStreak === 5) {
+  } else if (matchCount >= 5 && unbeatenStreak === 5) {
     streakLabel = `Unbeaten in 5 (${points} pts)`;
   } else if (unbeatenStreak >= 3) {
     streakLabel = `${unbeatenStreak} Match Unbeaten`;
-  } else if (wins >= 4) {
+  } else if (matchCount >= 4 && wins >= 4) {
     streakLabel = `High Form (${points} pts)`;
-  } else if (losses >= 3) {
+  } else if (matchCount >= 4 && losses >= 3) {
     streakLabel = `Cold Form (${points} pts)`;
   }
 
@@ -263,7 +256,9 @@ export function calculateMatchFormComparison(
   let advantage: 'home' | 'away' | 'equal' = 'equal';
   let differentialLabel = 'Form Parity (Equal Points)';
 
-  if (pointsDiff > 0) {
+  if (homeForm.matches.length === 0 && awayForm.matches.length === 0) {
+    differentialLabel = 'Form Unobserved';
+  } else if (pointsDiff > 0) {
     advantage = 'home';
     differentialLabel = `+${pointsDiff} ${pointsDiff === 1 ? 'pt' : 'pts'} Home Momentum`;
   } else if (pointsDiff < 0) {
@@ -333,21 +328,21 @@ export function getTeamFormBadgesData(
         : m.result === 'D'
         ? 'Draw (1 pt)'
         : 'Loss (0 pts)';
-    const scoreStr = m.score || getDeterministicFtScore(team.name, idx, m.result);
+    const scoreStr = m.score ? `FT: ${m.score}` : 'Result:';
     const opponentPart = m.opponent ? ` vs ${m.opponent}` : '';
     const venuePart = m.venue ? ` [${m.venue === 'H' ? 'Home' : 'Away'}]` : '';
-    const matchLabel = idx === 4 ? 'Match 5 (Latest)' : `Match ${idx + 1}`;
+    const matchLabel = idx === calculated.matches.length - 1 ? `Match ${idx + 1} (Latest)` : `Match ${idx + 1}`;
 
     return {
       result: m.result,
-      score: scoreStr,
+      score: m.score || m.result,
       opponent: m.opponent,
       venue: m.venue,
       date: m.date,
       isHistorical: m.isFromHistoricalMatch,
       matchIndex: idx,
       label: matchLabel,
-      tooltipTitle: `FT: ${scoreStr} (${resultWord})${opponentPart}${venuePart}`,
+      tooltipTitle: `${scoreStr} ${resultWord}${opponentPart}${venuePart}`,
     };
   });
 }

@@ -89,6 +89,8 @@ export const FormTrendDisplay: React.FC<FormTrendDisplayProps> = ({
     );
   };
 
+  const hasAnyForm = homeForm.matches.length > 0 || awayForm.matches.length > 0;
+
   return (
     <div
       className="my-2.5 p-2.5 bg-slate-900/90 border border-slate-800 rounded-lg text-xs font-mono space-y-2"
@@ -123,98 +125,134 @@ export const FormTrendDisplay: React.FC<FormTrendDisplayProps> = ({
           >
             {comparison.differentialLabel}
           </span>
-          <span className="hidden xs:inline text-[9px] text-slate-400 font-sans">
-            (Oldest → Recent)
-          </span>
+          {hasAnyForm && (
+            <span className="hidden xs:inline text-[9px] text-slate-400 font-sans">
+              (Oldest → Recent)
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Main Grid: Home Team Form on Left, Away Team Form on Right */}
-      <div className="grid grid-cols-2 gap-3 pt-0.5">
-        {/* HOME TEAM FORM */}
-        <div className="flex flex-col gap-1.5 min-w-0">
-          <div className="flex items-center justify-between gap-1">
-            <span className="font-bold text-slate-200 truncate text-[11px]">
-              {homeTeam.shortName || homeTeam.name}
-            </span>
-            <div className="flex items-center gap-1 text-[10px]">
-              <span className="text-slate-400">
-                {homeForm.wins}W-{homeForm.draws}D-{homeForm.losses}L
-              </span>
-              <span className="text-emerald-400 font-bold" title="Points accumulated across last 5 matches">
-                {homeForm.points} Form Pts
-              </span>
-            </div>
-          </div>
-
-          {/* Form Badges Row */}
-          <div className="flex items-center gap-1.5">
-            {homeForm.matches.map((item) =>
-              renderFormBadge(item, 'home', homeTeam.name)
-            )}
-            <span className="ml-auto text-[9px] text-slate-400 font-bold hidden sm:inline">
-              {homeForm.pointsPerGame} PPG
-            </span>
-          </div>
-
-          {/* Progress efficiency bar */}
-          <div className="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
-            <div
-              className={`h-full transition-all duration-300 ${
-                homeForm.pointsPercentage >= 65
-                  ? 'bg-emerald-500'
-                  : homeForm.pointsPercentage >= 40
-                  ? 'bg-amber-500'
-                  : 'bg-rose-500'
-              }`}
-              style={{ width: `${homeForm.pointsPercentage}%` }}
-              title={`Form Efficiency: ${homeForm.pointsPercentage}% (${homeForm.points}/15 points)`}
-            />
-          </div>
+      {!hasAnyForm ? (
+        <div className="py-2 text-center text-[11px] text-slate-400 font-sans">
+          No verified recent match form recorded for either team in this competition.
         </div>
-
-        {/* AWAY TEAM FORM */}
-        <div className="flex flex-col gap-1.5 min-w-0">
-          <div className="flex items-center justify-between gap-1">
-            <div className="flex items-center gap-1 text-[10px]">
-              <span className="text-rose-400 font-bold" title="Points accumulated across last 5 matches">
-                {awayForm.points} Form Pts
+      ) : (
+        /* Main Grid: Home Team Form on Left, Away Team Form on Right */
+        <div className="grid grid-cols-2 gap-3 pt-0.5">
+          {/* HOME TEAM FORM */}
+          <div className="flex flex-col gap-1.5 min-w-0">
+            <div className="flex items-center justify-between gap-1">
+              <span className="font-bold text-slate-200 truncate text-[11px]">
+                {homeTeam.shortName || homeTeam.name}
               </span>
-              <span className="text-slate-400">
-                {awayForm.wins}W-{awayForm.draws}D-{awayForm.losses}L
-              </span>
+              <div className="flex items-center gap-1 text-[10px]">
+                {homeForm.matches.length > 0 ? (
+                  <>
+                    <span className="text-slate-400">
+                      {homeForm.wins}W-{homeForm.draws}D-{homeForm.losses}L
+                    </span>
+                    <span className="text-emerald-400 font-bold" title="Points accumulated across recorded matches">
+                      {homeForm.points} Form Pts
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-slate-500 italic">No Form</span>
+                )}
+              </div>
             </div>
-            <span className="font-bold text-slate-200 truncate text-[11px] text-right">
-              {awayTeam.shortName || awayTeam.name}
-            </span>
-          </div>
 
-          {/* Form Badges Row */}
-          <div className="flex items-center justify-end gap-1.5">
-            <span className="mr-auto text-[9px] text-slate-400 font-bold hidden sm:inline">
-              {awayForm.pointsPerGame} PPG
-            </span>
-            {awayForm.matches.map((item) =>
-              renderFormBadge(item, 'away', awayTeam.name)
+            {/* Form Badges Row */}
+            <div className="flex items-center gap-1.5">
+              {homeForm.matches.length > 0 ? (
+                homeForm.matches.map((item) =>
+                  renderFormBadge(item, 'home', homeTeam.name)
+                )
+              ) : (
+                <span className="text-[10px] text-slate-500 py-1 font-sans">Unobserved</span>
+              )}
+              {homeForm.matches.length > 0 && (
+                <span className="ml-auto text-[9px] text-slate-400 font-bold hidden sm:inline">
+                  {homeForm.pointsPerGame} PPG
+                </span>
+              )}
+            </div>
+
+            {/* Progress efficiency bar */}
+            {homeForm.matches.length > 0 && (
+              <div className="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    homeForm.pointsPercentage >= 65
+                      ? 'bg-emerald-500'
+                      : homeForm.pointsPercentage >= 40
+                      ? 'bg-amber-500'
+                      : 'bg-rose-500'
+                  }`}
+                  style={{ width: `${homeForm.pointsPercentage}%` }}
+                  title={`Form Efficiency: ${homeForm.pointsPercentage}% (${homeForm.points}/${homeForm.matches.length * 3} points)`}
+                />
+              </div>
             )}
           </div>
 
-          {/* Progress efficiency bar */}
-          <div className="h-1 w-full bg-slate-800 rounded-full overflow-hidden flex justify-end">
-            <div
-              className={`h-full transition-all duration-300 ${
-                awayForm.pointsPercentage >= 65
-                  ? 'bg-emerald-500'
-                  : awayForm.pointsPercentage >= 40
-                  ? 'bg-amber-500'
-                  : 'bg-rose-500'
-              }`}
-              style={{ width: `${awayForm.pointsPercentage}%` }}
-              title={`Form Efficiency: ${awayForm.pointsPercentage}% (${awayForm.points}/15 points)`}
-            />
+          {/* AWAY TEAM FORM */}
+          <div className="flex flex-col gap-1.5 min-w-0">
+            <div className="flex items-center justify-between gap-1">
+              <div className="flex items-center gap-1 text-[10px]">
+                {awayForm.matches.length > 0 ? (
+                  <>
+                    <span className="text-rose-400 font-bold" title="Points accumulated across recorded matches">
+                      {awayForm.points} Form Pts
+                    </span>
+                    <span className="text-slate-400">
+                      {awayForm.wins}W-{awayForm.draws}D-{awayForm.losses}L
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-slate-500 italic">No Form</span>
+                )}
+              </div>
+              <span className="font-bold text-slate-200 truncate text-[11px] text-right">
+                {awayTeam.shortName || awayTeam.name}
+              </span>
+            </div>
+
+            {/* Form Badges Row */}
+            <div className="flex items-center justify-end gap-1.5">
+              {awayForm.matches.length > 0 && (
+                <span className="mr-auto text-[9px] text-slate-400 font-bold hidden sm:inline">
+                  {awayForm.pointsPerGame} PPG
+                </span>
+              )}
+              {awayForm.matches.length > 0 ? (
+                awayForm.matches.map((item) =>
+                  renderFormBadge(item, 'away', awayTeam.name)
+                )
+              ) : (
+                <span className="text-[10px] text-slate-500 py-1 font-sans">Unobserved</span>
+              )}
+            </div>
+
+            {/* Progress efficiency bar */}
+            {awayForm.matches.length > 0 && (
+              <div className="h-1 w-full bg-slate-800 rounded-full overflow-hidden flex justify-end">
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    awayForm.pointsPercentage >= 65
+                      ? 'bg-emerald-500'
+                      : awayForm.pointsPercentage >= 40
+                      ? 'bg-amber-500'
+                      : 'bg-rose-500'
+                  }`}
+                  style={{ width: `${awayForm.pointsPercentage}%` }}
+                  title={`Form Efficiency: ${awayForm.pointsPercentage}% (${awayForm.points}/${awayForm.matches.length * 3} points)`}
+                />
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      )}
 
       {/* Active Match Inspection Tooltip / Drawer if clicked or hovered */}
       {activeTooltip && (
@@ -226,9 +264,11 @@ export const FormTrendDisplay: React.FC<FormTrendDisplayProps> = ({
             <Info className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
             <span className="truncate flex items-center gap-1.5 flex-wrap">
               <strong className="text-white">{activeTooltip.teamName}:</strong>
-              <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 font-mono font-bold text-white text-[11px] shadow-sm">
-                FT {activeTooltip.item.score || '2-1'}
-              </span>
+              {activeTooltip.item.score && (
+                <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 font-mono font-bold text-white text-[11px] shadow-sm">
+                  FT {activeTooltip.item.score}
+                </span>
+              )}
               <strong
                 className={`px-1 py-0.2 rounded font-mono font-bold text-[9px] uppercase ${
                   activeTooltip.item.result === 'W'

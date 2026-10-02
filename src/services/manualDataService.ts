@@ -50,7 +50,7 @@ export function mapRawToMatchFixture(raw: RawFixture): MatchFixture {
     motivation: 'regular',
     homeTeam: makeUnknownTeamStats(raw.homeTeam),
     awayTeam: makeUnknownTeamStats(raw.awayTeam),
-    h2h: { homeWins: null, draws: null, awayWins: null, totalLast5: null },
+    h2h: null,
   };
 }
 

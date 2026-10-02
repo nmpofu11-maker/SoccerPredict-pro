@@ -87,7 +87,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
             {totalFixtures}
           </div>
           <div className="text-[9.5px] font-mono text-slate-400 truncate">
-            46 Leagues Live Sync
+            All Hollywoodbets Leagues
           </div>
         </div>
       </div>

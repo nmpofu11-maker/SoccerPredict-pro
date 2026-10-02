@@ -55,7 +55,7 @@ export interface MatchFixture {
   motivation: MatchMotivation;
   homeTeam: TeamStats;
   awayTeam: TeamStats;
-  h2h: H2HRecord;
+  h2h: H2HRecord | null;
   odds?: {
     home: number;
     draw?: number;
@@ -242,7 +242,8 @@ export type DataAuthenticityStatus =
   | 'VERIFIED_AUTHENTIC'
   | 'AUTO_REPAIRED'
   | 'ANOMALIES_DETECTED'
-  | 'UNVERIFIED';
+  | 'UNVERIFIED'
+  | 'UNVERIFIED_STATS';
 
 export interface VerificationCheckResult {
   checkName: string;
@@ -255,8 +256,8 @@ export interface MatchAuthenticityStamp {
   status: DataAuthenticityStatus;
   authenticityScore: number; // 0 - 100
   isAuthentic: boolean;
-  verifiedAt: string;
-  source: 'OFFICIAL_ESPN_STANDINGS' | 'CANONICAL_AUDITED_DATASET' | 'MATHEMATICAL_VALIDATOR' | 'UNVERIFIED_PROVIDER_INGESTION';
+  verifiedAt: string | null;
+  source: string;
   checks: VerificationCheckResult[];
   repairedFields?: string[];
 }
