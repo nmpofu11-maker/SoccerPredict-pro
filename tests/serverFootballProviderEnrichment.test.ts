@@ -71,9 +71,11 @@ test('API-Football fixture, standings, team form and South African H2H are norma
     assert.equal(fixture.homeTeam.name, 'Orlando Pirates');
     assert.equal(fixture.homeTeam.leagueRank, 2);
     assert.equal(fixture.homeTeam.points, 20);
+    assert.equal(fixture.homeTeam.standingsSource, 'API_FOOTBALL');
     assert.deepEqual(fixture.homeTeam.form, ['W', 'W', 'D', 'W', 'L']);
     assert.equal(fixture.homeTeam.formSource, 'API_FOOTBALL');
     assert.equal(fixture.awayTeam.leagueRank, 1);
+    assert.equal(fixture.awayTeam.standingsSource, 'API_FOOTBALL');
     assert.equal(fixture.awayTeam.formSource, 'API_FOOTBALL');
     assert.deepEqual(fixture.h2h, {
       homeWins: 3,
