@@ -321,6 +321,7 @@ export function computeH2HFromFinishedMatches(
     awayWins,
     totalLast5: recent5.length,
     scoresLast5,
+    source: 'FOOTBALL_DATA_ORG',
   };
 }
 
@@ -426,14 +427,14 @@ export async function enrichFixturesWithFootballData(fixtures: MatchFixture[]): 
         ...fixture.homeTeam,
         ...(homeStanding ? { leagueRank: homeStanding.rank, points: homeStanding.points } : {}),
         ...(homeFormRes && homeFormRes.form.length > 0
-          ? { form: homeFormRes.form, formScores: homeFormRes.formScores, formDetails: homeFormRes.formDetails }
+          ? { form: homeFormRes.form, formSource: 'FOOTBALL_DATA_ORG' as const, formScores: homeFormRes.formScores, formDetails: homeFormRes.formDetails }
           : {}),
       },
       awayTeam: {
         ...fixture.awayTeam,
         ...(awayStanding ? { leagueRank: awayStanding.rank, points: awayStanding.points } : {}),
         ...(awayFormRes && awayFormRes.form.length > 0
-          ? { form: awayFormRes.form, formScores: awayFormRes.formScores, formDetails: awayFormRes.formDetails }
+          ? { form: awayFormRes.form, formSource: 'FOOTBALL_DATA_ORG' as const, formScores: awayFormRes.formScores, formDetails: awayFormRes.formDetails }
           : {}),
       },
       h2h: realH2H !== null ? realH2H : fixture.h2h,
