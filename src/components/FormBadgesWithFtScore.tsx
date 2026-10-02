@@ -81,14 +81,14 @@ export const FormBadgesWithFtScore: React.FC<FormBadgesWithFtScoreProps> = ({
                 isHovered ? `ring-2 ${ringColor} scale-110 shadow-md z-20` : ''
               }`}
               title={badge.tooltipTitle}
-              data-ft-score={badge.score}
+              data-ft-score={badge.score || 'Full-time score unavailable'}
               data-result={badge.result}
               aria-label={badge.tooltipTitle}
             >
               <span>{badge.result}</span>
             </button>
 
-            {/* Interactive FT Score Floating Tooltip on Hover */}
+            {/* Show only observed scores; W/D/L without a score is an outcome, not an FT score. */}
             {isHovered && (
               <div
                 className={`absolute bottom-full mb-1.5 z-50 pointer-events-none whitespace-nowrap animate-in fade-in zoom-in-95 duration-150 ${
@@ -104,7 +104,7 @@ export const FormBadgesWithFtScore: React.FC<FormBadgesWithFtScoreProps> = ({
                   {/* FT Score Header */}
                   <div className="flex items-center justify-between gap-2.5 pb-1 mb-1 border-b border-slate-800">
                     <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold">
-                      Full-Time Score
+                      Recent Match Result
                     </span>
                     <span
                       className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-black uppercase ${
@@ -121,7 +121,7 @@ export const FormBadgesWithFtScore: React.FC<FormBadgesWithFtScoreProps> = ({
 
                   {/* Prominent FT Score Display */}
                   <div className="flex items-baseline gap-1.5">
-                    <span className="text-xs font-mono font-bold text-slate-400">FT:</span>
+                    <span className="text-xs font-mono font-bold text-slate-400">{badge.score ? 'FT:' : 'Result:'}</span>
                     <span
                       className={`text-base font-black font-mono tracking-wider ${
                         badge.result === 'W'
@@ -149,7 +149,7 @@ export const FormBadgesWithFtScore: React.FC<FormBadgesWithFtScoreProps> = ({
                   <div className="text-[8.5px] font-mono text-slate-500 mt-1 flex items-center justify-between gap-2">
                     <span>{badge.label}</span>
                     {badge.isHistorical && (
-                      <span className="text-sky-400">Verified DB</span>
+                      <span className="text-sky-400">Recorded result</span>
                     )}
                   </div>
                 </div>
