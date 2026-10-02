@@ -84,7 +84,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     const scores = fixture.h2h?.scoresLast5 || [];
     
     // Fallback if scoresLast5 is empty but h2h stats exist
-    const finalScores = scores.length > 0 ? scores : ["1-0", "1-1", "0-2"];
+    const finalScores = scores;
     
     // Take up to last 3 scores
     return finalScores.slice(0, 3).map((scoreStr, idx) => {
