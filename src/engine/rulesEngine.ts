@@ -336,7 +336,7 @@ export function evaluateFixturePrediction(
       tag: `Rule 4: H2H Dominance (+${h2hBonus.toFixed(1)} pts Away)`,
       impact: `+${h2hBonus.toFixed(1)} points override bonus to Away team`,
       beneficiary: 'away',
-      description: `Away team won ${h2hAwayWins} of the last ${fixture.h2h?.totalLast5 ?? 'unknown'} recorded head-to-head encounters.`,
+      description: `Away team won ${h2hAwayWins} of the last ${trustedH2H?.totalLast5 ?? 'unknown'} recorded head-to-head encounters.`,
     });
   }
 
