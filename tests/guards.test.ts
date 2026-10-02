@@ -113,3 +113,56 @@ test('validator converts legacy all-zero H2H placeholders to unavailable data', 
   const { fixture: clean } = verifyAndSanitizeFixture(fixture);
   assert.equal(clean.h2h, null);
 });
+
+
+test('validator removes legacy standings and advanced metrics without provider provenance', () => {
+  const fixture: any = {
+    id: 'legacy-unproven-metrics',
+    kickoffTime: '2026-10-10T15:00:00Z',
+    league: 'Test League',
+    motivation: 'regular',
+    isHighStakes: false,
+    homeTeam: {
+      id: 'h', name: 'Home', shortName: 'HOM', leagueRank: 1, points: 40, form: [],
+      avgPossession: 72, avgShotsOnTarget: 8, lastSeasonRank: 1,
+      totalSquadValueEur: 900, avgMatchRating: 7.2, expectedGoalsAvg: 2.4,
+      isHomeDominant: true, hasTopTierAwayForm: false, hasMidweekFatigue72h: true,
+    },
+    awayTeam: {
+      id: 'a', name: 'Away', shortName: 'AWA', leagueRank: 20, points: 8, form: [],
+      avgPossession: 28, avgShotsOnTarget: 2, lastSeasonRank: 18,
+      totalSquadValueEur: 80, avgMatchRating: 6.1, expectedGoalsAvg: 0.7,
+      isHomeDominant: false, hasTopTierAwayForm: true, hasMidweekFatigue72h: false,
+    },
+    h2h: null,
+  };
+  const { fixture: clean, stamp } = verifyAndSanitizeFixture(fixture);
+  assert.equal(clean.homeTeam.leagueRank, null);
+  assert.equal(clean.awayTeam.leagueRank, null);
+  assert.equal(clean.homeTeam.avgPossession, null);
+  assert.equal(clean.awayTeam.avgShotsOnTarget, null);
+  assert.equal(clean.homeTeam.lastSeasonRank, undefined);
+  assert.equal(clean.homeTeam.totalSquadValueEur, undefined);
+  assert.equal(clean.homeTeam.expectedGoalsAvg, undefined);
+  assert.equal(clean.homeTeam.isHomeDominant, false);
+  assert.equal(clean.awayTeam.hasTopTierAwayForm, false);
+  assert.equal(clean.homeTeam.hasMidweekFatigue72h, false);
+  assert.equal(stamp.status, 'AUTO_REPAIRED');
+});
+
+test('prediction engine ignores numeric team stats that have no source provenance', () => {
+  const fixture: any = {
+    id: 'unproven-stats',
+    kickoffTime: '2026-10-10T15:00:00Z',
+    league: 'Premier League',
+    motivation: 'regular',
+    isHighStakes: false,
+    homeTeam: { id: 'h', name: 'Home', shortName: 'HOM', leagueRank: 1, points: 40, form: [], avgPossession: 80, avgShotsOnTarget: 10, totalSquadValueEur: 1000 },
+    awayTeam: { id: 'a', name: 'Away', shortName: 'AWA', leagueRank: 20, points: 8, form: [], avgPossession: 20, avgShotsOnTarget: 1, totalSquadValueEur: 10 },
+    h2h: { homeWins: 5, draws: 0, awayWins: 0, totalLast5: 5, scoresLast5: ['5-0', '4-0', '3-0', '2-0', '1-0'] },
+  };
+  const prediction = evaluateFixturePrediction(fixture, 'none');
+  assert.ok(prediction.appliedRules.some((rule) => rule.ruleName === 'Team Data Sufficiency Guard'));
+  assert.ok(!prediction.appliedRules.some((rule) => /H2H|Position Gap|Squad Market Value|Shot\/Possession/.test(rule.ruleName)));
+  assert.ok(Math.abs(prediction.homeWinPct - prediction.awayWinPct) < 0.01);
+});
