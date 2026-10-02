@@ -57,11 +57,9 @@ export function matchesTeamName(name1: string, name2: string): boolean {
   const n1 = normalizeTeamName(name1);
   const n2 = normalizeTeamName(name2);
   if (!n1 || !n2) return false;
-  if (n1 === n2) return true;
-  if (n1.length >= 4 && n2.length >= 4) {
-    if (n1.includes(n2) || n2.includes(n1)) return true;
-  }
-  return false;
+  // Partial substring matches merge distinct clubs (e.g. city/reserve teams).
+  // Only exact normalized identities are safe without a provider team ID or alias map.
+  return n1 === n2;
 }
 
 const historicalMatchesCache = new Map<string, FormMatchItem[]>();
@@ -75,9 +73,6 @@ export function getHistoricalMatchesForTeam(
   historicalResults: HistoricalMatchResult[] = HISTORICAL_MATCH_RESULTS
 ): FormMatchItem[] {
   if (!teamName) return [];
-  const cacheKey = `${teamName}_${historicalResults.length}`;
-  const cached = historicalMatchesCache.get(cacheKey);
-  if (cached) return cached;
 
   const matches: { date: string; item: FormMatchItem }[] = [];
 
@@ -133,7 +128,6 @@ export function getHistoricalMatchesForTeam(
   matches.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   const result = matches.map((m) => m.item);
-  historicalMatchesCache.set(cacheKey, result);
   return result;
 }
 
@@ -313,8 +307,7 @@ export interface FormResultBadgeData {
 }
 
 /**
- * Returns detailed data for the last five match results of a team,
- * guaranteeing an authentic Full-Time (FT) score for hover and inspection.
+ * Returns only observed match details. Missing full-time scores remain unavailable.
  */
 export function getTeamFormBadgesData(
   team: TeamStats,
@@ -335,7 +328,8 @@ export function getTeamFormBadgesData(
 
     return {
       result: m.result,
-      score: m.score || m.result,
+      // A W/D/L outcome is not a score. Keep the score empty when no FT score exists.
+      score: m.score || '',
       opponent: m.opponent,
       venue: m.venue,
       date: m.date,
