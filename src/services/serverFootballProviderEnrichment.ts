@@ -162,7 +162,7 @@ function fixtureKey(f: MatchFixture): string {
  * fixture/team matches with current competition standings and provider form.
  * No missing value is filled with a default or inferred from the opposing team.
  */
-export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[]): Promise<{
+export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], requestedDates: string[] = []): Promise<{
   fixtures: MatchFixture[];
   apiFootballFixtures: number;
   sportmonksFixtures: number;
@@ -172,7 +172,7 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[]): 
   const errors: string[] = [];
   const byKey = new Map<string, MatchFixture>();
   for (const fixture of fixtures) byKey.set(fixtureKey(fixture), fixture);
-  const dates = Array.from(new Set(fixtures.map((f) => f.kickoffTime.slice(0, 10)).filter(Boolean)));
+  const dates = Array.from(new Set([...requestedDates, ...fixtures.map((f) => f.kickoffTime.slice(0, 10))].filter(Boolean)));
 
   const apiRaw: any[] = [];
   const sportmonksRaw: any[] = [];
