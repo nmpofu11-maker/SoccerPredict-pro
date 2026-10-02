@@ -85,38 +85,31 @@ export function evaluateFixturePrediction(
   // Initial baseline scores: adjusted by observed team coefficients when a sufficient sample exists.
   // International/youth fixtures with no verified strength evidence must not receive
   // an invented home-team advantage. A schedule-only feed cannot justify it.
-  const competitionText = String(fixture.competition || fixture.league || '').toLowerCase();
-  const teamText = `${fixture.homeTeam.name} ${fixture.awayTeam.name}`.toLowerCase();
-  const isInternationalFixture =
-    /world cup|qualif|nations league|afcon|africa cup|copa america|international|friendly|euro|uefa/.test(competitionText) ||
-    /u18|u19|u20|u21|u23/.test(teamText);
-
   const homeHasVerifiedStrength =
-    (Number.isFinite(fixture.homeTeam.leagueRank) && fixture.homeTeam.leagueRank >= 1) ||
-    (Array.isArray(fixture.homeTeam.form) && fixture.homeTeam.form.length > 0) ||
-    Number.isFinite(fixture.homeTeam.avgMatchRating) ||
-    Number.isFinite(fixture.homeTeam.totalSquadValueEur);
+    (Boolean(fixture.homeTeam.standingsSource) && Number.isFinite(fixture.homeTeam.leagueRank) && fixture.homeTeam.leagueRank >= 1) ||
+    (Array.isArray(fixture.homeTeam.form) && fixture.homeTeam.form.length > 0 && Boolean(fixture.homeTeam.formSource)) ||
+    (Boolean(fixture.homeTeam.advancedStatsSource) && (Number.isFinite(fixture.homeTeam.avgMatchRating) || Number.isFinite(fixture.homeTeam.totalSquadValueEur)));
   const awayHasVerifiedStrength =
-    (Number.isFinite(fixture.awayTeam.leagueRank) && fixture.awayTeam.leagueRank >= 1) ||
-    (Array.isArray(fixture.awayTeam.form) && fixture.awayTeam.form.length > 0) ||
-    Number.isFinite(fixture.awayTeam.avgMatchRating) ||
-    Number.isFinite(fixture.awayTeam.totalSquadValueEur);
+    (Boolean(fixture.awayTeam.standingsSource) && Number.isFinite(fixture.awayTeam.leagueRank) && fixture.awayTeam.leagueRank >= 1) ||
+    (Array.isArray(fixture.awayTeam.form) && fixture.awayTeam.form.length > 0 && Boolean(fixture.awayTeam.formSource)) ||
+    (Boolean(fixture.awayTeam.advancedStatsSource) && (Number.isFinite(fixture.awayTeam.avgMatchRating) || Number.isFinite(fixture.awayTeam.totalSquadValueEur)));
 
-  const insufficientInternationalData =
-    isInternationalFixture && !homeHasVerifiedStrength && !awayHasVerifiedStrength;
+  // Do not generate a directional prediction from home advantage alone when neither
+  // side has any observed strength evidence. This applies to club and international matches.
+  const insufficientTeamData = !homeHasVerifiedStrength && !awayHasVerifiedStrength;
 
-  let homePoints = insufficientInternationalData ? 8.0 : w.homeAdvantageBaseline * homeLearned.home_advantage_multiplier;
-  let awayPoints = insufficientInternationalData ? 8.0 : w.awayAdvantageBaseline;
-  let drawPoints = insufficientInternationalData ? 7.0 : 6.8;
+  let homePoints = insufficientTeamData ? 8.0 : w.homeAdvantageBaseline * homeLearned.home_advantage_multiplier;
+  let awayPoints = insufficientTeamData ? 8.0 : w.awayAdvantageBaseline;
+  let drawPoints = insufficientTeamData ? 7.0 : 6.8;
 
-  if (insufficientInternationalData) {
+  if (insufficientTeamData) {
     appliedRules.push({
       ruleNumber: 0,
-      ruleName: 'International Data Sufficiency Guard',
-      tag: 'Insufficient verified team-strength data',
-      impact: 'Home advantage neutralized; unsupported national/youth-team strength assumptions withheld',
+      ruleName: 'Team Data Sufficiency Guard',
+      tag: 'Insufficient observed team-strength data',
+      impact: 'Directional home advantage withheld until either team has observed strength evidence',
       beneficiary: 'neutral',
-      description: 'No verified rank, recent form, rating, or squad-value evidence was available for either side. The engine uses a neutral international starting prior rather than inventing a home-team edge.',
+      description: 'No observed rank, recent form, rating, or squad-value evidence was available for either side. The engine uses a neutral starting prior rather than inventing a directional edge.',
     });
   }
 
@@ -188,8 +181,8 @@ export function evaluateFixturePrediction(
   // ==========================================
   // Part A: Current Table Position Differential (Rank Difference ≥ 3 Places)
   // Only valid when both teams have authentic, verified league ranks (>= 1).
-  const homeRankValid = Number.isFinite(fixture.homeTeam.leagueRank) && fixture.homeTeam.leagueRank >= 1;
-  const awayRankValid = Number.isFinite(fixture.awayTeam.leagueRank) && fixture.awayTeam.leagueRank >= 1;
+  const homeRankValid = Boolean(fixture.homeTeam.standingsSource) && Number.isFinite(fixture.homeTeam.leagueRank) && fixture.homeTeam.leagueRank >= 1;
+  const awayRankValid = Boolean(fixture.awayTeam.standingsSource) && Number.isFinite(fixture.awayTeam.leagueRank) && fixture.awayTeam.leagueRank >= 1;
 
   if (homeRankValid && awayRankValid) {
     const rankDifference = fixture.awayTeam.leagueRank - fixture.homeTeam.leagueRank;
@@ -220,14 +213,14 @@ export function evaluateFixturePrediction(
   // Part B: Previous Season Final Standing in Same Competition
   // Previous-season pedigree is used only when the fixture itself carries an explicit
   // same-competition prior-season standing. Static profile fallbacks are not treated as current evidence.
-  const lastSeasonRankHome = Number.isFinite(fixture.homeTeam.lastSeasonRank)
+  const lastSeasonRankHome = fixture.homeTeam.advancedStatsSource && Number.isFinite(fixture.homeTeam.lastSeasonRank)
     ? (fixture.homeTeam.lastSeasonRank as number)
     : 0;
-  const lastSeasonRankAway = Number.isFinite(fixture.awayTeam.lastSeasonRank)
+  const lastSeasonRankAway = fixture.awayTeam.advancedStatsSource && Number.isFinite(fixture.awayTeam.lastSeasonRank)
     ? (fixture.awayTeam.lastSeasonRank as number)
     : 0;
-  const lastSeasonStandingHome = fixture.homeTeam.lastSeasonStanding ?? 'Unknown';
-  const lastSeasonStandingAway = fixture.awayTeam.lastSeasonStanding ?? 'Unknown';
+  const lastSeasonStandingHome = fixture.homeTeam.advancedStatsSource ? fixture.homeTeam.lastSeasonStanding ?? 'Unknown' : 'Unknown';
+  const lastSeasonStandingAway = fixture.awayTeam.advancedStatsSource ? fixture.awayTeam.lastSeasonStanding ?? 'Unknown' : 'Unknown';
 
   const lastSeasonGap = lastSeasonRankHome > 0 && lastSeasonRankAway > 0 ? lastSeasonRankAway - lastSeasonRankHome : 0;
   const pedigreeWeight = Number.isFinite(w.lastSeasonStandingWeight) ? w.lastSeasonStandingWeight : 0.30;
@@ -266,8 +259,8 @@ export function evaluateFixturePrediction(
   // RULE 3: Form Trajectory, Home Dominance Bias & Away Road Form
   // ==========================================
   // Part A: Recent 5-Game Form Trajectory (only applied when authentic form exists)
-  const homeForm = Array.isArray(fixture.homeTeam.form) ? fixture.homeTeam.form : [];
-  const awayForm = Array.isArray(fixture.awayTeam.form) ? fixture.awayTeam.form : [];
+  const homeForm = fixture.homeTeam.formSource && Array.isArray(fixture.homeTeam.form) ? fixture.homeTeam.form : [];
+  const awayForm = fixture.awayTeam.formSource && Array.isArray(fixture.awayTeam.form) ? fixture.awayTeam.form : [];
 
   if (homeForm.length > 0) {
     const homeFormPts = homeForm.reduce((acc, res) => acc + (res === 'W' ? (w.formWinPoints ?? 1.20) : res === 'D' ? (w.formDrawPoints ?? 0.40) : 0), 0);
@@ -279,7 +272,7 @@ export function evaluateFixturePrediction(
   }
 
   // Part B: Elite Road Form & Home Fortress Dominance
-  if (fixture.awayTeam.hasTopTierAwayForm) {
+  if (fixture.awayTeam.hasTopTierAwayForm && fixture.awayTeam.homeAwayFormSource) {
     awayPoints += w.awayFormBonus;
     appliedRules.push({
       ruleNumber: 3,
@@ -291,8 +284,8 @@ export function evaluateFixturePrediction(
     });
   }
 
-  if (fixture.homeTeam.isHomeDominant) {
-    if (fixture.awayTeam.hasTopTierAwayForm) {
+  if (fixture.homeTeam.isHomeDominant && fixture.homeTeam.homeAwayFormSource) {
+    if (fixture.awayTeam.hasTopTierAwayForm && fixture.awayTeam.homeAwayFormSource) {
       appliedRules.push({
         ruleNumber: 3,
         ruleName: 'Home Dominance Neutralized',
@@ -320,8 +313,9 @@ export function evaluateFixturePrediction(
   // RULE 4: Historical Head-to-Head (H2H) Weighting
   // ==========================================
   const h2hBonus = w.h2hMultiplier;
-  const h2hHomeWins = fixture.h2h?.homeWins ?? 0;
-  const h2hAwayWins = fixture.h2h?.awayWins ?? 0;
+  const trustedH2H = fixture.h2h?.source ? fixture.h2h : null;
+  const h2hHomeWins = trustedH2H?.homeWins ?? 0;
+  const h2hAwayWins = trustedH2H?.awayWins ?? 0;
   if (h2hHomeWins >= 4) {
     homePoints += h2hBonus;
     appliedRules.push({
@@ -330,7 +324,7 @@ export function evaluateFixturePrediction(
       tag: `Rule 4: H2H Dominance (+${h2hBonus.toFixed(1)} pts Home)`,
       impact: `+${h2hBonus.toFixed(1)} points override bonus to Home team`,
       beneficiary: 'home',
-      description: `Home team won ${h2hHomeWins} of the last ${fixture.h2h?.totalLast5 ?? 'unknown'} recorded head-to-head encounters.`,
+      description: `Home team won ${h2hHomeWins} of the last ${trustedH2H?.totalLast5 ?? 'unknown'} recorded head-to-head encounters.`,
     });
   } else if (h2hAwayWins >= 4) {
     awayPoints += h2hBonus;
@@ -340,7 +334,7 @@ export function evaluateFixturePrediction(
       tag: `Rule 4: H2H Dominance (+${h2hBonus.toFixed(1)} pts Away)`,
       impact: `+${h2hBonus.toFixed(1)} points override bonus to Away team`,
       beneficiary: 'away',
-      description: `Away team won ${h2hAwayWins} of the last ${fixture.h2h?.totalLast5 ?? 'unknown'} recorded head-to-head encounters.`,
+      description: `Away team won ${h2hAwayWins} of the last ${trustedH2H?.totalLast5 ?? 'unknown'} recorded head-to-head encounters.`,
     });
   }
 
@@ -351,7 +345,10 @@ export function evaluateFixturePrediction(
   // to prevent rank double-counting, comparative dominance evaluates to effectiveSotDiff = 0.
   // Rule 5 remains dormant (awards 0 pts) until live match box score telemetry is integrated.
   // ==========================================
-  const comparativeDominance = computeComparativeDominance(fixture.homeTeam, fixture.awayTeam);
+  const comparativeDominance = computeComparativeDominance(
+    { ...fixture.homeTeam, avgPossession: fixture.homeTeam.matchStatsSource ? fixture.homeTeam.avgPossession : null, avgShotsOnTarget: fixture.homeTeam.matchStatsSource ? fixture.homeTeam.avgShotsOnTarget : null },
+    { ...fixture.awayTeam, avgPossession: fixture.awayTeam.matchStatsSource ? fixture.awayTeam.avgPossession : null, avgShotsOnTarget: fixture.awayTeam.matchStatsSource ? fixture.awayTeam.avgShotsOnTarget : null }
+  );
   const { homeMetrics, awayMetrics, effectiveSotDiff, rawSotDiff, misleadingWarning } = comparativeDominance;
   const shotBonus = Math.round((Math.abs(effectiveSotDiff) * w.tacticalShotsWeight + 1.5) * 10) / 10;
 
@@ -395,8 +392,8 @@ export function evaluateFixturePrediction(
   }
 
   // Part B: Total Squad Market Value Disparity (Roster Depth & Quality)
-  const homeSquadVal = Number.isFinite(fixture.homeTeam.totalSquadValueEur) ? (fixture.homeTeam.totalSquadValueEur as number) : null;
-  const awaySquadVal = Number.isFinite(fixture.awayTeam.totalSquadValueEur) ? (fixture.awayTeam.totalSquadValueEur as number) : null;
+  const homeSquadVal = fixture.homeTeam.advancedStatsSource && Number.isFinite(fixture.homeTeam.totalSquadValueEur) ? (fixture.homeTeam.totalSquadValueEur as number) : null;
+  const awaySquadVal = fixture.awayTeam.advancedStatsSource && Number.isFinite(fixture.awayTeam.totalSquadValueEur) ? (fixture.awayTeam.totalSquadValueEur as number) : null;
   const valRatio = homeSquadVal !== null && awaySquadVal !== null && homeSquadVal > 0 && awaySquadVal > 0
     ? homeSquadVal / awaySquadVal
     : null;
@@ -434,8 +431,8 @@ export function evaluateFixturePrediction(
   }
 
   // Part C: Average Match Rating Superiority
-  const homeRating = Number.isFinite(fixture.homeTeam.avgMatchRating) ? (fixture.homeTeam.avgMatchRating as number) : null;
-  const awayRating = Number.isFinite(fixture.awayTeam.avgMatchRating) ? (fixture.awayTeam.avgMatchRating as number) : null;
+  const homeRating = fixture.homeTeam.advancedStatsSource && Number.isFinite(fixture.homeTeam.avgMatchRating) ? (fixture.homeTeam.avgMatchRating as number) : null;
+  const awayRating = fixture.awayTeam.advancedStatsSource && Number.isFinite(fixture.awayTeam.avgMatchRating) ? (fixture.awayTeam.avgMatchRating as number) : null;
   const ratingDiff = homeRating !== null && awayRating !== null
     ? Math.round((homeRating - awayRating) * 100) / 100
     : 0;
@@ -472,7 +469,7 @@ export function evaluateFixturePrediction(
   // Part D: Expected Goals (xG) Differential & Critical Lineup Absences
   const homeXG = Number.isFinite(fixture.homeTeam.expectedGoalsAvg) ? (fixture.homeTeam.expectedGoalsAvg as number) : undefined;
   const awayXG = Number.isFinite(fixture.awayTeam.expectedGoalsAvg) ? (fixture.awayTeam.expectedGoalsAvg as number) : undefined;
-  if (homeXG !== undefined && awayXG !== undefined) {
+  if (fixture.homeTeam.advancedStatsSource && fixture.awayTeam.advancedStatsSource && homeXG !== undefined && awayXG !== undefined) {
     const xgDiff = Math.round((homeXG - awayXG) * 100) / 100;
     const xgWeight = Number.isFinite(w.xgWeight) ? w.xgWeight : 0.50;
     if (Math.abs(xgDiff) >= 0.35) {
@@ -503,7 +500,7 @@ export function evaluateFixturePrediction(
 
   // Key Lineup Availability & Injury Absences
   const absenceRate = Number.isFinite(w.absencePenaltyRate) ? w.absencePenaltyRate : 0.12;
-  if (fixture.homeTeam.keyPlayerAbsenceSeverity === 'critical') {
+  if (fixture.homeTeam.advancedStatsSource && fixture.homeTeam.keyPlayerAbsenceSeverity === 'critical') {
     homePoints *= (1 - absenceRate);
     appliedRules.push({
       ruleNumber: 5,
@@ -514,7 +511,7 @@ export function evaluateFixturePrediction(
       description: 'Home team missing critical starting spine or primary goalscorer.',
     });
   }
-  if (fixture.awayTeam.keyPlayerAbsenceSeverity === 'critical') {
+  if (fixture.awayTeam.advancedStatsSource && fixture.awayTeam.keyPlayerAbsenceSeverity === 'critical') {
     awayPoints *= (1 - absenceRate);
     appliedRules.push({
       ruleNumber: 5,
@@ -530,7 +527,7 @@ export function evaluateFixturePrediction(
   // RULE 6: Cup & Continental Fixture Fatigue
   // ==========================================
   const fatigueRate = Number.isFinite(w.fatiguePenaltyRate) ? w.fatiguePenaltyRate : 0.15;
-  if (fixture.homeTeam.hasMidweekFatigue72h) {
+  if (fixture.homeTeam.hasMidweekFatigue72h && fixture.homeTeam.scheduleSource) {
     homePoints *= (1 - fatigueRate);
     appliedRules.push({
       ruleNumber: 6,
@@ -541,7 +538,7 @@ export function evaluateFixturePrediction(
       description: 'Home team scheduled mid-week cup/continental travel within 72 hours of kickoff.',
     });
   }
-  if (fixture.awayTeam.hasMidweekFatigue72h) {
+  if (fixture.awayTeam.hasMidweekFatigue72h && fixture.awayTeam.scheduleSource) {
     awayPoints *= (1 - fatigueRate);
     appliedRules.push({
       ruleNumber: 6,
@@ -741,8 +738,8 @@ export function evaluateFixturePrediction(
   // Part B: Low-Total / Clean Sheet Defensive Draw Synergy
   // In low-scoring environments (combined shots on target <= 8.5 or defensive cluster),
   // boost draw probability because clean sheets and 0-0/1-1 outcomes cluster heavily.
-  const homeSotObserved = Number.isFinite(fixture.homeTeam.avgShotsOnTarget) ? fixture.homeTeam.avgShotsOnTarget : null;
-  const awaySotObserved = Number.isFinite(fixture.awayTeam.avgShotsOnTarget) ? fixture.awayTeam.avgShotsOnTarget : null;
+  const homeSotObserved = fixture.homeTeam.matchStatsSource && Number.isFinite(fixture.homeTeam.avgShotsOnTarget) ? fixture.homeTeam.avgShotsOnTarget : null;
+  const awaySotObserved = fixture.awayTeam.matchStatsSource && Number.isFinite(fixture.awayTeam.avgShotsOnTarget) ? fixture.awayTeam.avgShotsOnTarget : null;
   const combinedSot = homeSotObserved !== null && awaySotObserved !== null ? homeSotObserved + awaySotObserved : null;
   const isDefensiveSynergy = (combinedSot !== null && combinedSot <= 8.6) || leagueCluster.archetype === 'defensive_draw';
 

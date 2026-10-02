@@ -7,7 +7,7 @@ import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
 import { HistoricalMatchResult } from '../types/soccer';
 import { getAdminApiHeaders } from '../services/adminAuthService';
 
-const STORAGE_KEY_TEAM_MATRICES = 'football_pulse_team_matrices_v2';
+const STORAGE_KEY_TEAM_MATRICES = 'football_pulse_team_matrices_v3';
 
 export const DEFAULT_LEARNED_COEFFICIENTS: LearnedCoefficients = {
   home_advantage_multiplier: 1.15,
@@ -240,13 +240,13 @@ export function synthesizeTeamIntelligenceMatrices(
       teamStats[aName].pointsTotal += 3;
     }
 
-    if (f.homeTeam.hasMidweekFatigue72h) {
+    if (f.homeTeam.hasMidweekFatigue72h && f.homeTeam.scheduleSource) {
       teamStats[hName].fatigueMatches++;
       if (result.actualOutcome !== 'home') {
         teamStats[hName].fatiguePointsLost += 2;
       }
     }
-    if (f.awayTeam.hasMidweekFatigue72h) {
+    if (f.awayTeam.hasMidweekFatigue72h && f.awayTeam.scheduleSource) {
       teamStats[aName].fatigueMatches++;
       if (result.actualOutcome === 'home') {
         teamStats[aName].fatiguePointsLost += 3;

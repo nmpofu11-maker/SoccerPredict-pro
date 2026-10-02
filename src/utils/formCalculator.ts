@@ -57,14 +57,10 @@ export function matchesTeamName(name1: string, name2: string): boolean {
   const n1 = normalizeTeamName(name1);
   const n2 = normalizeTeamName(name2);
   if (!n1 || !n2) return false;
-  if (n1 === n2) return true;
-  if (n1.length >= 4 && n2.length >= 4) {
-    if (n1.includes(n2) || n2.includes(n1)) return true;
-  }
-  return false;
+  // Partial substring matches merge distinct clubs (e.g. city/reserve teams).
+  // Only exact normalized identities are safe without a provider team ID or alias map.
+  return n1 === n2;
 }
-
-const historicalMatchesCache = new Map<string, FormMatchItem[]>();
 
 /**
  * Extracts all matching historical match results for a given team,
@@ -75,9 +71,6 @@ export function getHistoricalMatchesForTeam(
   historicalResults: HistoricalMatchResult[] = HISTORICAL_MATCH_RESULTS
 ): FormMatchItem[] {
   if (!teamName) return [];
-  const cacheKey = `${teamName}_${historicalResults.length}`;
-  const cached = historicalMatchesCache.get(cacheKey);
-  if (cached) return cached;
 
   const matches: { date: string; item: FormMatchItem }[] = [];
 
@@ -133,7 +126,6 @@ export function getHistoricalMatchesForTeam(
   matches.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   const result = matches.map((m) => m.item);
-  historicalMatchesCache.set(cacheKey, result);
   return result;
 }
 
@@ -180,9 +172,9 @@ export function calculateTeamForm(
   finalMatches.forEach((m, idx) => {
     m.index = idx;
     if (!m.score) {
-      if (teamStats?.formScores && teamStats.formScores[idx]) {
-        m.score = teamStats.formScores[idx];
-      } else if (teamStats?.formDetails && teamStats.formDetails[idx]?.score) {
+      // Only formDetails carries opponent/venue/date provenance. Legacy formScores
+      // arrays are unproven and must not be displayed as authentic full-time scores.
+      if (teamStats?.formSource === 'FOOTBALL_DATA_ORG' && teamStats.formDetails && teamStats.formDetails[idx]?.score) {
         m.score = teamStats.formDetails[idx].score;
         m.opponent = m.opponent || teamStats.formDetails[idx].opponent;
         m.venue = m.venue || teamStats.formDetails[idx].venue;
@@ -275,34 +267,9 @@ export function calculateMatchFormComparison(
   };
 }
 
-/**
- * Generates a stable, realistic full-time score matching the match result
- */
-export function getDeterministicFtScore(
-  teamName: string,
-  idx: number,
-  result: 'W' | 'D' | 'L'
-): string {
-  let hash = 0;
-  const str = `${teamName}_${idx}`;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash * 33 + str.charCodeAt(i)) % 10000;
-  }
-  if (result === 'W') {
-    const winScores = ['2-1', '1-0', '3-1', '2-0', '3-2', '4-1', '3-0', '1-0', '2-1'];
-    return winScores[hash % winScores.length];
-  } else if (result === 'D') {
-    const drawScores = ['1-1', '0-0', '2-2', '1-1', '0-0', '2-2', '3-3'];
-    return drawScores[hash % drawScores.length];
-  } else {
-    const lossScores = ['1-2', '0-1', '1-3', '0-2', '2-3', '0-3', '1-4', '0-1', '1-2'];
-    return lossScores[hash % lossScores.length];
-  }
-}
-
 export interface FormResultBadgeData {
   result: 'W' | 'D' | 'L';
-  score: string; // FT score, e.g. "2-1", "1-0", "0-0"
+  score: string; // Observed FT score; empty when no sourced score is available
   opponent?: string;
   venue?: 'H' | 'A';
   date?: string;
@@ -313,8 +280,7 @@ export interface FormResultBadgeData {
 }
 
 /**
- * Returns detailed data for the last five match results of a team,
- * guaranteeing an authentic Full-Time (FT) score for hover and inspection.
+ * Returns only observed match details. Missing full-time scores remain unavailable.
  */
 export function getTeamFormBadgesData(
   team: TeamStats,
@@ -335,7 +301,8 @@ export function getTeamFormBadgesData(
 
     return {
       result: m.result,
-      score: m.score || m.result,
+      // A W/D/L outcome is not a score. Keep the score empty when no FT score exists.
+      score: m.score || '',
       opponent: m.opponent,
       venue: m.venue,
       date: m.date,

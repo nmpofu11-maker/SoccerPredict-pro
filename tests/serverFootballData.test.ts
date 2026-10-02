@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   computeTeamFormFromFinishedMatches,
+  resolveCompetitionCode,
   computeH2HFromFinishedMatches,
   enrichFixturesWithFootballData,
   FootballDataRateLimitError,
@@ -157,6 +158,11 @@ test('serverFootballData: HTTP 429 retries once and then logs warning and stops 
   }
 });
 
+test('South African Premier League is not mistaken for the English Premier League', () => {
+  assert.equal(resolveCompetitionCode('South Africa • Premier League'), null);
+  assert.equal(resolveCompetitionCode('England • Premier League'), 'PL');
+});
+
 test('Rule 4 H2H: null h2h cleanly skips Rule 4; populated 4+ home wins triggers Rule 4', () => {
   const baseFixture: MatchFixture = {
     id: 'h2h-test',
@@ -184,6 +190,7 @@ test('Rule 4 H2H: null h2h cleanly skips Rule 4; populated 4+ home wins triggers
       awayWins: 0,
       totalLast5: 5,
       scoresLast5: ['2-0', '1-0', '2-1', '0-0', '3-1'],
+      source: 'API_FOOTBALL',
     },
   };
 

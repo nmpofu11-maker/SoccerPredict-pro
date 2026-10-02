@@ -80,7 +80,10 @@ export function normalize(value: string): string {
 }
 
 export function resolveCompetitionCode(league: string): string | null {
-  const clean = league.toLowerCase().replace(/^[^•]+•\s*/, '').trim();
+  const raw = league.toLowerCase();
+  // The unqualified alias "Premier League" must never map South African fixtures to England's PL.
+  if (/south africa|south african|\\brsa\\b/.test(raw)) return null;
+  const clean = raw.replace(/^[^•]+•\\s*/, '').trim();
   for (const [name, code] of Object.entries(FOOTBALL_DATA_COMPETITION_CODES)) {
     if (clean === name || clean.includes(name)) return code;
   }
@@ -321,6 +324,7 @@ export function computeH2HFromFinishedMatches(
     awayWins,
     totalLast5: recent5.length,
     scoresLast5,
+    source: 'FOOTBALL_DATA_ORG',
   };
 }
 
@@ -424,16 +428,16 @@ export async function enrichFixturesWithFootballData(fixtures: MatchFixture[]): 
       ...fixture,
       homeTeam: {
         ...fixture.homeTeam,
-        ...(homeStanding ? { leagueRank: homeStanding.rank, points: homeStanding.points } : {}),
+        ...(homeStanding ? { leagueRank: homeStanding.rank, points: homeStanding.points, standingsSource: 'FOOTBALL_DATA_ORG' as const } : {}),
         ...(homeFormRes && homeFormRes.form.length > 0
-          ? { form: homeFormRes.form, formScores: homeFormRes.formScores, formDetails: homeFormRes.formDetails }
+          ? { form: homeFormRes.form, formSource: 'FOOTBALL_DATA_ORG' as const, formScores: homeFormRes.formScores, formDetails: homeFormRes.formDetails }
           : {}),
       },
       awayTeam: {
         ...fixture.awayTeam,
-        ...(awayStanding ? { leagueRank: awayStanding.rank, points: awayStanding.points } : {}),
+        ...(awayStanding ? { leagueRank: awayStanding.rank, points: awayStanding.points, standingsSource: 'FOOTBALL_DATA_ORG' as const } : {}),
         ...(awayFormRes && awayFormRes.form.length > 0
-          ? { form: awayFormRes.form, formScores: awayFormRes.formScores, formDetails: awayFormRes.formDetails }
+          ? { form: awayFormRes.form, formSource: 'FOOTBALL_DATA_ORG' as const, formScores: awayFormRes.formScores, formDetails: awayFormRes.formDetails }
           : {}),
       },
       h2h: realH2H !== null ? realH2H : fixture.h2h,

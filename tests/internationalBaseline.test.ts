@@ -16,15 +16,15 @@ const internationalFixture = {
 
 test('international fixtures without verified strength do not receive the normal home-advantage prior', () => {
   const prediction = evaluateFixturePrediction(internationalFixture as any);
-  assert.ok(prediction.appliedRules.some((r) => r.ruleName === 'International Data Sufficiency Guard'));
+  assert.ok(prediction.appliedRules.some((r) => r.ruleName === 'Team Data Sufficiency Guard'));
   assert.ok(Math.abs(prediction.homeWinPct - prediction.awayWinPct) < 0.01);
   assert.ok(prediction.homeWinPct < 40);
   assert.ok(prediction.awayWinPct < 40);
 });
 
-test('ordinary club fixtures retain the configured home-advantage prior when evidence is absent', () => {
+test('ordinary club fixtures without observed strength also withhold directional home advantage', () => {
   const fixture = { ...internationalFixture, id: 'club-fixture', league: 'Premier League', homeTeam: { ...internationalFixture.homeTeam, name: 'Unknown FC' }, awayTeam: { ...internationalFixture.awayTeam, name: 'Unknown United' } };
   const prediction = evaluateFixturePrediction(fixture as any);
-  assert.ok(!prediction.appliedRules.some((r) => r.ruleName === 'International Data Sufficiency Guard'));
-  assert.ok(prediction.homeWinPct > prediction.awayWinPct);
+  assert.ok(prediction.appliedRules.some((r) => r.ruleName === 'Team Data Sufficiency Guard'));
+  assert.ok(Math.abs(prediction.homeWinPct - prediction.awayWinPct) < 0.01);
 });

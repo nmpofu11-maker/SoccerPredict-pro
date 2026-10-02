@@ -25,6 +25,8 @@ import {
 import { enrichFixturesWithFootballData, footballDataConfigured } from './src/services/serverFootballData';
 import { pitchApiConfigured, fetchPitchApiFixturesByDate } from './src/services/serverPitchApi';
 import { sportDbConfigured, fetchSportDbFixturesByDate } from './src/services/serverSportDb';
+import { apiFootballConfigured, sportmonksConfigured } from './src/services/serverFootballApis';
+import { enrichFixturesWithFootballApis } from './src/services/serverFootballProviderEnrichment';
 import { extractTextFromPDF, scrapeUrl } from './src/services/manualDataService';
 import { evaluateFixturePrediction, sanitizeEngineWeights } from './src/engine/rulesEngine';
 import {
@@ -424,7 +426,9 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
                   shortName: homeTeam.abbreviation || homeTeam.displayName.slice(0, 3).toUpperCase(),
                   leagueRank: homeRank || null,
                   points: Number.isFinite(homePoints) ? homePoints : null,
+                  ...(homeRank ? { standingsSource: 'ESPN' } : {}),
                   form: homeFormParsed,
+                  ...(homeFormParsed.length > 0 ? { formSource: 'ESPN' } : {}),
                   avgPossession: null,
                   avgShotsOnTarget: null,
                   isHomeDominant: false,
@@ -436,7 +440,9 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
                   shortName: awayTeam.abbreviation || awayTeam.displayName.slice(0, 3).toUpperCase(),
                   leagueRank: awayRank || null,
                   points: Number.isFinite(awayPoints) ? awayPoints : null,
+                  ...(awayRank ? { standingsSource: 'ESPN' } : {}),
                   form: awayFormParsed,
+                  ...(awayFormParsed.length > 0 ? { formSource: 'ESPN' } : {}),
                   avgPossession: null,
                   avgShotsOnTarget: null,
                   isHomeDominant: false,
@@ -689,10 +695,12 @@ interface IngestDiagnostics {
   theRundown: IngestProviderDiagnostics;
   pitchApi: IngestProviderDiagnostics;
   sportDb: IngestProviderDiagnostics;
+  apiFootball: IngestProviderDiagnostics;
+  sportmonks: IngestProviderDiagnostics;
   manifestBefore: number;
   manifestAfter: number;
   added: number;
-  sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | null;
+  sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | 'API_FOOTBALL' | 'SPORTMONKS' | null;
 }
 
 interface CronStatus {
@@ -701,7 +709,7 @@ interface CronStatus {
     lastSuccess: boolean | null;
     lastMessage: string;
     fixturesIngested: number;
-    sourceUsed?: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | null;
+    sourceUsed?: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | 'API_FOOTBALL' | 'SPORTMONKS' | null;
     diagnostics?: IngestDiagnostics;
   };
   settlement: {
@@ -756,6 +764,8 @@ function parseProviderKickoff(value: unknown): string | null {
     return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
   }
 
+  // Reject calendar dates without a time component; midnight is not a real kickoff.
+  if (!/[T ]\d{2}:\d{2}/.test(trimmed)) return null;
   const parsed = new Date(trimmed);
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }
@@ -771,19 +781,13 @@ function mapSportApiAiToInternalFixture(f: any, providerDate?: string): any {
   if (!homeName || !awayName) return null;
   const idStr = String(f.id || `${homeName}_${awayName}`);
 
-  // SportAPI.ai currently supplies the calendar date at the response level
-  // rather than repeating it on every fixture object.
-  const fixtureDate = typeof f.date === 'string' ? f.date.trim() : '';
-  const fallbackDate = fixtureDate || (typeof providerDate === 'string' ? providerDate.trim() : '');
+  // Date-only provider records do not contain a real kickoff time; reject them.
   const kickoffTime =
     parseProviderKickoff(f.datetime) ||
     parseProviderKickoff(f.kickoff_time) ||
     parseProviderKickoff(f.utc_date) ||
     parseProviderKickoff(f.start_time) ||
-    parseProviderKickoff(f.date) ||
-    (fallbackDate && /^\d{4}-\d{2}-\d{2}$/.test(fallbackDate)
-      ? `${fallbackDate}T12:00:00.000Z`
-      : null);
+    (typeof f.date === 'string' && /[T ]\d{2}:\d{2}/.test(f.date) ? parseProviderKickoff(f.date) : null);
   if (!kickoffTime) return null;
 
   const leagueName = f.league_name
@@ -837,7 +841,7 @@ function mapSportApiAiToInternalFixture(f: any, providerDate?: string): any {
       hasTopTierAwayForm: false,
       badgeColor: '#dc2626',
     },
-    h2h: { homeWins: 0, draws: 0, awayWins: 0, totalLast5: 0, scoresLast5: [] },
+    h2h: null,
 
   };
 }
@@ -889,7 +893,7 @@ function mapTheRundownToInternalFixture(ev: any): any {
       hasTopTierAwayForm: false,
       badgeColor: '#dc2626',
     },
-    h2h: { homeWins: 0, draws: 0, awayWins: 0, totalLast5: 0, scoresLast5: [] },
+    h2h: null,
 
   };
 }
@@ -919,7 +923,7 @@ function mapPitchApiToInternalFixture(match: any): any {
     motivation: 'regular',
     homeTeam: { id: 'pitchapi_team_' + (match?.home_team?.id || normalizeTeamName(homeName)), name: homeName, shortName: homeName.slice(0,3).toUpperCase(), leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
     awayTeam: { id: 'pitchapi_team_' + (match?.away_team?.id || normalizeTeamName(awayName)), name: awayName, shortName: awayName.slice(0,3).toUpperCase(), leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
-    h2h: { homeWins: 0, draws: 0, awayWins: 0, totalLast5: 0, scoresLast5: [] },
+    h2h: null,
     ...(hasFinishedScore ? { pitchApiScore: { home: homeScore, away: awayScore } } : {}),
   };
 }
@@ -930,8 +934,11 @@ function mapSportDbToInternalFixture(match: any, fallbackDateStr: string): any {
   const awayName = typeof match?.away_team === 'string' ? match.away_team : (match?.away_team?.name || '');
   if (!homeName || !awayName) return null;
 
-  const rawKickoff = match?.utc_date || match?.kickoff_time || match?.date || fallbackDateStr;
-  const kickoffTime = parseProviderKickoff(rawKickoff) || `${fallbackDateStr}T15:00:00.000Z`;
+  const rawKickoff = match?.utc_date || match?.kickoff_time || match?.date;
+  const kickoffTime = typeof rawKickoff === 'string' && /[T ]\d{2}:\d{2}/.test(rawKickoff)
+    ? parseProviderKickoff(rawKickoff)
+    : null;
+  if (!kickoffTime) return null;
 
   const homeScore = Number(match?.score?.home ?? match?.score?.fulltime?.home ?? match?.score_home);
   const awayScore = Number(match?.score?.away ?? match?.score?.fulltime?.away ?? match?.score_away);
@@ -953,7 +960,7 @@ function mapSportDbToInternalFixture(match: any, fallbackDateStr: string): any {
     motivation: 'regular',
     homeTeam: { id: 'sportdb_team_' + normalizeTeamName(homeName), name: homeName, shortName: homeName.slice(0, 3).toUpperCase(), leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
     awayTeam: { id: 'sportdb_team_' + normalizeTeamName(awayName), name: awayName, shortName: awayName.slice(0, 3).toUpperCase(), leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
-    h2h: { homeWins: 0, draws: 0, awayWins: 0, totalLast5: 0, scoresLast5: [] },
+    h2h: null,
     ...(hasFinishedScore ? { sportDbScore: { home: homeScore, away: awayScore } } : {}),
   };
 }
@@ -999,6 +1006,8 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     theRundown: makeProviderDiagnostics(theRundownConfigured()),
     pitchApi: makeProviderDiagnostics(pitchApiConfigured()),
     sportDb: makeProviderDiagnostics(sportDbConfigured()),
+    apiFootball: makeProviderDiagnostics(apiFootballConfigured()),
+    sportmonks: makeProviderDiagnostics(sportmonksConfigured()),
     manifestBefore: readRawDiskManifest().length,
     manifestAfter: readRawDiskManifest().length,
     added: 0,
@@ -1011,7 +1020,7 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
   };
 
   let mapped: any[] = [];
-  let sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | null = null;
+  let sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | 'API_FOOTBALL' | 'SPORTMONKS' | null = null;
 
   if (diagnostics.sportApiAi.configured) {
     for (const candidateDate of ingestDates) {
@@ -1175,6 +1184,44 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     diagnostics.sportApiAi.notes.push('Football-Data enrichment unavailable: FOOTBALL_DATA_KEY is not configured.');
   }
 
+  // API-Football and Sportmonks are queried as independent schedule sources,
+  // even when another provider already supplied fixtures. Exact team/date matches
+  // enrich existing records; unmatched real fixtures expand competition coverage.
+  diagnostics.apiFootball.requestCount = diagnostics.apiFootball.configured ? ingestDates.length : 0;
+  diagnostics.sportmonks.requestCount = diagnostics.sportmonks.configured ? ingestDates.length : 0;
+  try {
+    const beforeProviderEnrichment = mapped.length;
+    const providerResult = await enrichFixturesWithFootballApis(mapped as any, ingestDates);
+    mapped = providerResult.fixtures as any[];
+    if (diagnostics.apiFootball.configured) {
+      diagnostics.apiFootball.rawRecords = providerResult.apiFootballFixtures;
+      diagnostics.apiFootball.mappedRecords = providerResult.apiFootballMappedFixtures;
+      diagnostics.apiFootball.successfulRequests = providerResult.apiFootballSuccessfulRequests;
+      diagnostics.apiFootball.failedRequests = providerResult.apiFootballFailedRequests;
+      if (providerResult.apiFootballFixtures === 0) diagnostics.apiFootball.notes.push('No API-Football fixtures returned for requested dates.');
+    }
+    if (diagnostics.sportmonks.configured) {
+      diagnostics.sportmonks.rawRecords = providerResult.sportmonksFixtures;
+      diagnostics.sportmonks.mappedRecords = providerResult.sportmonksMappedFixtures;
+      diagnostics.sportmonks.successfulRequests = providerResult.sportmonksSuccessfulRequests;
+      diagnostics.sportmonks.failedRequests = providerResult.sportmonksFailedRequests;
+      if (providerResult.sportmonksFixtures === 0) diagnostics.sportmonks.notes.push('No Sportmonks fixtures returned for requested dates.');
+    }
+    if (diagnostics.apiFootball.configured) diagnostics.apiFootball.notes.push(`Team-form/standings enrichment updated ${providerResult.enrichedTeams} fixture(s).`);
+    diagnostics.apiFootball.notes.push(...providerResult.errors.filter((e) => e.startsWith('API-Football')));
+    diagnostics.sportmonks.notes.push(...providerResult.errors.filter((e) => e.startsWith('Sportmonks')));
+    if (beforeProviderEnrichment === 0 && providerResult.apiFootballFixtures > 0) sourceUsed = 'API_FOOTBALL';
+    if (beforeProviderEnrichment === 0 && providerResult.apiFootballFixtures === 0 && providerResult.sportmonksFixtures > 0) sourceUsed = 'SPORTMONKS';
+  } catch (err) {
+    diagnostics.apiFootball.failedRequests++;
+    diagnostics.sportmonks.failedRequests++;
+    const message = err instanceof Error ? err.message : String(err);
+    diagnostics.apiFootball.httpErrors.push(message);
+    diagnostics.sportmonks.httpErrors.push(message);
+  }
+
+
+
   diagnostics.sourceUsed = sourceUsed;
   diagnostics.completedAt = new Date().toISOString();
 
@@ -1185,7 +1232,9 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     const rundownSummary = diagnostics.theRundown.configured ? `requests ${diagnostics.theRundown.successfulRequests}/${diagnostics.theRundown.requestCount}, raw ${diagnostics.theRundown.rawRecords}, mapped ${diagnostics.theRundown.mappedRecords}` : 'not configured';
     const pitchSummary = diagnostics.pitchApi.configured ? `requests ${diagnostics.pitchApi.successfulRequests}/${diagnostics.pitchApi.requestCount}, raw ${diagnostics.pitchApi.rawRecords}, mapped ${diagnostics.pitchApi.mappedRecords}` : 'not configured';
     const sportDbSummary = diagnostics.sportDb.configured ? `requests ${diagnostics.sportDb.successfulRequests}/${diagnostics.sportDb.requestCount}, raw ${diagnostics.sportDb.rawRecords}, mapped ${diagnostics.sportDb.mappedRecords}` : 'not configured';
-    const msg = `No automated fixtures ingested for ${ingestDates.join(' or ')}. SportAPI.ai: ${sportSummary}. TheRundown: ${rundownSummary}. PitchAPI: ${pitchSummary}. SportDB: ${sportDbSummary}.`;
+    const apiFootballSummary = diagnostics.apiFootball.configured ? `raw ${diagnostics.apiFootball.rawRecords}` : 'not configured';
+    const sportmonksSummary = diagnostics.sportmonks.configured ? `raw ${diagnostics.sportmonks.rawRecords}` : 'not configured';
+    const msg = `No automated fixtures ingested for ${ingestDates.join(' or ')}. SportAPI.ai: ${sportSummary}. TheRundown: ${rundownSummary}. PitchAPI: ${pitchSummary}. SportDB: ${sportDbSummary}. API-Football: ${apiFootballSummary}. Sportmonks: ${sportmonksSummary}.`;
     status.ingest = {
       lastRunAt: new Date().toISOString(),
       lastSuccess: false,
@@ -1233,8 +1282,8 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     diagnostics.manifestAfter = combined.length;
     diagnostics.completedAt = new Date().toISOString();
 
-    const sourceLabel = sourceUsed === 'SPORTAPI_AI' ? 'SportAPI.ai' : sourceUsed === 'THERUNDOWN' ? 'TheRundown.io' : sourceUsed === 'PITCHAPI' ? 'PitchAPI' : 'SportDB';
-    const msg = `Ingested ${mapped.length} fixtures from ${sourceLabel} for ${dateStr} (${newCount} new). Raw records: SportAPI.ai ${diagnostics.sportApiAi.rawRecords}; TheRundown ${diagnostics.theRundown.rawRecords}; PitchAPI ${diagnostics.pitchApi.rawRecords}; SportDB ${diagnostics.sportDb.rawRecords}. Mapped: SportAPI.ai ${diagnostics.sportApiAi.mappedRecords}; TheRundown ${diagnostics.theRundown.mappedRecords}; PitchAPI ${diagnostics.pitchApi.mappedRecords}; SportDB ${diagnostics.sportDb.mappedRecords}.`;
+    const sourceLabel = sourceUsed === 'SPORTAPI_AI' ? 'SportAPI.ai' : sourceUsed === 'THERUNDOWN' ? 'TheRundown.io' : sourceUsed === 'PITCHAPI' ? 'PitchAPI' : sourceUsed === 'SPORTDB' ? 'SportDB' : sourceUsed === 'API_FOOTBALL' ? 'API-Football' : 'Sportmonks';
+    const msg = `Ingested ${mapped.length} fixtures from ${sourceLabel} for ${dateStr} (${newCount} new). Raw records: SportAPI.ai ${diagnostics.sportApiAi.rawRecords}; TheRundown ${diagnostics.theRundown.rawRecords}; PitchAPI ${diagnostics.pitchApi.rawRecords}; SportDB ${diagnostics.sportDb.rawRecords}; API-Football ${diagnostics.apiFootball.rawRecords}; Sportmonks ${diagnostics.sportmonks.rawRecords}. Mapped: SportAPI.ai ${diagnostics.sportApiAi.mappedRecords}; TheRundown ${diagnostics.theRundown.mappedRecords}; PitchAPI ${diagnostics.pitchApi.mappedRecords}; SportDB ${diagnostics.sportDb.mappedRecords}; API-Football ${diagnostics.apiFootball.mappedRecords}; Sportmonks ${diagnostics.sportmonks.mappedRecords}.`;
     status.ingest = {
       lastRunAt: new Date().toISOString(),
       lastSuccess: true,
@@ -2175,6 +2224,8 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
         theRundownConfigured: theRundownConfigured(),
         pitchApiConfigured: pitchApiConfigured(),
         sportDbConfigured: sportDbConfigured(),
+        apiFootballConfigured: apiFootballConfigured(),
+        sportmonksConfigured: sportmonksConfigured(),
         footballDataConfigured: footballDataConfigured(),
         cron: readCronStatus(),
       });
