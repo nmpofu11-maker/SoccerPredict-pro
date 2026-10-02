@@ -127,11 +127,20 @@ function sanitizeTeamStats(
       repairsLog.push({ field: `${team.name} (points)`, originalValue: cleanTeam.points, repairedValue: officialStanding.points, reason: 'Synchronized with runtime official league standings points' });
       cleanTeam.points = officialStanding.points;
     }
+    cleanTeam.standingsSource = 'ESPN';
   } else {
-    // Without a live standings map, preserve valid provider-supplied values as observed evidence,
-    // but never upgrade them to "official" status or invent replacements.
-    if (!Number.isFinite(cleanTeam.leagueRank) || cleanTeam.leagueRank < 1 || cleanTeam.leagueRank > 24) cleanTeam.leagueRank = null;
-    if (!Number.isFinite(cleanTeam.points) || cleanTeam.points < 0) cleanTeam.points = null;
+    const trustedStandingsSources = new Set(['API_FOOTBALL', 'FOOTBALL_DATA_ORG', 'ESPN', 'SPORTMONKS']);
+    if (!cleanTeam.standingsSource || !trustedStandingsSources.has(cleanTeam.standingsSource)) {
+      if (cleanTeam.leagueRank !== null || cleanTeam.points !== null) {
+        repairsLog.push({ field: `${team.name} (standings)`, originalValue: { rank: cleanTeam.leagueRank, points: cleanTeam.points }, repairedValue: null, reason: 'Removed standings without recognized provider provenance' });
+      }
+      cleanTeam.leagueRank = null;
+      cleanTeam.points = null;
+      cleanTeam.standingsSource = undefined;
+    } else {
+      if (!Number.isFinite(cleanTeam.leagueRank) || cleanTeam.leagueRank < 1 || cleanTeam.leagueRank > 24) cleanTeam.leagueRank = null;
+      if (!Number.isFinite(cleanTeam.points) || cleanTeam.points < 0) cleanTeam.points = null;
+    }
   }
   // 2. Validate Form array. Missing form means no evidence, not five synthetic draws.
   if (!Array.isArray(cleanTeam.form)) {
@@ -163,19 +172,34 @@ function sanitizeTeamStats(
     cleanTeam.formDetails = [];
   }
 
-  // 3. Tactical possession and shots remain unknown unless supplied by a trusted source.
-  if (!Number.isFinite(cleanTeam.avgPossession) || cleanTeam.avgPossession < 0 || cleanTeam.avgPossession > 100) {
+  // 3. Tactical metrics require explicit provider provenance.
+  if (!cleanTeam.matchStatsSource || !['API_FOOTBALL', 'SPORTMONKS', 'ESPN'].includes(cleanTeam.matchStatsSource)) {
     cleanTeam.avgPossession = null;
-  }
-  if (!Number.isFinite(cleanTeam.avgShotsOnTarget) || cleanTeam.avgShotsOnTarget < 0 || cleanTeam.avgShotsOnTarget > 20) {
     cleanTeam.avgShotsOnTarget = null;
+    cleanTeam.matchStatsSource = undefined;
+  } else {
+    if (!Number.isFinite(cleanTeam.avgPossession) || cleanTeam.avgPossession < 0 || cleanTeam.avgPossession > 100) cleanTeam.avgPossession = null;
+    if (!Number.isFinite(cleanTeam.avgShotsOnTarget) || cleanTeam.avgShotsOnTarget < 0 || cleanTeam.avgShotsOnTarget > 20) cleanTeam.avgShotsOnTarget = null;
   }
 
-  // 5. Behavioural flags are evidence fields; do not derive them from rank.
-  if (cleanTeam.leagueRank === null) {
+  // Advanced ratings, xG, market value and prior-season data are not currently
+  // populated by a trusted provider in this pipeline. Drop legacy unproven values.
+  if (!cleanTeam.advancedStatsSource) {
+    cleanTeam.lastSeasonRank = undefined;
+    cleanTeam.lastSeasonStanding = undefined;
+    cleanTeam.lastSeasonPoints = undefined;
+    cleanTeam.totalSquadValueEur = undefined;
+    cleanTeam.avgMatchRating = undefined;
+    cleanTeam.expectedGoalsAvg = undefined;
+    cleanTeam.keyPlayerAbsenceSeverity = undefined;
+  }
+
+  // Split-form and schedule flags remain off until a provider explicitly supplies them.
+  if (!cleanTeam.homeAwayFormSource) {
     cleanTeam.isHomeDominant = false;
     cleanTeam.hasTopTierAwayForm = false;
   }
+  if (!cleanTeam.scheduleSource) cleanTeam.hasMidweekFatigue72h = false;
 
   return { team: cleanTeam, matchedOfficialTable };
 }
