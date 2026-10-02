@@ -137,11 +137,11 @@ export function calculateMatchBrier(
 export function runStatisticalEvaluation(
   weightsInput?: EngineWeights,
   dataset: HistoricalMatchResult[] = HISTORICAL_MATCH_RESULTS
-): StatisticalEvaluationResult {
+): StatisticalEvaluationResult | null {
   const weights = sanitizeEngineWeights(weightsInput || DEFAULT_ENGINE_WEIGHTS);
   const validDataset = (dataset || []).filter((m): m is HistoricalMatchResult => Boolean(m && m.fixture && m.actualOutcome));
   if (validDataset.length < 2) {
-    throw new Error('At least two dated historical records are required for holdout evaluation');
+    return null;
   }
   validDataset.sort((a, b) => {
     const aTime = new Date(a.fixture?.kickoffTime || a.date || 0).getTime();

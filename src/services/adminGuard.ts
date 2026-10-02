@@ -1,78 +1,56 @@
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 
 export interface AdminGuardConfig {
-  adminKey: string;
-  allowOpen: boolean;
-  production: boolean;
+  configured: boolean;
+  expectedKey: string;
 }
 
-export type AdminAccessDecision =
-  | { ok: true }
-  | { ok: false; status: number; message: string };
-
-/**
- * Reads admin guard configuration from the provided environment dictionary.
- */
-export function readAdminGuardConfig(env: NodeJS.ProcessEnv = process.env): AdminGuardConfig {
-  const adminKey = (env.ADMIN_API_KEY || '').trim();
-  const allowOpen = env.ALLOW_OPEN_ADMIN === 'true';
-  const production = env.NODE_ENV === 'production';
-  return { adminKey, allowOpen, production };
+export interface AdminAccessResult {
+  ok: boolean;
+  status: number;
+  message: string;
 }
 
-/**
- * Determines whether access to administrative endpoints should be granted.
- * - If adminKey is not configured:
- *   - If allowOpen is true AND production is false: access is granted (dev override).
- *   - Otherwise: fails closed with 503 Service Unavailable.
- * - If adminKey is configured:
- *   - Compares supplied key with constant-time comparison.
- *   - Missing or incorrect key returns 401 Unauthorized.
- */
-export function decideAdminAccess(
-  cfg: AdminGuardConfig,
-  suppliedKey?: string | string[]
-): AdminAccessDecision {
-  const keyToTest = typeof suppliedKey === 'string' ? suppliedKey.trim() : '';
+export function readAdminGuardConfig(env: Record<string, string | undefined>): AdminGuardConfig {
+  const expectedKey = (env.ADMIN_API_KEY || '').trim();
+  return {
+    configured: expectedKey.length > 0,
+    expectedKey,
+  };
+}
 
-  if (!cfg.adminKey) {
-    if (cfg.allowOpen && !cfg.production) {
-      return { ok: true };
-    }
+export function decideAdminAccess(config: AdminGuardConfig, suppliedKey: string): AdminAccessResult {
+  if (!config.configured) {
     return {
       ok: false,
       status: 503,
-      message: 'Admin operations are currently unavailable. ADMIN_API_KEY is not configured on the server.',
+      message: 'Admin endpoint disabled: ADMIN_API_KEY is not configured on the server.',
     };
   }
 
-  if (!keyToTest) {
+  const supplied = (suppliedKey || '').trim();
+  if (!supplied) {
     return {
       ok: false,
       status: 401,
-      message: 'Administrative authorization required: x-admin-api-key header missing.',
+      message: 'Unauthorized: Missing x-admin-api-key header.',
     };
   }
 
-  const expectedBuf = Buffer.from(cfg.adminKey, 'utf8');
-  const suppliedBuf = Buffer.from(keyToTest, 'utf8');
+  const a = Buffer.from(supplied);
+  const b = Buffer.from(config.expectedKey);
 
-  if (expectedBuf.length !== suppliedBuf.length) {
+  if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
     return {
-      ok: false,
-      status: 401,
-      message: 'Invalid administrative API key provided.',
+      ok: true,
+      status: 200,
+      message: 'Authorized',
     };
   }
 
-  const matches = crypto.timingSafeEqual(expectedBuf, suppliedBuf);
-  if (!matches) {
-    return {
-      ok: false,
-      status: 401,
-      message: 'Invalid administrative API key provided.',
-    };
-  }
-
-  return { ok: true };
+  return {
+    ok: false,
+    status: 401,
+    message: 'Unauthorized: Invalid x-admin-api-key.',
+  };
 }

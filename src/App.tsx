@@ -1009,6 +1009,7 @@ export default function App() {
         isOpen={isStatisticalModalOpen}
         onClose={() => setIsStatisticalModalOpen(false)}
         weights={learningState.weights}
+        historicalResults={combinedHistoricalResults}
         onOpenRulesReference={() => setIsRulesModalOpen(true)}
       />
 

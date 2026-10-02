@@ -17,13 +17,14 @@ import {
   ArrowDownRight,
   Minus,
 } from 'lucide-react';
-import { EngineWeights } from '../types/soccer';
+import { EngineWeights, HistoricalMatchResult } from '../types/soccer';
 import { runStatisticalEvaluation, StatisticalEvaluationResult } from '../utils/statisticalAnalysisTool';
 
 interface StatisticalAnalysisModalProps {
   isOpen: boolean;
   onClose: () => void;
   weights?: EngineWeights;
+  historicalResults?: HistoricalMatchResult[];
   onOpenRulesReference?: () => void;
 }
 
@@ -31,15 +32,16 @@ export const StatisticalAnalysisModal: React.FC<StatisticalAnalysisModalProps> =
   isOpen,
   onClose,
   weights,
+  historicalResults,
   onOpenRulesReference,
 }) => {
   const [activeTab, setActiveTab] = useState<'ablation' | 'benchmarks' | 'confusion' | 'calibration' | 'methodology'>('ablation');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [copiedNotice, setCopiedNotice] = useState<string | null>(null);
 
-  const stats: StatisticalEvaluationResult = useMemo(() => {
-    return runStatisticalEvaluation(weights);
-  }, [weights, isRefreshing]);
+  const stats: StatisticalEvaluationResult | null = useMemo(() => {
+    return runStatisticalEvaluation(weights, historicalResults);
+  }, [weights, historicalResults, isRefreshing]);
 
   if (!isOpen) return null;
 
@@ -51,6 +53,7 @@ export const StatisticalAnalysisModal: React.FC<StatisticalAnalysisModalProps> =
   };
 
   const handleExportJson = () => {
+    if (!stats) return;
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(stats, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', dataStr);
@@ -83,7 +86,7 @@ export const StatisticalAnalysisModal: React.FC<StatisticalAnalysisModalProps> =
                   STATISTICAL EVALUATION & VALIDATION SUITE
                 </h2>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-700/60 font-bold">
-                  N = {stats.sampleSize} Matches
+                  N = {stats ? stats.sampleSize : 0} Matches
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-mono">
@@ -103,15 +106,17 @@ export const StatisticalAnalysisModal: React.FC<StatisticalAnalysisModalProps> =
               <span className="hidden sm:inline">Recalculate</span>
             </button>
 
-            <button
-              type="button"
-              onClick={handleExportJson}
-              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors text-xs flex items-center gap-1.5"
-              title="Export statistical report"
-            >
-              <Download className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="hidden sm:inline">Export Report</span>
-            </button>
+            {stats && (
+              <button
+                type="button"
+                onClick={handleExportJson}
+                className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors text-xs flex items-center gap-1.5"
+                title="Export statistical report"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden sm:inline">Export Report</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -123,6 +128,20 @@ export const StatisticalAnalysisModal: React.FC<StatisticalAnalysisModalProps> =
             </button>
           </div>
         </div>
+
+        {!stats ? (
+          <div className="p-8 text-center space-y-4 font-mono text-slate-300">
+            <div className="w-12 h-12 rounded-2xl bg-sky-950/60 border border-sky-500/30 flex items-center justify-center text-sky-400 mx-auto">
+              <BarChart3 className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-white">Holdout Evaluation Requires Recorded Results</h3>
+            <p className="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed">
+              At least 2 dated historical records with verified provider provenance are required to run holdout evaluations and ablation studies.
+              As server-settled match outcomes accumulate in the daily pipeline, holdout metrics, Brier scores, RPS skill, and 9-rule ablations will calculate automatically.
+            </p>
+          </div>
+        ) : (
+          <>
 
         {/* Notice Bar */}
         {copiedNotice && (
@@ -907,6 +926,8 @@ export const StatisticalAnalysisModal: React.FC<StatisticalAnalysisModalProps> =
             </div>
           )}
         </div>
+        </>
+        )}
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between text-xs font-mono text-slate-400 flex-shrink-0">
