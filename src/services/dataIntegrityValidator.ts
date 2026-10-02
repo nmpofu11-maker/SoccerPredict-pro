@@ -258,13 +258,13 @@ export function verifyAndSanitizeFixture(
 
   // Check 6: Head-to-Head Record Sanity
   // Validate the observed record; never invent missing outcomes.
-  const cleanH2H = { ...fixture.h2h };
-  const h2hValuesKnown = [cleanH2H.homeWins, cleanH2H.draws, cleanH2H.awayWins, cleanH2H.totalLast5]
+  const cleanH2H = fixture.h2h ? { ...fixture.h2h } : null;
+  const h2hValuesKnown = Boolean(cleanH2H) && [cleanH2H!.homeWins, cleanH2H!.draws, cleanH2H!.awayWins, cleanH2H!.totalLast5]
     .every((value) => Number.isFinite(value));
   const h2hSum = h2hValuesKnown
-    ? (cleanH2H.homeWins as number) + (cleanH2H.draws as number) + (cleanH2H.awayWins as number)
+    ? (cleanH2H!.homeWins as number) + (cleanH2H!.draws as number) + (cleanH2H!.awayWins as number)
     : null;
-  const h2hConsistent = h2hValuesKnown && cleanH2H.totalLast5 === h2hSum;
+  const h2hConsistent = h2hValuesKnown && cleanH2H!.totalLast5 === h2hSum;
   checks.push({
     checkName: 'Head-to-Head Sum Integrity',
     passed: h2hConsistent,
