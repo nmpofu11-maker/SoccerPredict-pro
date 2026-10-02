@@ -25,7 +25,7 @@ function teamStatsFromApiFootball(
   const rawForm = typeof source?.form === 'string' ? source.form.toUpperCase() : '';
   const form = rawForm.split('').filter((v: string) => v === 'W' || v === 'D' || v === 'L').slice(-5) as ('W'|'D'|'L')[];
   return {
-    ...(rank ? { leagueRank: rank.rank, points: rank.points } : {}),
+    ...(rank ? { leagueRank: rank.rank, points: rank.points, standingsSource: 'API_FOOTBALL' as const } : {}),
     ...(form.length ? { form, formSource: 'API_FOOTBALL' as const } : {}),
   };
 }
