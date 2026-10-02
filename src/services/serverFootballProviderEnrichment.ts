@@ -14,8 +14,8 @@ const standingsCache = new Map<string, { expiresAt: number; value: Map<string, {
 
 export function normalizeProviderTeamName(value: unknown): string {
   if (typeof value !== 'string') return '';
-  return value.toLowerCase().normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '')
-    .replace(/\\b(fc|cf|sc|afc|club)\\b/g, '').replace(/[^a-z0-9]/g, '');
+  return value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\b(fc|cf|sc|afc|club)\b/g, '').replace(/[^a-z0-9]/g, '');
 }
 
 function teamStatsFromApiFootball(
