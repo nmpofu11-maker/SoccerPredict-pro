@@ -100,15 +100,15 @@ test('manifest sanitizer zeroes placeholder stats on non-live verified fixtures'
   assert.equal(fix1.awayTeam.hasTopTierAwayForm, false);
   assert.equal(fix1.h2h, null);
   assert.equal(fix1.isStandingsVerified, false);
-  assert.equal(fix1.authenticity.status, 'UNVERIFIED_STATS');
-  assert.equal(fix1.authenticity.source, 'CANONICAL_AUDITED_DATASET_STATS_REMOVED');
+  assert.equal(fix1.authenticity.status, 'AUTO_REPAIRED');
+  assert.equal(fix1.authenticity.source, 'UNVERIFIED_PROVIDER_INGESTION');
 
   // fix-legacy-2 should be cleaned
   const fix2 = fixtures[1];
   assert.equal(fix2.homeTeam.leagueRank, null);
   assert.equal(fix2.homeTeam.points, null);
-  assert.equal(fix2.authenticity.status, 'UNVERIFIED_STATS');
-  assert.equal(fix2.authenticity.source, 'HOLLYWOODBETS_OFFICIAL_SLATE_2026_STATS_REMOVED');
+  assert.equal(fix2.authenticity.status, 'AUTO_REPAIRED');
+  assert.equal(fix2.authenticity.source, 'UNVERIFIED_PROVIDER_INGESTION');
 
   // fix-live-verified should remain untouched
   const fixLive = fixtures[2];
