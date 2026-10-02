@@ -39,7 +39,6 @@ import { ensurePersistentStorage } from './services/durablePersistence';
 import { deleteFixtureOnServer, purgeFixturesOnServer, ingestSlateToServer } from './services/apiService';
 import { fetchSettledResults, fetchDailySlate } from './services/resultsService';
 import { HistoricalMatchResult } from './types/soccer';
-import { HISTORICAL_MATCH_RESULTS } from './data/historical_results';
 import { isFavouriteTeam, isHighVolatilityLeague } from './constants/favourites';
 import { getLeagueMeta, LeagueCategoryId, matchesLeagueCategory, LEAGUE_CATEGORIES } from './constants/leagues';
 import { DatePresetId, DateRangeFilter } from './types/soccer';
@@ -79,9 +78,8 @@ export default function App() {
   const [overrides, setOverrides] = useState<Record<string, ManualOverrideType>>(() => loadManualOverrides());
   const [learningState, setLearningState] = useState<LearningModelState>(() => loadLearningState());
 
-  // Results settled by the server-side API-Football pipeline (real, growing
-  // outcomes) — merged with the static seed dataset so "yesterday" and the
-  // learning engine aren't stuck evaluating the same frozen snapshot forever.
+  // Only server-settled provider results are ground truth for performance and learning.
+  // Unverified static historical records have been removed from the application.
   const [serverSettledResults, setServerSettledResults] = useState<HistoricalMatchResult[]>([]);
 
   useEffect(() => {
@@ -99,25 +97,7 @@ export default function App() {
     };
   }, []);
 
-  const combinedHistoricalResults = useMemo<HistoricalMatchResult[]>(() => {
-    const seenIds = new Set<string>();
-    const combined: HistoricalMatchResult[] = [];
-    // Server-settled (real, automated) results take priority over the static seed
-    // in case the same fixture id ever appears in both.
-    for (const r of serverSettledResults) {
-      if (r && r.id && !seenIds.has(r.id)) {
-        seenIds.add(r.id);
-        combined.push(r);
-      }
-    }
-    for (const r of HISTORICAL_MATCH_RESULTS) {
-      if (r && r.id && !seenIds.has(r.id)) {
-        seenIds.add(r.id);
-        combined.push(r);
-      }
-    }
-    return combined;
-  }, [serverSettledResults]);
+  const combinedHistoricalResults = serverSettledResults;
 
   const [teamMatrices, setTeamMatrices] = useState(() => loadTeamIntelligenceMatrices());
   const [activeTab, setActiveTab] = useState<'timeline' | 'favourites' | 'learning' | 'yesterday' | 'groups' | 'todaysMatches' | 'smartCoach'>(() => {
