@@ -837,7 +837,7 @@ function mapSportApiAiToInternalFixture(f: any, providerDate?: string): any {
       hasTopTierAwayForm: false,
       badgeColor: '#dc2626',
     },
-    h2h: { homeWins: 0, draws: 0, awayWins: 0, totalLast5: 0, scoresLast5: [] },
+    h2h: null,
 
   };
 }
@@ -889,7 +889,7 @@ function mapTheRundownToInternalFixture(ev: any): any {
       hasTopTierAwayForm: false,
       badgeColor: '#dc2626',
     },
-    h2h: { homeWins: 0, draws: 0, awayWins: 0, totalLast5: 0, scoresLast5: [] },
+    h2h: null,
 
   };
 }
@@ -919,7 +919,7 @@ function mapPitchApiToInternalFixture(match: any): any {
     motivation: 'regular',
     homeTeam: { id: 'pitchapi_team_' + (match?.home_team?.id || normalizeTeamName(homeName)), name: homeName, shortName: homeName.slice(0,3).toUpperCase(), leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
     awayTeam: { id: 'pitchapi_team_' + (match?.away_team?.id || normalizeTeamName(awayName)), name: awayName, shortName: awayName.slice(0,3).toUpperCase(), leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
-    h2h: { homeWins: 0, draws: 0, awayWins: 0, totalLast5: 0, scoresLast5: [] },
+    h2h: null,
     ...(hasFinishedScore ? { pitchApiScore: { home: homeScore, away: awayScore } } : {}),
   };
 }
@@ -953,7 +953,7 @@ function mapSportDbToInternalFixture(match: any, fallbackDateStr: string): any {
     motivation: 'regular',
     homeTeam: { id: 'sportdb_team_' + normalizeTeamName(homeName), name: homeName, shortName: homeName.slice(0, 3).toUpperCase(), leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
     awayTeam: { id: 'sportdb_team_' + normalizeTeamName(awayName), name: awayName, shortName: awayName.slice(0, 3).toUpperCase(), leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
-    h2h: { homeWins: 0, draws: 0, awayWins: 0, totalLast5: 0, scoresLast5: [] },
+    h2h: null,
     ...(hasFinishedScore ? { sportDbScore: { home: homeScore, away: awayScore } } : {}),
   };
 }
