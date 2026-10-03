@@ -382,8 +382,15 @@ function sportmonksXGForTeam(fixture: any, teamId: string): number | null {
   if (!raw) return null;
   const participants = extractArray(fixture?.participants?.data ?? fixture?.participants);
   const side = participants.find((p: any) => String(p?.id) === String(teamId))?.meta?.location;
-  if (Array.isArray(raw)) {
-    for (const entry of raw) {
+  const candidates = [
+    raw,
+    raw?.expected,
+    raw?.data,
+    raw?.data?.expected,
+  ];
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) continue;
+    for (const entry of candidate) {
       const participantId = entry?.participant_id ?? entry?.participant?.id ?? entry?.participant?.data?.id;
       const location = String(entry?.location || entry?.participant?.meta?.location || '').toLowerCase();
       if (String(participantId ?? '') !== String(teamId) && location !== String(side || '').toLowerCase()) continue;
@@ -391,11 +398,13 @@ function sportmonksXGForTeam(fixture: any, teamId: string): number | null {
       if (value !== null) return value;
     }
   }
-  const direct = side === 'home' ? (raw?.home ?? raw?.home_xg ?? raw?.home_expected_goals)
-    : side === 'away' ? (raw?.away ?? raw?.away_xg ?? raw?.away_expected_goals) : null;
-  return finiteNumber(direct);
+  const direct = side === 'home'
+    ? (raw?.home ?? raw?.home_xg ?? raw?.home_expected_goals)
+    : side === 'away'
+      ? (raw?.away ?? raw?.away_xg ?? raw?.away_expected_goals)
+      : null;
+  return finiteNumber(direct?.value ?? direct);
 }
-
 function sportmonksStandingMap(rows: any[]): Map<string, { rank: number; points: number | null; form?: ('W' | 'D' | 'L')[] }> {
   const out = new Map<string, { rank: number; points: number | null }>();
   for (const row of rows) {
