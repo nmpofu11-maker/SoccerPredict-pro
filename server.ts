@@ -1168,25 +1168,7 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     diagnostics.sportDb.notes.push(diagnostics.sportDb.configured ? 'Not queried because another provider produced usable fixtures.' : 'SPORTDB_API_KEY not configured.');
   }
 
-  // Enrich supported club competitions with verified current standings/form before persistence.
-  // International and unsupported competitions remain untouched rather than receiving fabricated data.
-  if (footballDataConfigured() && mapped.length > 0) {
-    try {
-      const enrichment = await enrichFixturesWithFootballData(mapped);
-      mapped = enrichment.fixtures;
-      diagnostics.sportApiAi.notes.push(
-        `Football-Data enrichment: ${enrichment.enrichedCount} fixture(s) updated; ${enrichment.errors.length} competition error(s).`
-      );
-      if (enrichment.errors.length > 0) diagnostics.sportApiAi.notes.push(...enrichment.errors);
-    } catch (err) {
-      diagnostics.sportApiAi.notes.push(
-        `Football-Data enrichment failed safely: ${err instanceof Error ? err.message : 'unknown error'}`
-      );
-    }
-  } else if (!footballDataConfigured()) {
-    diagnostics.sportApiAi.notes.push('Football-Data enrichment unavailable: FOOTBALL_DATA_KEY is not configured.');
-  }
-
+  // Primary provider enrichment runs before any secondary fallback enrichment.
   // API-Football and Sportmonks are queried as independent schedule sources,
   // even when another provider already supplied fixtures. Exact team/date matches
   // enrich existing records; unmatched real fixtures expand competition coverage.
@@ -1215,15 +1197,26 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     diagnostics.sportmonks.notes.push(...providerResult.errors.filter((e) => e.startsWith('Sportmonks')));
     if (beforeProviderEnrichment === 0 && providerResult.apiFootballFixtures > 0) sourceUsed = 'API_FOOTBALL';
     if (beforeProviderEnrichment === 0 && providerResult.apiFootballFixtures === 0 && providerResult.sportmonksFixtures > 0) sourceUsed = 'SPORTMONKS';
-  } catch (err) {
-    diagnostics.apiFootball.failedRequests++;
-    diagnostics.sportmonks.failedRequests++;
-    const message = err instanceof Error ? err.message : String(err);
-    diagnostics.apiFootball.httpErrors.push(message);
-    diagnostics.sportmonks.httpErrors.push(message);
   }
 
-
+  // Secondary Football-Data.org fallback: fill only fields still missing after
+  // SportAPI.ai + Sportmonks enrichment. It must never overwrite primary evidence.
+  if (footballDataConfigured() && mapped.length > 0) {
+    try {
+      const enrichment = await enrichFixturesWithFootballData(mapped);
+      mapped = enrichment.fixtures;
+      diagnostics.sportApiAi.notes.push(
+        'Football-Data fallback enrichment: ' + enrichment.enrichedCount + ' fixture(s) updated; ' + enrichment.errors.length + ' competition error(s).'
+      );
+      if (enrichment.errors.length > 0) diagnostics.sportApiAi.notes.push(...enrichment.errors);
+    } catch (err) {
+      diagnostics.sportApiAi.notes.push(
+        'Football-Data fallback enrichment failed safely: ' + (err instanceof Error ? err.message : 'unknown error')
+      );
+    }
+  } else if (!footballDataConfigured()) {
+    diagnostics.sportApiAi.notes.push('Football-Data fallback unavailable: FOOTBALL_DATA_KEY is not configured.');
+  }
 
   diagnostics.sourceUsed = sourceUsed;
   diagnostics.completedAt = new Date().toISOString();
