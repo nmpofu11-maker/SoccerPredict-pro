@@ -316,7 +316,7 @@ export function verifyAndSanitizeFixture(
 
   // Check 6: Head-to-Head Record Sanity
   // Validate the observed record; never invent missing outcomes.
-  let cleanH2H = fixture.h2h && ['FOOTBALL_DATA_ORG', 'API_FOOTBALL', 'SPORTMONKS'].includes(fixture.h2h.source || '')
+  let cleanH2H = fixture.h2h && ['FOOTBALL_DATA_ORG', 'API_FOOTBALL', 'SPORTMONKS', 'SPORTAPI_AI'].includes(fixture.h2h.source || '')
     ? { ...fixture.h2h }
     : null;
   if (fixture.h2h && !cleanH2H) repairs.push({ field: 'h2h', originalValue: fixture.h2h, repairedValue: null, reason: 'Removed H2H record without recognized provider provenance' });
