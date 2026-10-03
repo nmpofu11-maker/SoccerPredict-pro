@@ -1,172 +1,3 @@
-import express from 'express';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
-import { createHash, timingSafeEqual } from 'crypto';
-import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI } from '@google/genai';
-import dotenv from 'dotenv';
-import cron from 'node-cron';
-import { verifyAndSanitizeFixtures } from './src/services/dataIntegrityValidator';
-import { parseHollywoodbetsRawText } from './src/services/hollywoodbetsParser';
-import type { DataIntegrityAuditReport } from './src/types/soccer';
-import {
-  sportApiAiConfigured,
-  fetchSportApiAiFixturesByDate,
-  isSportApiAiFixtureFinished,
-  getSportApiAiScores,
-} from './src/services/serverSportApiAi';
-import {
-  theRundownConfigured,
-  fetchAllTheRundownSoccerEvents,
-  isTheRundownEventFinished,
-  getTheRundownScores,
-} from './src/services/serverTheRundown';
-import { enrichFixturesWithFootballData, footballDataConfigured } from './src/services/serverFootballData';
-import { pitchApiConfigured, fetchPitchApiFixturesByDate } from './src/services/serverPitchApi';
-import { sportDbConfigured, fetchSportDbFixturesByDate } from './src/services/serverSportDb';
-import { apiFootballConfigured, sportmonksConfigured } from './src/services/serverFootballApis';
-import { enrichFixturesWithFootballApis } from './src/services/serverFootballProviderEnrichment';
-import { extractTextFromPDF, scrapeUrl } from './src/services/manualDataService';
-import { evaluateFixturePrediction, sanitizeEngineWeights } from './src/engine/rulesEngine';
-import {
-  appendPrediction,
-  appendOutcome,
-  computeInputCoverage,
-  readLog,
-  summarize,
-  verifyLog,
-} from './src/services/predictionLog';
-import { parseRawResults } from './src/services/resultParserService';
-import { readAdminGuardConfig, decideAdminAccess } from './src/services/adminGuard';
-import { sanitizeRuntimeManifest } from './src/services/manifestSanitizer';
-
-dotenv.config();
-
-const upload = multer({
-  dest: 'uploads/',
-  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
-});
-
-function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction): void {
-  const cfg = readAdminGuardConfig(process.env);
-  const supplied = req.get('x-admin-api-key') || '';
-  const decision = decideAdminAccess(cfg, supplied);
-
-  if (decision.ok === false) {
-    res.status(decision.status).json({ error: decision.message, message: decision.message });
-    return;
-  }
-  next();
-}
-
-const PORT = Number(process.env.PORT) || 3000;
-const HOST = process.env.HOST?.trim() || '0.0.0.0';
-
-const MANIFEST_PATH = path.join(process.cwd(), 'data', 'fixtures-manifest.json');
-const SRC_FIXTURES_PATH = path.join(process.cwd(), 'src', 'data', 'upcoming_fixtures.json');
-
-function getDynamicCutoffIso(): string {
-  // Retain matches from 48 hours ago through future dates to allow yesterday analysis
-  const d = new Date(Date.now() - 48 * 60 * 60 * 1000);
-  return d.toISOString().slice(0, 10);
-}
-
-function ensureDataDirectory(): void {
-  const dataDir = path.join(process.cwd(), 'data');
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-}
-
-function readRawDiskManifest(): any[] {
-  ensureDataDirectory();
-  let list: any[] = [];
-
-  if (fs.existsSync(MANIFEST_PATH)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf-8'));
-      if (Array.isArray(data)) list = data;
-    } catch (e) {
-      console.warn('Error reading raw fixtures-manifest.json:', e);
-    }
-  }
-
-  if (list.length === 0 && fs.existsSync(SRC_FIXTURES_PATH)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(SRC_FIXTURES_PATH, 'utf-8'));
-      if (Array.isArray(data)) list = data;
-    } catch (e) {
-      console.warn('Error reading source fixture manifest:', e);
-    }
-  }
-
-  return list;
-}
-
-export function readDiskManifest(): any[] {
-  ensureDataDirectory();
-  const minCutoff = getDynamicCutoffIso();
-  let list: any[] = [];
-
-  if (fs.existsSync(MANIFEST_PATH)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf-8'));
-      if (Array.isArray(data)) {
-        list = data;
-      }
-    } catch (e) {
-      console.warn('Error reading fixtures-manifest.json:', e);
-    }
-  }
-
-  if (list.length === 0 && fs.existsSync(SRC_FIXTURES_PATH)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(SRC_FIXTURES_PATH, 'utf-8'));
-      if (Array.isArray(data)) {
-        list = data;
-        // Sync to primary data manifest
-        try {
-          fs.writeFileSync(MANIFEST_PATH, JSON.stringify(list, null, 2), 'utf-8');
-        } catch {}
-      }
-    } catch (e) {
-      console.warn('Error reading upcoming_fixtures.json:', e);
-    }
-  }
-
-  return list.filter(
-    (f: any) => f && f.id && f.homeTeam && f.awayTeam && (!f.kickoffTime || f.kickoffTime.slice(0, 10) >= minCutoff)
-  );
-}
-
-export function writeDiskManifest(fixtures: any[]): void {
-  ensureDataDirectory();
-  try {
-    fs.writeFileSync(MANIFEST_PATH, JSON.stringify(fixtures, null, 2), 'utf-8');
-  } catch (e) {
-    console.error('Error writing to data/fixtures-manifest.json:', e);
-  }
-  try {
-    const srcDir = path.join(process.cwd(), 'src', 'data');
-    if (!fs.existsSync(srcDir)) fs.mkdirSync(srcDir, { recursive: true });
-    fs.writeFileSync(SRC_FIXTURES_PATH, JSON.stringify(fixtures, null, 2), 'utf-8');
-  } catch (e) {
-    console.error('Error writing to src/data/upcoming_fixtures.json:', e);
-  }
-}
-
-function getGeminiClient(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
-  return new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
-  });
 }
 
 interface LiveFixturesCache {
@@ -189,6 +20,95 @@ function loadInitialDiskCache(): LiveFixturesCache {
 
 let fixturesCache: LiveFixturesCache | null = loadInitialDiskCache();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache
+
+// Keep the persisted daily slate from serving schedule-only fixtures while the
+// primary provider enrichment cache is still cold after startup/redeploy.
+const PRIMARY_SLATE_REFRESH_TTL_MS = 5 * 60 * 1000;
+let primarySlateRefreshAt = 0;
+let primarySlateRefreshPromise: Promise<void> | null = null;
+
+function hasVerifiedPredictionEvidence(fixture: any): boolean {
+  return Boolean(
+    fixture?.homeTeam?.formSource ||
+    fixture?.awayTeam?.formSource ||
+    fixture?.homeTeam?.standingsSource ||
+    fixture?.awayTeam?.standingsSource ||
+    fixture?.h2h?.source ||
+    fixture?.homeTeam?.matchStatsSource ||
+    fixture?.awayTeam?.matchStatsSource ||
+    fixture?.homeTeam?.advancedStatsSource ||
+    fixture?.awayTeam?.advancedStatsSource
+  );
+}
+
+async function refreshPrimaryEvidenceForDailySlate(force = false): Promise<void> {
+  const now = Date.now();
+  if (!force && now - primarySlateRefreshAt < PRIMARY_SLATE_REFRESH_TTL_MS) return;
+  if (primarySlateRefreshPromise) return primarySlateRefreshPromise;
+
+  primarySlateRefreshPromise = (async () => {
+    try {
+      const current = readRawDiskManifest();
+      if (!current.length) return;
+
+      const upcoming = current.filter((fixture: any) => {
+        const kickoff = Date.parse(String(fixture?.kickoffTime || ''));
+        return Number.isFinite(kickoff) && kickoff >= now - 48 * 60 * 60 * 1000;
+      });
+      if (!upcoming.length) return;
+
+      const evidenceCount = upcoming.filter(hasVerifiedPredictionEvidence).length;
+      if (!force && evidenceCount >= Math.max(1, Math.ceil(upcoming.length * 0.35))) return;
+
+      const requestedDates = Array.from(new Set(
+        upcoming
+          .map((fixture: any) => String(fixture.kickoffTime).slice(0, 10))
+          .filter(Boolean)
+      ));
+
+      const providerResult = await enrichFixturesWithFootballApis(upcoming as any, requestedDates);
+      let enriched = providerResult.fixtures as any[];
+
+      // Football-Data.org remains a secondary fallback only.
+      if (footballDataConfigured() && enriched.length > 0) {
+        const fallback = await enrichFixturesWithFootballData(enriched);
+        enriched = fallback.fixtures as any[];
+      }
+
+      if (enriched.length > 0) {
+        const currentByKey = new Map<string, any>();
+        for (const fixture of current) {
+          const key = String(fixture?.homeTeam?.name || '').toLowerCase() + '|' +
+            String(fixture?.awayTeam?.name || '').toLowerCase() + '|' +
+            String(fixture?.kickoffTime || '').slice(0, 10);
+          currentByKey.set(key, fixture);
+        }
+        for (const fixture of enriched) {
+          const key = String(fixture?.homeTeam?.name || '').toLowerCase() + '|' +
+            String(fixture?.awayTeam?.name || '').toLowerCase() + '|' +
+            String(fixture?.kickoffTime || '').slice(0, 10);
+          currentByKey.set(key, fixture);
+        }
+
+        const { fixtures: validated, auditReport } = verifyAndSanitizeFixtures(Array.from(currentByKey.values()));
+        writeDiskManifest(validated);
+        fixturesCache = {
+          fixtures: validated,
+          syncedAt: new Date().toISOString(),
+          provider: 'SportAPI.ai + Sportmonks primary evidence (Football-Data fallback)',
+          auditReport,
+        };
+      }
+    } catch (err) {
+      console.warn('[daily-slate] primary evidence refresh failed safely:', err instanceof Error ? err.message : String(err));
+    } finally {
+      primarySlateRefreshAt = Date.now();
+      primarySlateRefreshPromise = null;
+    }
+  })();
+
+  return primarySlateRefreshPromise;
+}
 
 const HOLLYWOODBETS_LEAGUES = [
   // South Africa & Africa (Hollywoodbets Core Home Markets & Amateur/Regional)
@@ -1864,14 +1784,16 @@ async function startServer() {
   });
 
   // Daily Hollywoodbets and Master Slate Endpoint
-  app.get('/api/fixtures/daily-slate', (_req, res) => {
+  app.get('/api/fixtures/daily-slate', async (_req, res) => {
     try {
+      await refreshPrimaryEvidenceForDailySlate();
       const diskData = readDiskManifest();
       const { fixtures: validated } = verifyAndSanitizeFixtures(diskData);
       return res.json({
         status: 'success',
         count: validated.length,
         syncedAt: new Date().toISOString(),
+        provider: 'SportAPI.ai + Sportmonks primary evidence (Football-Data fallback when needed)',
         fixtures: validated,
       });
     } catch (err: unknown) {
@@ -2098,340 +2020,3 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
               contents: prompt,
               config: {
                 responseMimeType: 'application/json',
-              },
-            });
-            const responseText = response.text?.trim() || '{}';
-            parsed = JSON.parse(responseText);
-            break;
-          } catch (err: unknown) {
-            lastSynthesisErr = err;
-            const msg = err instanceof Error ? err.message : String(err);
-            if (msg.includes('503') || msg.includes('high demand') || msg.includes('429') || msg.includes('UNAVAILABLE') || msg.includes('resource_exhausted') || msg.includes('quota') || msg.includes('rate-limit')) {
-              await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
-              continue;
-            }
-            break;
-          }
-        }
-        if (parsed && parsed.summary) {
-          break;
-        }
-      }
-
-      if (parsed && parsed.summary) {
-        return res.json({
-          status: 'gemini_analyzed',
-          synthesis: {
-            summary: parsed.summary,
-            recommendations: parsed.recommendations || ['Maintain balanced shot differential weights.'],
-            ruleEfficiency: parsed.ruleEfficiency || [],
-            timestamp: new Date().toISOString(),
-          },
-        });
-      }
-
-      return res.status(503).json({
-        status: 'unavailable',
-        message: 'Gemini synthesis did not return a valid result.',
-        detail: lastSynthesisErr instanceof Error ? lastSynthesisErr.message : undefined,
-      });
-    } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : 'Unknown server error';
-      console.warn('AI tactical learning unavailable:', errorMsg);
-      return res.status(503).json({
-        status: 'unavailable',
-        message: 'AI tactical synthesis could not be completed.',
-      });
-    }
-  });
-
-  // In-memory sync state contains only measured coefficients received from the operator pipeline.
-  // No pre-seeded sample sizes or learned coefficients are assumed.
-  let superLearningSyncState = {
-    sync_timestamp: '',
-    model_engine: 'Chronological Team Intelligence Calibration',
-    meta_improvement_notes: 'No synchronized learned team coefficients are available until derived from completed training-window results.',
-    team_intelligence_matrices: {},
-  };
-
-  // Aggressive Super-Learning Protocol Sync - GET
-  app.get('/api/ai/super-learning/sync', (_req, res) => {
-    return res.json(superLearningSyncState);
-  });
-
-  // Aggressive Super-Learning Protocol Sync - POST
-  app.post('/api/ai/super-learning/sync', requireAdmin, (req, res) => {
-    try {
-      const payload = req.body || {};
-      if (payload && payload.team_intelligence_matrices) {
-        superLearningSyncState = {
-          sync_timestamp: new Date().toISOString(),
-          model_engine: payload.model_engine || superLearningSyncState.model_engine,
-          meta_improvement_notes: payload.meta_improvement_notes || superLearningSyncState.meta_improvement_notes,
-          team_intelligence_matrices: {
-            ...superLearningSyncState.team_intelligence_matrices,
-            ...payload.team_intelligence_matrices,
-          },
-        };
-      }
-      return res.json({ status: 'ok', updated: superLearningSyncState });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Sync update failed';
-      return res.status(500).json({ status: 'error', message: msg });
-    }
-  });
-
-  // ---------------------------------------------------------------------
-  // API-Football automation: status, manual triggers, and settled results
-  // ---------------------------------------------------------------------
-
-  // Returns settled match results written by the automated settlement job.
-  // The client merges this with the static seed dataset so "yesterday" and
-  // the learning engine see real, growing data instead of a frozen snapshot.
-  app.get('/api/results/settled', (_req, res) => {
-    try {
-      const entries = readResultsLog();
-      return res.json({ status: 'success', count: entries.length, results: entries });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to read settled results';
-      return res.status(500).json({ status: 'error', message: msg });
-    }
-  });
-
-  // Visibility into whether the automated jobs are actually running and provider status
-  // Public, read-only: honest accuracy on predictions frozen before kickoff.
-  app.get('/api/predictions/track-record', (_req, res) => {
-    try {
-      const verification = verifyLog(PREDICTION_LOG_PATH);
-      const { lines } = readLog(PREDICTION_LOG_PATH);
-      const report = summarize(lines, PREDICTION_MIN_SAMPLE, Date.now(), verification.ok);
-      return res.json({
-        status: 'ok',
-        logIntact: verification.ok,
-        logProblem: verification.reason,
-        headHash: verification.headHash,
-        entries: verification.count,
-        ...report,
-      });
-    } catch (err: unknown) {
-      return res.status(500).json({ status: 'error', message: err instanceof Error ? err.message : 'Track record unavailable' });
-    }
-  });
-
-  app.get('/api/admin/cron-status', (_req, res) => {
-    try {
-      return res.json({
-        status: 'success',
-        sportApiAiConfigured: sportApiAiConfigured(),
-        theRundownConfigured: theRundownConfigured(),
-        pitchApiConfigured: pitchApiConfigured(),
-        sportDbConfigured: sportDbConfigured(),
-        apiFootballConfigured: apiFootballConfigured(),
-        sportmonksConfigured: sportmonksConfigured(),
-        footballDataConfigured: footballDataConfigured(),
-        cron: readCronStatus(),
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to read cron status';
-      return res.status(500).json({ status: 'error', message: msg });
-    }
-  });
-
-  // Manual triggers, mainly for testing the pipeline without waiting for the schedule.
-  app.post('/api/admin/run-ingest-now', requireAdmin, async (_req, res) => {
-    const result = await runDailyIngestJob();
-    return res.status(result.success ? 200 : 500).json({ status: result.success ? 'success' : 'error', ...result });
-  });
-
-  app.post('/api/admin/run-settlement-now', requireAdmin, async (_req, res) => {
-    const result = await runSettlementJob();
-    return res.status(result.success ? 200 : 500).json({ status: result.success ? 'success' : 'error', ...result });
-  });
-
-  // Manual upload endpoint for results — matches parsed results against the real
-  // fixture manifest and appends them to data/results-log.json (the same store the
-  // automated settlement job writes to), so manually-entered results actually feed
-  // "yesterday's performance" and the learning engine, not a dead-end file.
-  app.post('/api/admin/upload-results', requireAdmin, async (req, res) => {
-    try {
-      const { rawData } = req.body;
-      if (!rawData || typeof rawData !== 'string') {
-        return res.status(400).json({ error: 'Invalid result data' });
-      }
-
-      const rawResults = parseRawResults(rawData);
-      const manifest = readRawDiskManifest();
-      const existingLog = readResultsLog();
-      const settledIds = new Set(existingLog.map((e) => e.id));
-      const newEntries: SettledResultEntry[] = [];
-      let unmatchedCount = 0;
-
-      for (const r of rawResults) {
-        if (!r.matchTitle || Number.isNaN(r.homeScore) || Number.isNaN(r.awayScore)) continue;
-        const parts = r.matchTitle.split(/\s+vs\s+/i);
-        if (parts.length !== 2) {
-          unmatchedCount++;
-          continue;
-        }
-        const [homeRaw, awayRaw] = parts;
-        const homeKey = normalizeTeamName(homeRaw);
-        const awayKey = normalizeTeamName(awayRaw);
-
-        const matchedFixture = manifest.find((f: any) => {
-          const fHome = normalizeTeamName(f.homeTeam?.name);
-          const fAway = normalizeTeamName(f.awayTeam?.name);
-          const fDate = (f.kickoffTime || '').slice(0, 10);
-          return fHome === homeKey && fAway === awayKey && (!r.date || fDate === r.date);
-        });
-
-        if (!matchedFixture) {
-          unmatchedCount++;
-          continue;
-        }
-        if (settledIds.has(matchedFixture.id)) continue;
-
-        const outcome: 'home' | 'draw' | 'away' =
-          r.homeScore > r.awayScore ? 'home' : r.homeScore < r.awayScore ? 'away' : 'draw';
-
-        newEntries.push({
-          id: matchedFixture.id,
-          fixture: matchedFixture,
-          homeScore: r.homeScore,
-          awayScore: r.awayScore,
-          actualOutcome: outcome,
-          date: r.date || (matchedFixture.kickoffTime || '').slice(0, 10),
-          notes: 'Settled via manual result upload',
-          settledAt: new Date().toISOString(),
-        });
-      }
-
-      if (newEntries.length > 0) {
-        writeResultsLog([...existingLog, ...newEntries]);
-      }
-      reconcilePredictionOutcomes();
-
-      const message = unmatchedCount > 0
-        ? `Settled ${newEntries.length} results. ${unmatchedCount} lines could not be matched to a known fixture (check team names/date match your uploaded slate exactly).`
-        : `Settled ${newEntries.length} results.`;
-
-      res.json({ success: true, count: newEntries.length, unmatchedCount, message });
-    } catch (error) {
-      console.error('Error uploading results:', error);
-      res.status(500).json({ error: 'Failed to upload results' });
-    }
-  });
-
-  // Upload fixture PDF — extracts text, then runs it through the same real
-  // Hollywoodbets-format parser and manifest pipeline as the paste-text flow.
-  app.post('/api/admin/upload-fixture-file', requireAdmin, upload.single('file'), async (req, res) => {
-    const uploadedPath = req.file?.path;
-    try {
-      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-      const text = await extractTextFromPDF(req.file.path);
-      const incomingFixtures = parseHollywoodbetsRawText(text);
-
-      if (incomingFixtures.length === 0) {
-        return res.status(400).json({ error: 'No fixtures could be parsed from this PDF. Make sure it contains a Hollywoodbets-format fixture list.' });
-      }
-
-      const { validatedFixtures } = await ingestFixturesIntoManifest(incomingFixtures, true);
-      res.json({ success: true, count: incomingFixtures.length, totalCount: validatedFixtures.length });
-    } catch (error) {
-      console.error('Error uploading fixture file:', error);
-      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to upload fixture file' });
-    } finally {
-      if (uploadedPath) {
-        try { fs.unlinkSync(uploadedPath); } catch {}
-      }
-    }
-  });
-
-  // Fetch fixture from link — same real parser/pipeline. Note: this only works for
-  // pages whose raw text already resembles a Hollywoodbets-style fixture list; it is
-  // NOT a general-purpose scraper and won't reliably extract from arbitrary bookmaker
-  // pages (most render odds via JavaScript, which a simple HTML fetch won't execute).
-  app.post('/api/admin/fetch-fixture-link', requireAdmin, async (req, res) => {
-    try {
-      const { url } = req.body;
-      if (!url) return res.status(400).json({ error: 'No URL provided' });
-      const text = await scrapeUrl(url);
-      const incomingFixtures = parseHollywoodbetsRawText(text);
-
-      if (incomingFixtures.length === 0) {
-        return res.status(400).json({ error: 'No fixtures could be parsed from this page. This works best with a page whose raw HTML already contains Hollywoodbets-format text, not a JavaScript-rendered odds page.' });
-      }
-
-      const { validatedFixtures } = await ingestFixturesIntoManifest(incomingFixtures);
-      res.json({ success: true, count: incomingFixtures.length, totalCount: validatedFixtures.length });
-    } catch (error) {
-      console.error('Error fetching fixture link:', error);
-      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to fetch fixture link' });
-    }
-  });
-
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
-
-  app.listen(PORT, HOST, () => {
-    console.log(`Soccer Prediction Server running on port ${PORT}`);
-
-    if (sportApiAiConfigured()) {
-      console.log('[startup] SportAPI.ai is configured as PRIMARY feed.');
-    } else {
-      console.log('[startup] SportAPI.ai is not configured (SPORTAPI_AI_KEY missing).');
-    }
-
-    if (theRundownConfigured()) {
-      console.log('[startup] TheRundown.io is configured as SECONDARY odds/coverage feed.');
-    } else {
-      console.log('[startup] TheRundown.io is not configured (THERUNDOWN_KEY missing).');
-    }
-
-    if (pitchApiConfigured()) {
-      console.log('[startup] PitchAPI is configured as TERTIARY feed.');
-    }
-
-    if (sportDbConfigured()) {
-      console.log('[startup] SportDB (dashboard.sportdb.dev) is configured as QUATERNARY feed.');
-    }
-    console.log('[startup] Scheduling daily ingestion (05:00) and settlement (every 3h).');
-
-    // Daily ingestion: pull the day's real fixtures at 05:00 server time.
-    cron.schedule('0 5 * * *', () => {
-      runDailyIngestJob().catch((e) => console.error('[cron:ingest] unhandled error', e));
-    });
-
-    // Settlement: check for finished matches every 3 hours around the clock,
-    // since kickoff times and match lengths vary across leagues/timezones.
-    cron.schedule('0 */3 * * *', () => {
-      runSettlementJob().catch((e) => console.error('[cron:settlement] unhandled error', e));
-    });
-
-    // Freeze predictions for upcoming fixtures every 30 minutes (once per fixture, never updated).
-    cron.schedule('*/30 * * * *', () => {
-      try { runPredictionFreezeJob(); } catch (e) { console.error('[cron:prediction-log] unhandled error', e); }
-    });
-
-    // Run both once, shortly after boot, so the pipeline doesn't sit idle
-    // until the next scheduled slot (e.g. after a redeploy).
-    setTimeout(() => {
-      runDailyIngestJob().catch((e) => console.error('[cron:ingest] startup run failed', e));
-      runSettlementJob().catch((e) => console.error('[cron:settlement] startup run failed', e));
-    }, 10_000);
-    setTimeout(() => { try { runPredictionFreezeJob(); } catch (e) { console.error('[prediction-log] startup freeze failed', e); } }, 25_000);
-  });
-}
-
-startServer();
