@@ -293,7 +293,8 @@ function isTargetTeamInFixture(raw: any, teamId: string, teamName: string): bool
 
 function completedProviderMatch(raw: any, kickoffIso: string): boolean {
   if (!raw) return false;
-  const dateValue = raw.datetime || raw.kickoff_time || raw.utc_date || raw.starting_at || raw.date;
+  const dateValue = raw.datetime || raw.kickoff_time || raw.utc_date || raw.starting_at || raw.date ||
+    raw.fixture?.date || raw.fixture?.kickoff_time || raw.fixture?.starting_at;
   const matchTime = dateValue ? Date.parse(String(dateValue)) : NaN;
   if (!Number.isFinite(matchTime) || matchTime >= Date.parse(kickoffIso)) return false;
   const status = String(raw.status || raw.state?.short_name || raw.state?.name || raw.status_short || '').toUpperCase();
