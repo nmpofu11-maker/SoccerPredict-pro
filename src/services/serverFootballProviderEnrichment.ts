@@ -869,13 +869,39 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
 
   async function enrichFromSportmonks(fixture: MatchFixture): Promise<void> {
     if (!sportmonksConfigured()) return;
-    const homeId = Number((fixture as any).sportmonksHomeTeamId);
-    const awayId = Number((fixture as any).sportmonksAwayTeamId);
+    let homeId = Number((fixture as any).sportmonksHomeTeamId);
+    let awayId = Number((fixture as any).sportmonksAwayTeamId);
     const seasonId = Number((fixture as any).sportMonksSeasonId);
-    if (!Number.isInteger(homeId) || !Number.isInteger(awayId)) return;
 
-    const teamEntries: Array<[TeamStats, number]> = [[fixture.homeTeam, homeId], [fixture.awayTeam, awayId]];
-    for (const entry of teamEntries) {
+    // The current-date fixture feed may be empty under a restricted plan. Recover
+    // team IDs by exact provider-name lookup so historical evidence can still be used.
+    for (const [team, side] of [[fixture.homeTeam, 'home'], [fixture.awayTeam, 'away']] as const) {
+      const existingId = side === 'home' ? homeId : awayId;
+      if (Number.isInteger(existingId) || sportmonksTeamSearchBudget.used >= providerLimit('SPORT_PROVIDER_MAX_TEAM_SEARCH_LOOKUPS', 50)) continue;
+      sportmonksTeamSearchBudget.used++;
+      try {
+        const resolved = await searchSportmonksExactTeam(team.name);
+        const resolvedId = Number(resolved?.id);
+        if (Number.isInteger(resolvedId)) {
+          if (side === 'home') {
+            homeId = resolvedId;
+            (fixture as any).sportmonksHomeTeamId = resolvedId;
+          } else {
+            awayId = resolvedId;
+            (fixture as any).sportmonksAwayTeamId = resolvedId;
+          }
+        }
+      } catch (err) {
+        errors.push('Sportmonks team search ' + team.name + ': ' + (err instanceof Error ? err.message : String(err)));
+      }
+    }
+
+    const resolvedEntries: Array<[TeamStats, number]> = [];
+    if (Number.isInteger(homeId)) resolvedEntries.push([fixture.homeTeam, homeId]);
+    if (Number.isInteger(awayId)) resolvedEntries.push([fixture.awayTeam, awayId]);
+    if (resolvedEntries.length === 0) return;
+
+    for (const entry of resolvedEntries) {
       const team = entry[0];
       const id = entry[1];
       if (sportmonksTeamBudget.used >= providerLimit('SPORT_PROVIDER_MAX_TEAM_LOOKUPS', DEFAULT_TEAM_LOOKUP_LIMIT)) break;
@@ -947,7 +973,7 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
     if (Number.isInteger(seasonId)) {
       try {
         const standings = await getSportmonksStandings(String(seasonId));
-        for (const entry of teamEntries) {
+        for (const entry of resolvedEntries) {
           const team = entry[0];
           const id = entry[1];
           const standing = findProviderStanding(standings, String(id), team.name);
