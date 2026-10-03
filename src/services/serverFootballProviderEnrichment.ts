@@ -177,11 +177,11 @@ function mapSportmonksFixture(raw: any): MatchFixture | null {
 
 
 const sportApiTeamCache = new Map<string, { expiresAt: number; value: any }>();
-const sportApiStandingsCache = new Map<string, { expiresAt: number; value: Map<string, { rank: number; points: number | null }> }>();
+const sportApiStandingsCache = new Map<string, { expiresAt: number; value: Map<string, { rank: number; points: number | null; form?: ('W' | 'D' | 'L')[] }> }>();
 const sportApiFixtureStatsCache = new Map<string, { expiresAt: number; value: any }>();
 const sportApiH2HCache = new Map<string, { expiresAt: number; value: any }>();
 const sportmonksTeamFixturesCache = new Map<string, { expiresAt: number; value: any[] }>();
-const sportmonksStandingsCache = new Map<string, { expiresAt: number; value: Map<string, { rank: number; points: number | null }> }>();
+const sportmonksStandingsCache = new Map<string, { expiresAt: number; value: Map<string, { rank: number; points: number | null; form?: ('W' | 'D' | 'L')[] }> }>();
 const sportmonksH2HCache = new Map<string, { expiresAt: number; value: any[] }>();
 
 const PROVIDER_CACHE_TTL_MS = 60 * 60 * 1000;
@@ -393,7 +393,7 @@ function sportmonksXGForTeam(fixture: any, teamId: string): number | null {
   return finiteNumber(direct);
 }
 
-function sportmonksStandingMap(rows: any[]): Map<string, { rank: number; points: number | null }> {
+function sportmonksStandingMap(rows: any[]): Map<string, { rank: number; points: number | null; form?: ('W' | 'D' | 'L')[] }> {
   const out = new Map<string, { rank: number; points: number | null }>();
   for (const row of rows) {
     const rank = finiteNumber(row?.position ?? row?.rank);
@@ -401,14 +401,16 @@ function sportmonksStandingMap(rows: any[]): Map<string, { rank: number; points:
     const id = row?.participant_id ?? row?.team_id ?? row?.participant?.id ?? row?.participant?.data?.id;
     const name = row?.participant?.name ?? row?.participant?.data?.name ?? row?.team_name ?? row?.name;
     if (rank === null || rank < 1) continue;
-    const value = { rank: Math.trunc(rank), points };
+    const rawForm = Array.isArray(row?.form) ? row.form : typeof row?.form === 'string' ? row.form.split('') : [];
+    const form = rawForm.filter((v: any) => v === 'W' || v === 'D' || v === 'L').slice(-5) as ('W'|'D'|'L')[];
+    const value = { rank: Math.trunc(rank), points, ...(form.length ? { form } : {}) };
     if (id !== undefined && id !== null) out.set(String(id), value);
     if (typeof name === 'string' && name) out.set('name:' + normalizeProviderTeamName(name), value);
   }
   return out;
 }
 
-function sportApiStandingMap(rows: any[]): Map<string, { rank: number; points: number | null }> {
+function sportApiStandingMap(rows: any[]): Map<string, { rank: number; points: number | null; form?: ('W' | 'D' | 'L')[] }> {
   const out = new Map<string, { rank: number; points: number | null }>();
   for (const row of rows) {
     const rank = finiteNumber(row?.position ?? row?.rank);
@@ -416,7 +418,9 @@ function sportApiStandingMap(rows: any[]): Map<string, { rank: number; points: n
     const id = row?.team_id ?? row?.team?.id ?? row?.id;
     const name = row?.team_name ?? row?.team?.name ?? row?.name;
     if (rank === null || rank < 1) continue;
-    const value = { rank: Math.trunc(rank), points };
+    const rawForm = Array.isArray(row?.form) ? row.form : typeof row?.form === 'string' ? row.form.split('') : [];
+    const form = rawForm.filter((v: any) => v === 'W' || v === 'D' || v === 'L').slice(-5) as ('W'|'D'|'L')[];
+    const value = { rank: Math.trunc(rank), points, ...(form.length ? { form } : {}) };
     if (id !== undefined && id !== null) out.set(String(id), value);
     if (typeof name === 'string' && name) out.set('name:' + normalizeProviderTeamName(name), value);
   }
@@ -424,7 +428,7 @@ function sportApiStandingMap(rows: any[]): Map<string, { rank: number; points: n
 }
 
 function findProviderStanding(
-  map: Map<string, { rank: number; points: number | null }>,
+  map: Map<string, { rank: number; points: number | null; form?: ('W' | 'D' | 'L')[] }>,
   teamId: string,
   teamName: string
 ): { rank: number; points: number | null } | undefined {
@@ -511,7 +515,7 @@ async function getSportApiTeam(teamId: string): Promise<any> {
   return value;
 }
 
-async function getSportApiStandings(leagueId: string): Promise<Map<string, { rank: number; points: number | null }>> {
+async function getSportApiStandings(leagueId: string): Promise<Map<string, { rank: number; points: number | null; form?: ('W' | 'D' | 'L')[] }>> {
   const cached = sportApiStandingsCache.get(leagueId);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
   const value = sportApiStandingMap(await fetchSportApiAiStandings(leagueId));
@@ -536,7 +540,7 @@ async function getSportApiH2H(team1Id: string, team2Id: string): Promise<any> {
   return value;
 }
 
-async function getSportmonksStandings(seasonId: string): Promise<Map<string, { rank: number; points: number | null }>> {
+async function getSportmonksStandings(seasonId: string): Promise<Map<string, { rank: number; points: number | null; form?: ('W' | 'D' | 'L')[] }>> {
   const cached = sportmonksStandingsCache.get(seasonId);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
   const value = sportmonksStandingMap(await fetchSportmonksStandingsBySeason(seasonId));
