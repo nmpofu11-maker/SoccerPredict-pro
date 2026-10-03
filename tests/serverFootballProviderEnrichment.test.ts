@@ -97,7 +97,7 @@ test('API-Football fixture, standings, team form and South African H2H are norma
       scoresLast5: ['2-0', '0-1', '1-1', '2-0', '3-0'],
       source: 'API_FOOTBALL',
     });
-    assert.equal(result.errors.length, 0);
+    assert.deepEqual(result.errors, []);
   } finally {
     restoreEnvironment();
   }
