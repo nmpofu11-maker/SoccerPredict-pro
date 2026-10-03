@@ -118,6 +118,15 @@ export async function sportmonksGet(path: string, params: Record<string, string 
   return requestJson(url, {}, 'Sportmonks');
 }
 
+
+
+export async function fetchSportmonksTeamsBySearch(name: string): Promise<any[]> {
+  const query = String(name || '').trim();
+  if (!query) throw new Error('Sportmonks team search name is required');
+  const body = await sportmonksGet(`teams/search/${encodeURIComponent(query)}`, { per_page: 10 });
+  return Array.isArray(body.data) ? body.data : [];
+}
+
 export async function fetchSportmonksFixturesByDate(date: string, includes = 'participants;scores;league;state'): Promise<any[]> {
   assertDate(date);
   const body = await sportmonksGet(`fixtures/date/${date}`, { include: includes });
