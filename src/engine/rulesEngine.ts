@@ -127,7 +127,10 @@ export function evaluateFixturePrediction(
 
   // League-Specific Cluster Archetype Calibration (Defensive draw-heavy vs High-scoring vs Fortress)
   const leagueCluster = getLeagueClusterProfile(fixture.league);
-  if (leagueCluster.archetype !== 'standard') {
+  // A schedule-only fixture must remain a genuinely neutral prior. League-cluster
+  // calibration is evidence-dependent and must not manufacture a directional edge
+  // or alter the neutral baseline before team-strength evidence exists.
+  if (!insufficientTeamData && leagueCluster.archetype !== 'standard') {
     const clusterDrawAdj = (leagueCluster.drawBias || 0) * (w.leagueClusterWeight ?? 0.40);
     drawPoints += clusterDrawAdj;
     if (leagueCluster.homeMultiplierBonus !== 0) {
@@ -650,7 +653,7 @@ export function evaluateFixturePrediction(
   const drawMarginThreshold = w.drawEquilibriumMargin ?? 4.0;
   const drawTargetBoost = w.drawEquilibriumBoost ?? 38.0;
 
-  if (manualOverride === 'none' && Math.abs(roundedHome - roundedAway) <= drawMarginThreshold) {
+  if (!insufficientTeamData && manualOverride === 'none' && Math.abs(roundedHome - roundedAway) <= drawMarginThreshold) {
     const remainingProb = 100.0 - drawTargetBoost;
     const totalHomeAway = (roundedHome + roundedAway) || 1;
 
@@ -676,7 +679,7 @@ export function evaluateFixturePrediction(
   const combinedSot = homeSotObserved !== null && awaySotObserved !== null ? homeSotObserved + awaySotObserved : null;
   const isDefensiveSynergy = (combinedSot !== null && combinedSot <= 8.6) || leagueCluster.archetype === 'defensive_draw';
 
-  if (manualOverride === 'none' && isDefensiveSynergy && Math.abs(roundedHome - roundedAway) <= (drawMarginThreshold + 2.5)) {
+  if (!insufficientTeamData && manualOverride === 'none' && isDefensiveSynergy && Math.abs(roundedHome - roundedAway) <= (drawMarginThreshold + 2.5)) {
     const lowTotalMultiplier = Math.max(1.0, w.lowTotalDrawBoost ?? 1.25);
     const boostedDraw = Math.min(44.0, roundedDraw * lowTotalMultiplier);
     const drawDiff = boostedDraw - roundedDraw;
