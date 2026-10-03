@@ -15,13 +15,23 @@ export class FootballDataRateLimitError extends Error {
   }
 }
 
-function delay(ms: number): Promise<void> {
+export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function requestSpacingMs(): number {
+export function requestSpacingMs(): number {
   const raw = Number(process.env.FOOTBALL_DATA_REQUEST_SPACING_MS);
   return Number.isFinite(raw) && raw >= 0 ? raw : 1100;
+}
+
+let footballDataRateLimitedUntil = 0;
+
+export function isFootballDataRateLimited(): boolean {
+  return Date.now() < footballDataRateLimitedUntil;
+}
+
+export function setFootballDataRateLimitCooldown(ms: number): void {
+  footballDataRateLimitedUntil = Math.max(footballDataRateLimitedUntil, Date.now() + ms);
 }
 
 export interface RawFinishedMatch {
@@ -47,21 +57,48 @@ const standingsCache = new Map<string, { expiresAt: number; teams: Map<string, S
 const matchesCache = new Map<string, { expiresAt: number; matches: RawFinishedMatch[] }>();
 
 export const FOOTBALL_DATA_COMPETITION_CODES: Record<string, string> = {
+  'brasileirao': 'BSA',
+  'brazilian serie a': 'BSA',
+  'brazil serie a': 'BSA',
+  'serie a brazil': 'BSA',
   'premier league': 'PL',
   'england premier league': 'PL',
+  'english premier league': 'PL',
+  'english premier': 'PL',
+  'epl': 'PL',
+  'barclays premier league': 'PL',
   'la liga': 'PD',
   'primera division': 'PD',
+  'spanish la liga': 'PD',
+  'la liga santander': 'PD',
+  'la liga ea sports': 'PD',
+  'spanish primera division': 'PD',
   'serie a': 'SA',
+  'italian serie a': 'SA',
+  'italy serie a': 'SA',
+  'serie a enilive': 'SA',
   'bundesliga': 'BL1',
   '1. bundesliga': 'BL1',
+  'german bundesliga': 'BL1',
+  'germany bundesliga': 'BL1',
   'ligue 1': 'FL1',
+  'french ligue 1': 'FL1',
+  'france ligue 1': 'FL1',
   'championship': 'ELC',
   'english championship': 'ELC',
   'eredivisie': 'DED',
+  'dutch eredivisie': 'DED',
   'primeira liga': 'PPL',
   'portuguese primeira liga': 'PPL',
+  'liga portugal': 'PPL',
+  'portuguese liga': 'PPL',
+  'liga nos': 'PPL',
+  'portugal primeira liga': 'PPL',
   'champions league': 'CL',
   'uefa champions league': 'CL',
+  'european championship': 'EC',
+  'world cup': 'WC',
+  'fifa world cup': 'WC',
 };
 
 export function footballDataConfigured(): boolean {
@@ -79,18 +116,57 @@ export function normalize(value: string): string {
     .trim();
 }
 
+export function teamNameMatches(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const normA = normalize(a);
+  const normB = normalize(b);
+  if (!normA || !normB) return false;
+  if (normA === normB) return true;
+  if (normA.length >= 4 && normB.length >= 4) {
+    if (normA.includes(normB) || normB.includes(normA)) return true;
+  }
+  const aliasA = normA.replace(/utd/g, 'united').replace(/ath/g, 'athletic').replace(/st\b/g, 'saint').replace(/inter/g, 'internazionale');
+  const aliasB = normB.replace(/utd/g, 'united').replace(/ath/g, 'athletic').replace(/st\b/g, 'saint').replace(/inter/g, 'internazionale');
+  if (aliasA === aliasB) return true;
+  if (aliasA.length >= 4 && aliasB.length >= 4) {
+    if (aliasA.includes(aliasB) || aliasB.includes(aliasA)) return true;
+  }
+  return false;
+}
+
+export function findStandingForTeam(
+  teamName: string,
+  shortName: string | undefined,
+  standings: Map<string, StandingsEntry>
+): StandingsEntry | undefined {
+  const norm = normalize(teamName);
+  if (standings.has(norm)) return standings.get(norm);
+  if (shortName && standings.has(normalize(shortName))) return standings.get(normalize(shortName));
+
+  for (const entry of standings.values()) {
+    if (teamNameMatches(teamName, entry.name) || (shortName && teamNameMatches(shortName, entry.name))) {
+      return entry;
+    }
+  }
+  return undefined;
+}
+
 export function resolveCompetitionCode(league: string): string | null {
   const raw = league.toLowerCase();
   // The unqualified alias "Premier League" must never map South African fixtures to England's PL.
-  if (/south africa|south african|\\brsa\\b/.test(raw)) return null;
-  const clean = raw.replace(/^[^•]+•\\s*/, '').trim();
+  if (/south africa|south african|\brsa\b/.test(raw)) return null;
+  const clean = raw.replace(/^[^•\-]+[•\-]\s*/, '').trim();
   for (const [name, code] of Object.entries(FOOTBALL_DATA_COMPETITION_CODES)) {
-    if (clean === name || clean.includes(name)) return code;
+    if (clean === name || clean.includes(name) || raw.includes(name)) return code;
   }
   return null;
 }
 
 async function fetchWithRetry(url: string): Promise<Response> {
+  if (isFootballDataRateLimited()) {
+    const remainingSec = Math.ceil((footballDataRateLimitedUntil - Date.now()) / 1000);
+    throw new FootballDataRateLimitError(`Rate limit cooldown active (wait ${remainingSec}s)`);
+  }
   const apiKey = getApiKey();
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await fetch(url, {
@@ -99,11 +175,14 @@ async function fetchWithRetry(url: string): Promise<Response> {
     });
 
     if (res.status === 429) {
+      const body = await res.text().catch(() => '');
       if (attempt === 0) {
         await delay(requestSpacingMs());
         continue;
       }
-      const body = await res.text().catch(() => '');
+      const waitMatch = body.match(/Wait\s+(\d+)\s+seconds/i);
+      const waitSeconds = waitMatch ? parseInt(waitMatch[1], 10) : 10;
+      setFootballDataRateLimitCooldown(waitSeconds * 1000);
       throw new FootballDataRateLimitError(body.slice(0, 100));
     }
 
@@ -199,16 +278,11 @@ export function computeTeamFormFromFinishedMatches(
     const matchTime = new Date(m.utcDate).getTime();
     if (matchTime >= cutoffTime) return false;
 
-    const homeNorm = normalize(m.homeTeam.name);
-    const homeShort = normalize(m.homeTeam.shortName || '');
-    const awayNorm = normalize(m.awayTeam.name);
-    const awayShort = normalize(m.awayTeam.shortName || '');
-
     return (
-      targetNorm === homeNorm ||
-      targetNorm === homeShort ||
-      targetNorm === awayNorm ||
-      targetNorm === awayShort
+      teamNameMatches(teamName, m.homeTeam.name) ||
+      (Boolean(m.homeTeam.shortName) && teamNameMatches(teamName, m.homeTeam.shortName!)) ||
+      teamNameMatches(teamName, m.awayTeam.name) ||
+      (Boolean(m.awayTeam.shortName) && teamNameMatches(teamName, m.awayTeam.shortName!))
     );
   });
 
@@ -224,8 +298,8 @@ export function computeTeamFormFromFinishedMatches(
 
   for (const m of recent5) {
     const isHome =
-      normalize(m.homeTeam.name) === targetNorm ||
-      normalize(m.homeTeam.shortName || '') === targetNorm;
+      teamNameMatches(teamName, m.homeTeam.name) ||
+      (Boolean(m.homeTeam.shortName) && teamNameMatches(teamName, m.homeTeam.shortName!));
 
     const hScore = Number(m.score.fullTime.home ?? 0);
     const aScore = Number(m.score.fullTime.away ?? 0);
@@ -283,8 +357,12 @@ export function computeH2HFromFinishedMatches(
     const mAwayNorm = normalize(m.awayTeam.name);
     const mAwayShort = normalize(m.awayTeam.shortName || '');
 
-    const isMatchup1 = (homeNorm === mHomeNorm || homeNorm === mHomeShort) && (awayNorm === mAwayNorm || awayNorm === mAwayShort);
-    const isMatchup2 = (awayNorm === mHomeNorm || awayNorm === mHomeShort) && (homeNorm === mAwayNorm || homeNorm === mAwayShort);
+    const isMatchup1 =
+      (teamNameMatches(homeName, m.homeTeam.name) || (Boolean(m.homeTeam.shortName) && teamNameMatches(homeName, m.homeTeam.shortName!))) &&
+      (teamNameMatches(awayName, m.awayTeam.name) || (Boolean(m.awayTeam.shortName) && teamNameMatches(awayName, m.awayTeam.shortName!)));
+    const isMatchup2 =
+      (teamNameMatches(awayName, m.homeTeam.name) || (Boolean(m.homeTeam.shortName) && teamNameMatches(awayName, m.homeTeam.shortName!))) &&
+      (teamNameMatches(homeName, m.awayTeam.name) || (Boolean(m.awayTeam.shortName) && teamNameMatches(homeName, m.awayTeam.shortName!)));
     return isMatchup1 || isMatchup2;
   });
 
@@ -300,7 +378,7 @@ export function computeH2HFromFinishedMatches(
 
   for (const m of recent5) {
     const isOurHomeAtVenue =
-      normalize(m.homeTeam.name) === homeNorm || normalize(m.homeTeam.shortName || '') === homeNorm;
+      teamNameMatches(homeName, m.homeTeam.name) || (Boolean(m.homeTeam.shortName) && teamNameMatches(homeName, m.homeTeam.shortName!));
 
     const hScore = Number(m.score.fullTime.home ?? 0);
     const aScore = Number(m.score.fullTime.away ?? 0);
@@ -383,8 +461,8 @@ export async function enrichFixturesWithFootballData(fixtures: MatchFixture[]): 
     const homeNorm = normalize(fixture.homeTeam.name);
     const awayNorm = normalize(fixture.awayTeam.name);
 
-    const homeStanding = standings ? (standings.get(homeNorm) || standings.get(normalize(fixture.homeTeam.shortName || ''))) : undefined;
-    const awayStanding = standings ? (standings.get(awayNorm) || standings.get(normalize(fixture.awayTeam.shortName || ''))) : undefined;
+    const homeStanding = standings ? findStandingForTeam(fixture.homeTeam.name, fixture.homeTeam.shortName, standings) : undefined;
+    const awayStanding = standings ? findStandingForTeam(fixture.awayTeam.name, fixture.awayTeam.shortName, standings) : undefined;
 
     const homeFormRes = matches ? computeTeamFormFromFinishedMatches(fixture.homeTeam.name, matches, fixture.kickoffTime) : null;
     const awayFormRes = matches ? computeTeamFormFromFinishedMatches(fixture.awayTeam.name, matches, fixture.kickoffTime) : null;

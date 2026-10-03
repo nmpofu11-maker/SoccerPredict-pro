@@ -1,5 +1,5 @@
 import { HistoricalMatchResult, EngineWeights, PredictionResult } from '../types/soccer';
-import { evaluateFixturePrediction, DEFAULT_ENGINE_WEIGHTS, sanitizeEngineWeights } from '../engine/rulesEngine';
+import { evaluateFixturePrediction, DEFAULT_ENGINE_WEIGHTS, sanitizeEngineWeights, fixtureHasEvidence } from '../engine/rulesEngine';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
 import { synthesizeTeamIntelligenceMatrices } from '../engine/teamIntelligenceMatrix';
 
@@ -139,7 +139,7 @@ export function runStatisticalEvaluation(
   dataset: HistoricalMatchResult[] = HISTORICAL_MATCH_RESULTS
 ): StatisticalEvaluationResult | null {
   const weights = sanitizeEngineWeights(weightsInput || DEFAULT_ENGINE_WEIGHTS);
-  const validDataset = (dataset || []).filter((m): m is HistoricalMatchResult => Boolean(m && m.fixture && m.actualOutcome));
+  const validDataset = (dataset || []).filter((m): m is HistoricalMatchResult => Boolean(m && m.fixture && m.actualOutcome) && fixtureHasEvidence(m.fixture));
   if (validDataset.length < 2) {
     return null;
   }

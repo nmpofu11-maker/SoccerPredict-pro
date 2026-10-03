@@ -86,6 +86,30 @@ export async function fetchCronStatus(): Promise<CronStatusResponse | null> {
   }
 }
 
+export interface EvidenceCoverageResponse {
+  status: 'success' | 'error';
+  totalFixtures: number;
+  withEvidenceCount: number;
+  noEvidenceCount: number;
+  standingsCount: number;
+  formCount: number;
+  matchStatsCount: number;
+  advancedStatsCount: number;
+  byLeague: Record<string, { total: number; withEvidence: number; noEvidence: number; standings: number; form: number; stats: number }>;
+  noEvidenceSampleTeams: string[];
+  message?: string;
+}
+
+export async function fetchEvidenceCoverage(): Promise<EvidenceCoverageResponse | null> {
+  try {
+    const res = await fetch('/api/admin/evidence-coverage', { headers: getAdminApiHeaders() });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 /** Manually triggers the ingestion job right now, for a 'Sync Now' button that does something real. */
 export async function triggerIngestNow(): Promise<{ success: boolean; message: string; count: number }> {
   try {

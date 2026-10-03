@@ -37,8 +37,23 @@ export interface SportApiAiFixture {
   [key: string]: any;
 }
 
-export function sportApiAiConfigured(): boolean {
+let sportApiAiRateLimitUntil = 0;
+
+export function isSportApiAiRateLimited(): boolean {
+  return Date.now() < sportApiAiRateLimitUntil;
+}
+
+export function setSportApiAiRateLimit(resetInSeconds = 3600): void {
+  const duration = Math.max(60, Number(resetInSeconds) || 3600);
+  sportApiAiRateLimitUntil = Date.now() + duration * 1000;
+}
+
+export function hasSportApiAiKey(): boolean {
   return Boolean((process.env.SPORTAPI_AI_KEY || process.env.SPORTAPI_API_KEY)?.trim());
+}
+
+export function sportApiAiConfigured(): boolean {
+  return hasSportApiAiKey() && !isSportApiAiRateLimited();
 }
 
 function getBaseUrl(): string {
@@ -49,8 +64,11 @@ function getBaseUrl(): string {
  * Fetch all fixtures across covered leagues for a given calendar date (YYYY-MM-DD).
  */
 export async function fetchSportApiAiFixturesByDate(dateStr: string): Promise<any[]> {
-  if (!sportApiAiConfigured()) {
+  if (!hasSportApiAiKey()) {
     throw new Error('SPORTAPI_AI_KEY is not configured in environment variables.');
+  }
+  if (isSportApiAiRateLimited()) {
+    return [];
   }
 
   const key = (process.env.SPORTAPI_AI_KEY || process.env.SPORTAPI_API_KEY)!.trim();
@@ -67,6 +85,13 @@ export async function fetchSportApiAiFixturesByDate(dateStr: string): Promise<an
 
   if (!res.ok) {
     const errorText = await res.text().catch(() => '');
+    if (res.status === 429 || errorText.includes('Daily request limit reached')) {
+      const match = errorText.match(/"reset_in"\s*:\s*(\d+)/);
+      const resetIn = match ? parseInt(match[1], 10) : 3600;
+      setSportApiAiRateLimit(resetIn);
+      console.info(`[SportAPI.ai] Daily request limit reached (HTTP 429); falling back to secondary providers (${resetIn}s reset window).`);
+      return [];
+    }
     throw new Error(`SportAPI.ai HTTP ${res.status}: ${errorText.slice(0, 300)}`);
   }
 
@@ -136,8 +161,11 @@ export function getSportApiAiScores(f: any): { home: number | null; away: number
 }
 
 export async function sportApiAiGet(path: string): Promise<any> {
-  if (!sportApiAiConfigured()) {
+  if (!hasSportApiAiKey()) {
     throw new Error('SPORTAPI_AI_KEY is not configured in environment variables.');
+  }
+  if (isSportApiAiRateLimited()) {
+    return null;
   }
   const key = (process.env.SPORTAPI_AI_KEY || process.env.SPORTAPI_API_KEY)!.trim();
   const url = `${getBaseUrl()}/${path.replace(/^\/+/, '')}`;
@@ -151,6 +179,13 @@ export async function sportApiAiGet(path: string): Promise<any> {
   });
   if (!res.ok) {
     const errorText = await res.text().catch(() => '');
+    if (res.status === 429 || errorText.includes('Daily request limit reached')) {
+      const match = errorText.match(/"reset_in"\s*:\s*(\d+)/);
+      const resetIn = match ? parseInt(match[1], 10) : 3600;
+      setSportApiAiRateLimit(resetIn);
+      console.info(`[SportAPI.ai] Daily request limit reached (HTTP 429); path ${path} returned null (${resetIn}s reset window).`);
+      return null;
+    }
     throw new Error(`SportAPI.ai HTTP ${res.status}: ${errorText.slice(0, 300)}`);
   }
   return res.json();

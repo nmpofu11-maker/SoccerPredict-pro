@@ -12,6 +12,7 @@ import { parseHollywoodbetsRawText } from './src/services/hollywoodbetsParser';
 import type { DataIntegrityAuditReport } from './src/types/soccer';
 import {
   sportApiAiConfigured,
+  hasSportApiAiKey,
   fetchSportApiAiFixturesByDate,
   isSportApiAiFixtureFinished,
   getSportApiAiScores,
@@ -22,13 +23,22 @@ import {
   isTheRundownEventFinished,
   getTheRundownScores,
 } from './src/services/serverTheRundown';
-import { enrichFixturesWithFootballData, footballDataConfigured } from './src/services/serverFootballData';
+import {
+  enrichFixturesWithFootballData,
+  footballDataConfigured,
+  fetchFinishedMatches,
+  resolveCompetitionCode,
+  FootballDataRateLimitError,
+  isFootballDataRateLimited,
+  delay,
+  requestSpacingMs,
+} from './src/services/serverFootballData';
 import { pitchApiConfigured, fetchPitchApiFixturesByDate } from './src/services/serverPitchApi';
 import { sportDbConfigured, fetchSportDbFixturesByDate } from './src/services/serverSportDb';
-import { apiFootballConfigured, sportmonksConfigured } from './src/services/serverFootballApis';
+import { apiFootballConfigured, sportmonksConfigured, hasApiFootballKey, hasSportmonksKey, fetchSportmonksFixturesByDate, fetchApiFootballFixturesByDate } from './src/services/serverFootballApis';
 import { enrichFixturesWithFootballApis } from './src/services/serverFootballProviderEnrichment';
 import { extractTextFromPDF, scrapeUrl } from './src/services/manualDataService';
-import { evaluateFixturePrediction, sanitizeEngineWeights } from './src/engine/rulesEngine';
+import { evaluateFixturePrediction, sanitizeEngineWeights, fixtureHasEvidence } from './src/engine/rulesEngine';
 import {
   appendPrediction,
   appendOutcome,
@@ -739,7 +749,7 @@ function currentEngineWeights() {
 }
 
 function runPredictionFreezeJob(now: number = Date.now()) {
-  const summary = { appended: 0, duplicate: 0, late: 0, invalid: 0, errors: 0, considered: 0 };
+  const summary = { appended: 0, duplicate: 0, late: 0, invalid: 0, errors: 0, considered: 0, noEvidence: 0 };
   try {
     const weights = currentEngineWeights();
     const modelVersion =
@@ -754,6 +764,7 @@ function runPredictionFreezeJob(now: number = Date.now()) {
       try {
         const p = evaluateFixturePrediction(f, 'none', weights);
         if (!p) { summary.invalid++; continue; }
+        if (p.predictedWinner === 'none') { summary.noEvidence++; continue; }
         const r = appendPrediction(PREDICTION_LOG_PATH, {
           fixtureId: String(f.id),
           kickoffTime: new Date(kickoff).toISOString(),
@@ -1153,6 +1164,10 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
 
   if (diagnostics.sportApiAi.configured) {
     for (const candidateDate of ingestDates) {
+      if (!sportApiAiConfigured()) {
+        diagnostics.sportApiAi.notes.push('SportAPI.ai is rate-limited; skipping further dates.');
+        break;
+      }
       diagnostics.sportApiAi.requestCount++;
       try {
         const rawFixtures = await fetchSportApiAiFixturesByDate(candidateDate);
@@ -1185,7 +1200,11 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
       }
     }
   } else {
-    diagnostics.sportApiAi.notes.push('SPORTAPI_AI_KEY not configured.');
+    diagnostics.sportApiAi.notes.push(
+      hasSportApiAiKey()
+        ? 'SportAPI.ai is temporarily suspended due to daily rate limits.'
+        : 'SPORTAPI_AI_KEY not configured.'
+    );
   }
 
   // TheRundown is used when SportAPI.ai produced no usable records.
@@ -1294,6 +1313,19 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     diagnostics.sportDb.notes.push(diagnostics.sportDb.configured ? 'Not queried because another provider produced usable fixtures.' : 'SPORTDB_API_KEY not configured.');
   }
 
+  if (mapped.length === 0) {
+    try {
+      const diskFixtures = readDiskManifest();
+      const dateSet = new Set(ingestDates);
+      const candidates = diskFixtures.filter((f: any) => dateSet.has((f.kickoffTime || '').slice(0, 10)));
+      if (candidates.length > 0) {
+        mapped = candidates;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   // Primary provider enrichment runs first; secondary providers only fill verified gaps.
   // API-Football and Sportmonks are queried as independent schedule sources,
   // even when another provider already supplied fixtures. Exact team/date matches
@@ -1310,6 +1342,9 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
       diagnostics.apiFootball.successfulRequests = providerResult.apiFootballSuccessfulRequests;
       diagnostics.apiFootball.failedRequests = providerResult.apiFootballFailedRequests;
       if (providerResult.apiFootballFixtures === 0) diagnostics.apiFootball.notes.push('No API-Football fixtures returned for requested dates.');
+      diagnostics.apiFootball.notes.push(`Team-form/standings enrichment updated ${providerResult.enrichedTeams} fixture(s).`);
+    } else if (hasApiFootballKey()) {
+      diagnostics.apiFootball.notes.push('API-Football is temporarily suspended due to daily rate limits.');
     }
     if (diagnostics.sportmonks.configured) {
       diagnostics.sportmonks.rawRecords = providerResult.sportmonksFixtures;
@@ -1317,8 +1352,9 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
       diagnostics.sportmonks.successfulRequests = providerResult.sportmonksSuccessfulRequests;
       diagnostics.sportmonks.failedRequests = providerResult.sportmonksFailedRequests;
       if (providerResult.sportmonksFixtures === 0) diagnostics.sportmonks.notes.push('No Sportmonks fixtures returned for requested dates.');
+    } else if (hasSportmonksKey()) {
+      diagnostics.sportmonks.notes.push('Sportmonks is temporarily suspended due to daily rate limits.');
     }
-    if (diagnostics.apiFootball.configured) diagnostics.apiFootball.notes.push(`Team-form/standings enrichment updated ${providerResult.enrichedTeams} fixture(s).`);
     diagnostics.apiFootball.notes.push(...providerResult.errors.filter((e) => e.startsWith('API-Football')));
     diagnostics.sportmonks.notes.push(...providerResult.errors.filter((e) => e.startsWith('Sportmonks')));
     if (beforeProviderEnrichment === 0 && providerResult.apiFootballFixtures > 0) sourceUsed = 'API_FOOTBALL';
@@ -1412,6 +1448,13 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
 
     const sourceLabel = sourceUsed === 'SPORTAPI_AI' ? 'SportAPI.ai' : sourceUsed === 'THERUNDOWN' ? 'TheRundown.io' : sourceUsed === 'PITCHAPI' ? 'PitchAPI' : sourceUsed === 'SPORTDB' ? 'SportDB' : sourceUsed === 'API_FOOTBALL' ? 'API-Football' : 'Sportmonks';
     const msg = `Ingested ${mapped.length} fixtures from ${sourceLabel} for ${dateStr} (${newCount} new). Raw records: SportAPI.ai ${diagnostics.sportApiAi.rawRecords}; TheRundown ${diagnostics.theRundown.rawRecords}; PitchAPI ${diagnostics.pitchApi.rawRecords}; SportDB ${diagnostics.sportDb.rawRecords}; API-Football ${diagnostics.apiFootball.rawRecords}; Sportmonks ${diagnostics.sportmonks.rawRecords}. Mapped: SportAPI.ai ${diagnostics.sportApiAi.mappedRecords}; TheRundown ${diagnostics.theRundown.mappedRecords}; PitchAPI ${diagnostics.pitchApi.mappedRecords}; SportDB ${diagnostics.sportDb.mappedRecords}; API-Football ${diagnostics.apiFootball.mappedRecords}; Sportmonks ${diagnostics.sportmonks.mappedRecords}.`;
+
+    const withEvidenceCount = combined.filter((f: any) => fixtureHasEvidence(f)).length;
+    const noEvidenceCount = combined.length - withEvidenceCount;
+    const standingsCount = combined.filter((f: any) => Boolean(f?.homeTeam?.standingsSource) || Boolean(f?.awayTeam?.standingsSource)).length;
+    const formCount = combined.filter((f: any) => Boolean(f?.homeTeam?.formSource) || Boolean(f?.awayTeam?.formSource)).length;
+    const statsCount = combined.filter((f: any) => Boolean(f?.homeTeam?.matchStatsSource) || Boolean(f?.awayTeam?.matchStatsSource)).length;
+    console.log(`[evidence] withEvidence=${withEvidenceCount} noEvidence=${noEvidenceCount} standings=${standingsCount} form=${formCount} stats=${statsCount}`);
     status.ingest = {
       lastRunAt: new Date().toISOString(),
       lastSuccess: true,
@@ -1421,7 +1464,7 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
       diagnostics,
     };
     writeCronStatus(status);
-    console.log(`[cron:ingest] ${msg}`, JSON.stringify(diagnostics));
+    console.log(`[cron:ingest] ${msg}`);
     return { success: true, message: msg, count: mapped.length, diagnostics };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown ingestion error';
@@ -1586,6 +1629,118 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
           }
         } catch (err) {
           console.warn(`[cron:settlement] TheRundown settlement failed for ${dateStr}:`, err);
+        }
+      }
+
+      // 3. Try Sportmonks settlement for remaining unsettled in date group
+      const unsettledForSportmonks = fixturesForDate.filter((f) => !newEntries.some((e) => e.id === f.id));
+      if (unsettledForSportmonks.length > 0 && sportmonksConfigured()) {
+        try {
+          const smFixtures = await fetchSportmonksFixturesByDate(dateStr);
+          const byIdMap = new Map<string, any>();
+          const byNameMap = new Map<string, any>();
+          for (const smf of smFixtures) {
+            if (smf.id) byIdMap.set(String(smf.id), smf);
+            const participants = Array.isArray(smf.participants?.data ?? smf.participants) ? (smf.participants?.data ?? smf.participants) : [];
+            const homeP = participants.find((p: any) => String(p?.meta?.location || p?.pivot?.location || '').toLowerCase() === 'home');
+            const awayP = participants.find((p: any) => String(p?.meta?.location || p?.pivot?.location || '').toLowerCase() === 'away');
+            if (homeP?.name && awayP?.name) {
+              byNameMap.set(`${normalizeTeamName(homeP.name)}_vs_${normalizeTeamName(awayP.name)}`, smf);
+            }
+          }
+          for (const f of unsettledForSportmonks) {
+            let match = f.sportmonksFixtureId ? byIdMap.get(String(f.sportmonksFixtureId)) : undefined;
+            if (!match) {
+              const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
+              match = byNameMap.get(key);
+            }
+            if (!match) continue;
+            const statusStr = String(match.state?.short_name || match.state?.name || match.status || '').toUpperCase();
+            if (!['FT', 'AET', 'PEN', 'FINISHED', 'ENDED', 'FINAL'].includes(statusStr)) continue;
+
+            const scoresList = Array.isArray(match.scores?.data ?? match.scores) ? (match.scores?.data ?? match.scores) : [];
+            let homeScore: number | null = null;
+            let awayScore: number | null = null;
+            for (const sc of scoresList) {
+              const part = String(sc?.participant ?? sc?.description ?? '').toLowerCase();
+              const val = Number(sc?.score?.goals ?? sc?.goals ?? sc?.value);
+              if (Number.isFinite(val)) {
+                if (part === 'home' || part === '1') homeScore = val;
+                if (part === 'away' || part === '2') awayScore = val;
+              }
+            }
+            if (homeScore === null || awayScore === null) continue;
+            const outcome = homeScore > awayScore ? 'home' : awayScore > homeScore ? 'away' : 'draw';
+            newEntries.push({
+              id: f.id,
+              fixture: f,
+              homeScore,
+              awayScore,
+              actualOutcome: outcome,
+              date: dateStr,
+              notes: 'Settled via Sportmonks',
+              settledAt: new Date().toISOString(),
+            });
+            settledCount++;
+          }
+        } catch (err) {
+          console.warn(`[cron:settlement] Sportmonks settlement failed for ${dateStr}:`, err);
+        }
+      }
+
+      // 4. Try Football-Data.org settlement for remaining unsettled
+      const unsettledForFootballData = fixturesForDate.filter((f) => !newEntries.some((e) => e.id === f.id));
+      if (unsettledForFootballData.length > 0 && footballDataConfigured() && !isFootballDataRateLimited()) {
+        const codesNeeded = new Set<string>();
+        for (const f of unsettledForFootballData) {
+          const code = resolveCompetitionCode(f.league || '');
+          if (code) codesNeeded.add(code);
+        }
+        const codesList = Array.from(codesNeeded);
+        for (let i = 0; i < codesList.length; i++) {
+          const code = codesList[i];
+          if (isFootballDataRateLimited()) {
+            console.log(`[cron:settlement] Football-Data cooldown active; pausing remaining ${codesList.length - i} leagues in settlement batch.`);
+            break;
+          }
+          try {
+            if (i > 0) await delay(requestSpacingMs());
+            const finishedMatches = await fetchFinishedMatches(code);
+            for (const f of unsettledForFootballData) {
+              if (newEntries.some((e) => e.id === f.id)) continue;
+              if (resolveCompetitionCode(f.league || '') !== code) continue;
+              const hNorm = normalizeTeamName(f.homeTeam?.name);
+              const aNorm = normalizeTeamName(f.awayTeam?.name);
+              const match = finishedMatches.find((m) => {
+                const mDate = (m.utcDate || '').slice(0, 10);
+                if (mDate !== dateStr) return false;
+                const mH = normalizeTeamName(m.homeTeam?.name || m.homeTeam?.shortName);
+                const mA = normalizeTeamName(m.awayTeam?.name || m.awayTeam?.shortName);
+                return mH === hNorm && mA === aNorm;
+              });
+              if (!match || typeof match.score?.fullTime?.home !== 'number' || typeof match.score?.fullTime?.away !== 'number') continue;
+              const homeScore = match.score.fullTime.home;
+              const awayScore = match.score.fullTime.away;
+              const outcome = homeScore > awayScore ? 'home' : awayScore > homeScore ? 'away' : 'draw';
+              newEntries.push({
+                id: f.id,
+                fixture: f,
+                homeScore,
+                awayScore,
+                actualOutcome: outcome,
+                date: dateStr,
+                notes: 'Settled via Football-Data.org',
+                settledAt: new Date().toISOString(),
+              });
+              settledCount++;
+            }
+          } catch (err) {
+            if (err instanceof FootballDataRateLimitError) {
+              console.log(`[cron:settlement] Football-Data rate limit reached on ${code}; pausing remaining ${codesList.length - i} leagues in settlement batch.`);
+              break;
+            }
+            console.warn(`[cron:settlement] Football-Data settlement query for ${code} skipped:`, err instanceof Error ? err.message : err);
+          }
         }
       }
     }
@@ -2323,7 +2478,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
   // In-memory sync state contains only measured coefficients received from the operator pipeline.
   // No pre-seeded sample sizes or learned coefficients are assumed.
   let superLearningSyncState = {
-    sync_timestamp: '',
+    sync_timestamp: new Date().toISOString(),
     model_engine: 'Chronological Team Intelligence Calibration',
     meta_improvement_notes: 'No synchronized learned team coefficients are available until derived from completed training-window results.',
     team_intelligence_matrices: {},
@@ -2408,6 +2563,77 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to read cron status';
+      return res.status(500).json({ status: 'error', message: msg });
+    }
+  });
+
+  app.get('/api/admin/evidence-coverage', requireAdmin, (_req, res) => {
+    try {
+      const diskFixtures = readDiskManifest();
+      const { fixtures: sanitized } = verifyAndSanitizeFixtures(diskFixtures);
+
+      let standingsCount = 0;
+      let formCount = 0;
+      let matchStatsCount = 0;
+      let advancedStatsCount = 0;
+      let withEvidenceCount = 0;
+      let noEvidenceCount = 0;
+
+      const byLeague: Record<string, { total: number; withEvidence: number; noEvidence: number; standings: number; form: number; stats: number }> = {};
+      const noEvidenceSampleTeams: string[] = [];
+      const noEvidenceTeamSet = new Set<string>();
+
+      for (const f of sanitized) {
+        const league = f.league || 'Unknown League';
+        if (!byLeague[league]) {
+          byLeague[league] = { total: 0, withEvidence: 0, noEvidence: 0, standings: 0, form: 0, stats: 0 };
+        }
+        byLeague[league].total++;
+
+        const hasStandings = Boolean(f.homeTeam?.standingsSource || f.awayTeam?.standingsSource);
+        const hasForm = Boolean(f.homeTeam?.formSource || f.awayTeam?.formSource);
+        const hasStats = Boolean(f.homeTeam?.matchStatsSource || f.awayTeam?.matchStatsSource);
+        const hasAdvanced = Boolean(f.homeTeam?.advancedStatsSource || f.awayTeam?.advancedStatsSource);
+        const hasEv = fixtureHasEvidence(f);
+
+        if (hasStandings) { standingsCount++; byLeague[league].standings++; }
+        if (hasForm) { formCount++; byLeague[league].form++; }
+        if (hasStats) { matchStatsCount++; byLeague[league].stats++; }
+        if (hasAdvanced) { advancedStatsCount++; }
+
+        if (hasEv) {
+          withEvidenceCount++;
+          byLeague[league].withEvidence++;
+        } else {
+          noEvidenceCount++;
+          byLeague[league].noEvidence++;
+          if (noEvidenceSampleTeams.length < 20) {
+            if (f.homeTeam?.name && !noEvidenceTeamSet.has(f.homeTeam.name)) {
+              noEvidenceTeamSet.add(f.homeTeam.name);
+              noEvidenceSampleTeams.push(f.homeTeam.name);
+            }
+            if (f.awayTeam?.name && noEvidenceSampleTeams.length < 20 && !noEvidenceTeamSet.has(f.awayTeam.name)) {
+              noEvidenceTeamSet.add(f.awayTeam.name);
+              noEvidenceSampleTeams.push(f.awayTeam.name);
+            }
+          }
+        }
+      }
+
+      return res.json({
+        status: 'success',
+        totalFixtures: sanitized.length,
+        withEvidenceCount,
+        noEvidenceCount,
+        standingsCount,
+        formCount,
+        matchStatsCount,
+        advancedStatsCount,
+        byLeague,
+        noEvidenceSampleTeams,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Evidence coverage calculation failed';
       return res.status(500).json({ status: 'error', message: msg });
     }
   });

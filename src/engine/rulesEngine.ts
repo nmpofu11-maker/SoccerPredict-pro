@@ -56,6 +56,15 @@ export function sanitizeEngineWeights(weights?: Partial<EngineWeights> | null): 
   return result;
 }
 
+const teamHasVerifiedStrength = (t: MatchFixture['homeTeam']): boolean =>
+  (Boolean(t.standingsSource) && Number.isFinite(t.leagueRank) && (t.leagueRank as number) >= 1) ||
+  (Array.isArray(t.form) && t.form.length > 0 && Boolean(t.formSource)) ||
+  (Boolean(t.advancedStatsSource) && (Number.isFinite(t.avgMatchRating) || Number.isFinite(t.totalSquadValueEur)));
+
+export function fixtureHasEvidence(fixture: MatchFixture): boolean {
+  return teamHasVerifiedStrength(fixture.homeTeam) || teamHasVerifiedStrength(fixture.awayTeam);
+}
+
 /**
  * Pure JavaScript 9-Rule Sequential Soccer Prediction Engine
  * Evaluates fixtures line-by-line using strictly ordered mathematical rules.
@@ -85,18 +94,7 @@ export function evaluateFixturePrediction(
   // Initial baseline scores: adjusted by observed team coefficients when a sufficient sample exists.
   // International/youth fixtures with no verified strength evidence must not receive
   // an invented home-team advantage. A schedule-only feed cannot justify it.
-  const homeHasVerifiedStrength =
-    (Boolean(fixture.homeTeam.standingsSource) && Number.isFinite(fixture.homeTeam.leagueRank) && fixture.homeTeam.leagueRank >= 1) ||
-    (Array.isArray(fixture.homeTeam.form) && fixture.homeTeam.form.length > 0 && Boolean(fixture.homeTeam.formSource)) ||
-    (Boolean(fixture.homeTeam.advancedStatsSource) && (Number.isFinite(fixture.homeTeam.avgMatchRating) || Number.isFinite(fixture.homeTeam.totalSquadValueEur)));
-  const awayHasVerifiedStrength =
-    (Boolean(fixture.awayTeam.standingsSource) && Number.isFinite(fixture.awayTeam.leagueRank) && fixture.awayTeam.leagueRank >= 1) ||
-    (Array.isArray(fixture.awayTeam.form) && fixture.awayTeam.form.length > 0 && Boolean(fixture.awayTeam.formSource)) ||
-    (Boolean(fixture.awayTeam.advancedStatsSource) && (Number.isFinite(fixture.awayTeam.avgMatchRating) || Number.isFinite(fixture.awayTeam.totalSquadValueEur)));
-
-  // Do not generate a directional prediction from home advantage alone when neither
-  // side has any observed strength evidence. This applies to club and international matches.
-  const insufficientTeamData = !homeHasVerifiedStrength && !awayHasVerifiedStrength;
+  const insufficientTeamData = !fixtureHasEvidence(fixture);
 
   let homePoints = insufficientTeamData ? 8.0 : w.homeAdvantageBaseline * homeLearned.home_advantage_multiplier;
   let awayPoints = insufficientTeamData ? 8.0 : w.awayAdvantageBaseline;
@@ -709,15 +707,17 @@ export function evaluateFixturePrediction(
   }
 
   // Determine predicted winner
-  let predictedWinner: 'home' | 'draw' | 'away' = 'home';
-  if (roundedDraw > roundedHome && roundedDraw > roundedAway) {
+  let predictedWinner: 'home' | 'draw' | 'away' | 'none';
+  if (insufficientTeamData && manualOverride === 'none') {
+    predictedWinner = 'none';
+  } else if (roundedDraw > roundedHome && roundedDraw > roundedAway) {
     predictedWinner = 'draw';
-  } else if (roundedAway > roundedHome && roundedAway > roundedDraw) {
+  } else if (roundedAway > roundedHome && roundedAway >= roundedDraw) {
     predictedWinner = 'away';
-  } else if (roundedHome > roundedAway && roundedHome > roundedDraw) {
+  } else if (roundedHome > roundedAway && roundedHome >= roundedDraw) {
     predictedWinner = 'home';
-  } else if (roundedHome === roundedAway) {
-    predictedWinner = 'draw';
+  } else {
+    predictedWinner = roundedDraw >= Math.max(roundedHome, roundedAway) ? 'draw' : roundedAway > roundedHome ? 'away' : 'home';
   }
 
   // Calculate confidence score (based on margin between leader and second)
@@ -730,6 +730,7 @@ export function evaluateFixturePrediction(
     drawPct: Math.max(0, roundedDraw),
     awayWinPct: roundedAway,
     predictedWinner,
+    hasEvidence: !insufficientTeamData,
     modelLeaderProbabilityPct: Number.isFinite(modelLeaderProbabilityPct) ? modelLeaderProbabilityPct : 0,
     appliedRules,
     rawPoints: {

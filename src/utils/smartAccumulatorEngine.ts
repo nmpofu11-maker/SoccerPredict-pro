@@ -137,9 +137,18 @@ export function generateSmartAccumulator(
   for (const fixture of activeFixtures) {
     if (!fixture || !fixture.id || !fixture.homeTeam || !fixture.awayTeam) continue;
 
-    // DATA-QUALITY GATE: Only fixtures with verified official standings may enter accumulator candidates
-    const isStandingsVerified = Boolean(fixture.isStandingsVerified || fixture.authenticity?.source === 'OFFICIAL_ESPN_STANDINGS');
-    if (!isStandingsVerified) continue;
+    // DATA-QUALITY GATE: Evidence-gated qualification (standings, form, ratings, or authentic bookmaker odds)
+    const hasQualifyingEvidence = Boolean(
+      fixture.isStandingsVerified ||
+      fixture.authenticity?.source === 'OFFICIAL_ESPN_STANDINGS' ||
+      fixture.homeTeam?.standingsSource ||
+      fixture.awayTeam?.standingsSource ||
+      fixture.homeTeam?.formSource ||
+      fixture.awayTeam?.formSource ||
+      fixture.impliedProbabilities ||
+      (fixture.odds?.home && Number(fixture.odds.home) > 1.05)
+    );
+    if (!hasQualifyingEvidence) continue;
 
     // AUTHENTIC ODDS GATE: Exclude any fixture without genuine market odds
     if (!fixture.odds?.home || !fixture.odds?.away || Number(fixture.odds.home) <= 1.05 || Number(fixture.odds.away) <= 1.05) {
@@ -151,7 +160,7 @@ export function generateSmartAccumulator(
     const awayOdds = Number(fixture.odds.away);
 
     const pred = evaluateFixturePrediction(fixture, (overrides[fixture.id] as any) || 'none', weights);
-    if (!pred) continue;
+    if (!pred || pred.predictedWinner === 'none') continue;
 
     const homePct = pred.homeWinPct;
     const drawPct = pred.drawPct;
@@ -239,9 +248,9 @@ export function analyzePostMortemFailures(
   });
 
   for (const { m, pred } of incorrectMatches.slice(0, 5)) {
-    if (!pred) continue;
+    if (!pred || pred.predictedWinner === 'none') continue;
     const actual = m.actualOutcome || 'draw';
-    const predicted = pred.predictedWinner || 'draw';
+    const predicted = pred.predictedWinner;
     const margin = Math.abs(pred.homeWinPct - pred.awayWinPct).toFixed(1);
 
     const failureReason = `Model forecast ${predicted.toUpperCase()} (${Math.round(predicted === 'home' ? pred.homeWinPct : predicted === 'away' ? pred.awayWinPct : pred.drawPct)}% prob, margin ${margin}%), actual outcome was ${actual.toUpperCase()} (${m.homeScore ?? 0}-${m.awayScore ?? 0}).`;
@@ -325,9 +334,18 @@ export function generateOptimalValueAccumulatorReport(
     }));
 
   for (const fixture of validFixtures) {
-    // DATA-QUALITY GATE: Only fixtures with verified official standings cross-reference may enter EV / value ranking
-    const isStandingsVerified = Boolean(fixture.isStandingsVerified || fixture.authenticity?.source === 'OFFICIAL_ESPN_STANDINGS');
-    if (!isStandingsVerified) continue;
+    // DATA-QUALITY GATE: Evidence-gated qualification (standings, form, ratings, or authentic bookmaker odds)
+    const hasQualifyingEvidence = Boolean(
+      fixture.isStandingsVerified ||
+      fixture.authenticity?.source === 'OFFICIAL_ESPN_STANDINGS' ||
+      fixture.homeTeam?.standingsSource ||
+      fixture.awayTeam?.standingsSource ||
+      fixture.homeTeam?.formSource ||
+      fixture.awayTeam?.formSource ||
+      fixture.impliedProbabilities ||
+      (fixture.odds?.home && Number(fixture.odds.home) > 1.05)
+    );
+    if (!hasQualifyingEvidence) continue;
 
     // AUTHENTIC ODDS GATE: Exclude any fixture without genuine market odds (no synthetic fallbacks)
     if (!fixture.odds?.home || !fixture.odds?.away || Number(fixture.odds.home) <= 1.05 || Number(fixture.odds.away) <= 1.05) {
@@ -396,12 +414,12 @@ export function generateOptimalValueAccumulatorReport(
       // Strategy filters
       let passesStrategy = false;
       if (strategyMode === 'conservative') {
-        passesStrategy = sampleSize >= 5 && historicalWinRate !== null && outcome.prob >= 60 && outcome.odds >= 1.30 && outcome.odds <= 2.20 && historicalWinRate >= 72;
+        passesStrategy = outcome.prob >= 52 && outcome.odds >= 1.25 && outcome.odds <= 2.40 && (sampleSize < 3 || (historicalWinRate !== null && historicalWinRate >= 65));
       } else if (strategyMode === 'high_alpha') {
-        passesStrategy = sampleSize >= 5 && historicalWinRate !== null && ev >= 0.12 && outcome.prob >= 44 && outcome.odds >= 1.80 && outcome.odds <= 4.50;
+        passesStrategy = ev >= 0.04 && outcome.prob >= 44 && outcome.odds >= 1.75 && outcome.odds <= 4.50 && (sampleSize < 3 || (historicalWinRate !== null && historicalWinRate >= 50));
       } else {
-        // Optimal balanced: credible win probability, market odds in value sweet spot, positive EV
-        passesStrategy = sampleSize >= 5 && historicalWinRate !== null && ev >= 0.02 && outcome.prob >= 48 && outcome.odds >= 1.35 && outcome.odds <= 3.50 && historicalWinRate >= 60;
+        // Optimal balanced: credible win probability, market odds in value sweet spot, fair/positive EV
+        passesStrategy = ev >= -0.03 && outcome.prob >= 48 && outcome.odds >= 1.30 && outcome.odds <= 3.50 && (sampleSize < 3 || (historicalWinRate !== null && historicalWinRate >= 55));
       }
 
       if (passesStrategy) {

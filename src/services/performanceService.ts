@@ -4,7 +4,7 @@ import {
   EngineWeights,
   EnginePerformanceSummary,
 } from '../types/soccer';
-import { evaluateFixturePrediction, DEFAULT_ENGINE_WEIGHTS } from '../engine/rulesEngine';
+import { evaluateFixturePrediction, DEFAULT_ENGINE_WEIGHTS, fixtureHasEvidence } from '../engine/rulesEngine';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
 import { toIsoDateString } from '../utils/dateFilterUtils';
 
@@ -50,7 +50,7 @@ export function calculateEnginePerformance(
   let allCorrect = 0;
 
   const validResults = (results || []).filter(
-    (m): m is HistoricalMatchResult => Boolean(m && m.id && m.fixture && m.fixture.id && m.fixture.homeTeam && m.fixture.awayTeam && m.actualOutcome)
+    (m): m is HistoricalMatchResult => Boolean(m && m.id && m.fixture && m.fixture.id && m.fixture.homeTeam && m.fixture.awayTeam && m.actualOutcome) && fixtureHasEvidence(m.fixture)
   );
 
   let homePickTotal = 0;
@@ -62,6 +62,7 @@ export function calculateEnginePerformance(
 
   for (const match of validResults) {
     const pred = evaluateFixturePrediction(match.fixture, 'none', weights);
+    if (pred.predictedWinner === 'none') continue;
     const pH = pred.homeWinPct / 100;
     const pD = pred.drawPct / 100;
     const pA = pred.awayWinPct / 100;
@@ -84,7 +85,7 @@ export function calculateEnginePerformance(
     } else if (pred.predictedWinner === 'away') {
       awayPickTotal++;
       if (isCorrect) awayPickCorrect++;
-    } else {
+    } else if (pred.predictedWinner === 'draw') {
       drawPickTotal++;
       if (isCorrect) drawPickCorrect++;
     }
@@ -98,8 +99,8 @@ export function calculateEnginePerformance(
 
     const pickOdds = (100 / Math.max(pickProb, 1)).toFixed(2);
 
-    const formatWinner = (w: 'home' | 'draw' | 'away') =>
-      w === 'home' ? 'Home Win' : w === 'away' ? 'Away Win' : 'Draw';
+    const formatWinner = (w: 'none' | 'home' | 'draw' | 'away') =>
+      w === 'home' ? 'Home Win' : w === 'away' ? 'Away Win' : w === 'draw' ? 'Draw' : 'No Pick';
 
     allEvaluations.push({
       matchId: match.id,

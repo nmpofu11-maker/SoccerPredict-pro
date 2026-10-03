@@ -1,31 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Cpu, RefreshCw, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
-import { fetchCronStatus, triggerIngestNow, fetchDailySlate, CronStatusResponse } from '../services/resultsService';
+import { Cpu, RefreshCw, CheckCircle2, AlertCircle, Clock, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { fetchCronStatus, triggerIngestNow, fetchDailySlate, fetchEvidenceCoverage, CronStatusResponse, EvidenceCoverageResponse } from '../services/resultsService';
 import { MatchFixture } from '../types/soccer';
 
 interface PipelineStatusWidgetProps {
   onFixturesSynced?: (fixtures: MatchFixture[]) => void;
 }
 
-/**
- * Replaces the old ApiQuotaWidget, which displayed a fully simulated quota
- * counter (localStorage-only, never connected to any real API call) next to
- * a "Test Connection" button that made zero network requests. Everything
- * shown here comes from the real server-side pipeline via /api/admin/cron-status
- * — actual provider used, actual last-run time, actual success/failure and
- * why, actual quota consumed against your real API-Football key if configured.
- */
 export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFixturesSynced }) => {
   const [status, setStatus] = useState<CronStatusResponse | null>(null);
+  const [evidence, setEvidence] = useState<EvidenceCoverageResponse | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
   const refresh = () => {
     fetchCronStatus().then(setStatus);
+    fetchEvidenceCoverage().then(setEvidence);
   };
 
   useEffect(() => {
     refresh();
-    const interval = setInterval(refresh, 60 * 1000); // real status, checked every minute
+    const interval = setInterval(refresh, 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -80,6 +74,18 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
                 : 'Not yet run'}
             </span>
           </div>
+          {evidence && (
+            <div className="text-slate-300 text-[10.5px] mt-1 flex items-center gap-2 flex-wrap">
+              <span className="text-emerald-400 font-bold flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                {evidence.withEvidenceCount}/{evidence.totalFixtures} Evidence
+              </span>
+              <span>•</span>
+              <span>Standings: {evidence.standingsCount}</span>
+              <span>•</span>
+              <span>Form: {evidence.formCount}</span>
+            </div>
+          )}
           {!isHealthy && hasRun && (
             <div className="text-rose-400 text-[11px] mt-1 max-w-md truncate" title={ingest?.lastMessage}>
               {ingest?.lastMessage}

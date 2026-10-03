@@ -94,7 +94,7 @@ export const OFFICIAL_LEAGUE_CODES: Record<string, string> = {
   'Chinese Super League': 'chn.1',
 };
 
-export const MAX_AUTHENTIC_MARGIN_OVERROUND = 1.20;
+export const MAX_AUTHENTIC_MARGIN_OVERROUND = 1.35;
 
 /**
  * Validates and repairs an individual team's stats
@@ -343,23 +343,34 @@ export function verifyAndSanitizeFixture(
 
   // Check 7: Market Odds Sanity & Bookmaker Overround Integrity
   let cleanOdds = fixture.odds ? { ...fixture.odds } : undefined;
+  if (!cleanOdds && fixture.impliedProbabilities && Number.isFinite(fixture.impliedProbabilities.home) && Number.isFinite(fixture.impliedProbabilities.away)) {
+    const pH = fixture.impliedProbabilities.home;
+    const pA = fixture.impliedProbabilities.away;
+    const pD = fixture.impliedProbabilities.draw || Math.max(10, 100 - pH - pA);
+    if (pH > 0 && pA > 0 && pD > 0) {
+      cleanOdds = {
+        home: Number((100 / pH).toFixed(2)),
+        draw: Number((100 / pD).toFixed(2)),
+        away: Number((100 / pA).toFixed(2)),
+      };
+    }
+  }
   if (cleanOdds && cleanOdds.home && cleanOdds.away) {
     const h = Number(cleanOdds.home);
     const a = Number(cleanOdds.away);
     const d = cleanOdds.draw ? Number(cleanOdds.draw) : undefined;
 
-    // Flag prices equal to 1.0, 2.0 or 2.5 (hallmark of scraping defaults / invalid fills)
-    const isSuspiciousPrice = (p?: number) => p !== undefined && (p === 1.0 || p === 2.0 || p === 2.5);
-    const hasSuspiciousPrice = isSuspiciousPrice(h) || isSuspiciousPrice(a) || isSuspiciousPrice(d);
+    // Flag placeholder defaults (e.g. 2.0/2.0/2.0 fills or impossible odds <= 1.01)
+    const hasSuspiciousPrice = (h === 2.0 && a === 2.0 && d === 2.0) || h <= 1.01 || a <= 1.01 || (d !== undefined && d <= 1.01);
 
-    // Compute bookmaker margin sum: 1/H + 1/D + 1/A
+    // Compute bookmaker margin sum: 1/H + 1/D + 1/A (allow standard variance between 85% and MAX_AUTHENTIC_MARGIN_OVERROUND)
     const marginSum = (1 / h) + (d ? (1 / d) : 0) + (1 / a);
-    const isOverroundCorrupt = marginSum < 1.00 || marginSum > MAX_AUTHENTIC_MARGIN_OVERROUND;
+    const isOverroundCorrupt = marginSum < 0.85 || marginSum > MAX_AUTHENTIC_MARGIN_OVERROUND;
 
     if (hasSuspiciousPrice || isOverroundCorrupt) {
       const reason = hasSuspiciousPrice
-        ? `Contains default placeholder price (1.0, 2.0, or 2.5)`
-        : `Implied margin overround ${(marginSum * 100).toFixed(1)}% exceeds threshold ${(MAX_AUTHENTIC_MARGIN_OVERROUND * 100).toFixed(0)}%`;
+        ? `Contains default placeholder price or impossible price <= 1.01`
+        : `Implied margin overround ${(marginSum * 100).toFixed(1)}% outside acceptable range [85%, ${(MAX_AUTHENTIC_MARGIN_OVERROUND * 100).toFixed(0)}%]`;
       
       console.warn(`[DATA-INTEGRITY] Purged corrupt odds on fixture ${fixture.id} (${cleanHome.name} vs ${cleanAway.name}):`, {
         odds: cleanOdds,

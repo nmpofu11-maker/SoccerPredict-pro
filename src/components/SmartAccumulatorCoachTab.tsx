@@ -83,9 +83,18 @@ export const SmartAccumulatorCoachTab: React.FC<SmartAccumulatorCoachTabProps> =
     });
 
     for (const fixture of activeFixtures) {
-      // DATA-QUALITY GATE: Only fixtures with verified official standings may enter EV / value ranking
-      const isStandingsVerified = Boolean(fixture.isStandingsVerified || fixture.authenticity?.source === 'OFFICIAL_ESPN_STANDINGS');
-      if (!isStandingsVerified) continue;
+      // DATA-QUALITY GATE: Evidence-gated qualification (standings, form, ratings, or authentic bookmaker odds)
+      const hasQualifyingEvidence = Boolean(
+        fixture.isStandingsVerified ||
+        fixture.authenticity?.source === 'OFFICIAL_ESPN_STANDINGS' ||
+        fixture.homeTeam?.standingsSource ||
+        fixture.awayTeam?.standingsSource ||
+        fixture.homeTeam?.formSource ||
+        fixture.awayTeam?.formSource ||
+        fixture.impliedProbabilities ||
+        (fixture.odds?.home && Number(fixture.odds.home) > 1.05)
+      );
+      if (!hasQualifyingEvidence) continue;
 
       // AUTHENTIC ODDS GATE: Exclude fixture from EV calculation if authentic odds are missing
       if (!fixture.odds?.home || !fixture.odds?.away || Number(fixture.odds.home) <= 1.05 || Number(fixture.odds.away) <= 1.05) {

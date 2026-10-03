@@ -33,11 +33,14 @@ export const PredictionShareModal: React.FC<PredictionShareModalProps> = ({
     ? `${fixture.homeTeam.name} (Home Win)`
     : prediction.predictedWinner === 'away'
     ? `${fixture.awayTeam.name} (Away Win)`
-    : `Draw (Parity)`;
+    : prediction.predictedWinner === 'draw'
+    ? `Draw (Parity)`
+    : `No pick (insufficient data)`;
 
   const pickProbability =
     prediction.predictedWinner === 'home' ? safeHome :
-    prediction.predictedWinner === 'away' ? safeAway : safeDraw;
+    prediction.predictedWinner === 'away' ? safeAway :
+    prediction.predictedWinner === 'draw' ? safeDraw : null;
   const fairOdds = pickProbability !== null && pickProbability > 0
     ? (100 / pickProbability).toFixed(2)
     : '--';

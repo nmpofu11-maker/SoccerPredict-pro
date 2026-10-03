@@ -9,7 +9,7 @@ import {
   TeamIntelligenceMatrices,
   SuperLearningTelemetry,
 } from '../types/superLearning';
-import { evaluateFixturePrediction, DEFAULT_ENGINE_WEIGHTS, sanitizeEngineWeights } from './rulesEngine';
+import { evaluateFixturePrediction, DEFAULT_ENGINE_WEIGHTS, sanitizeEngineWeights, fixtureHasEvidence } from './rulesEngine';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
 import { getAdminApiHeaders } from '../services/adminAuthService';
 import {
@@ -131,11 +131,12 @@ export function evaluateHistoricalMatches(
 
   const validMatches = (results || []).filter(
     (m): m is HistoricalMatchResult =>
-      Boolean(m && m.id && m.fixture && m.fixture.id && m.fixture.homeTeam && m.fixture.awayTeam && m.actualOutcome)
+      Boolean(m && m.id && m.fixture && m.fixture.id && m.fixture.homeTeam && m.fixture.awayTeam && m.actualOutcome) && fixtureHasEvidence(m.fixture)
   );
 
   for (const match of validMatches) {
     const prediction = evaluateFixturePrediction(match.fixture, 'none', weights, teamMatrices);
+    if (prediction.predictedWinner === 'none') continue;
     const pH = prediction.homeWinPct / 100;
     const pD = prediction.drawPct / 100;
     const pA = prediction.awayWinPct / 100;

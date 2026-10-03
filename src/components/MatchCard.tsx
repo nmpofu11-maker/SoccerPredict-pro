@@ -89,12 +89,13 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   const safeFixture = fixture;
   const matchId = safeFixture?.id || '';
 
-  const prediction = rawPrediction || {
+  const prediction: PredictionResult = rawPrediction || {
     matchId,
     homeWinPct: NaN,
     drawPct: NaN,
     awayWinPct: NaN,
-    predictedWinner: 'draw' as const,
+    predictedWinner: 'none' as const,
+    hasEvidence: false,
     modelLeaderProbabilityPct: NaN,
     appliedRules: [],
     rawPoints: { home: NaN, away: NaN, draw: NaN },
@@ -193,7 +194,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     return fixture.league;
   }, [fixture.league]);
 
-  const isQuickBet = prediction.modelLeaderProbabilityPct > 80;
+  const isQuickBet = prediction.modelLeaderProbabilityPct >= 50;
 
   const isHomePick = prediction.predictedWinner === 'home';
   const isAwayPick = prediction.predictedWinner === 'away';
@@ -203,7 +204,10 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   const safeDrawPct = Number.isFinite(prediction.drawPct) ? prediction.drawPct : null;
   const safeAwayPct = Number.isFinite(prediction.awayWinPct) ? prediction.awayWinPct : null;
 
-  const pickProbability = isHomePick
+  const hasNoPick = prediction.predictedWinner === 'none';
+  const pickProbability = hasNoPick
+    ? null
+    : isHomePick
     ? safeHomePct
     : isAwayPick
     ? safeAwayPct
@@ -507,10 +511,10 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             )}
             <span className="text-[9px] font-mono uppercase tracking-wider font-extrabold flex items-center gap-1">
               <CheckCircle2 className="w-2.5 h-2.5" />
-              <span>{isHomePick ? 'HOME WIN' : isAwayPick ? 'AWAY WIN' : 'MATCH DRAW'}</span>
+              <span>{hasNoPick ? 'NO PICK · NO DATA' : isHomePick ? 'HOME WIN' : isAwayPick ? 'AWAY WIN' : 'MATCH DRAW'}</span>
             </span>
             <span className="text-xl sm:text-2xl font-black font-mono leading-none my-0.5 text-white">
-              {pickProbability.toFixed(0)}%
+              {pickProbability !== null ? `${pickProbability.toFixed(0)}%` : '--'}
             </span>
             <div className="flex items-center gap-1 text-[9.5px] font-mono text-slate-300 mt-0.5">
               <span>Fair <strong className="text-white">{pickFairOdds}</strong></span>

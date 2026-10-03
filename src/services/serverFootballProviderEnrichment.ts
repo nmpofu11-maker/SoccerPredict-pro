@@ -512,6 +512,7 @@ function buildH2HFromProviderFixtures(
 
 
 async function searchSportmonksExactTeam(name: string): Promise<any | null> {
+  if (!sportmonksConfigured()) return null;
   const normalized = normalizeProviderTeamName(name);
   if (!normalized) return null;
   const cached = sportmonksTeamSearchCache.get(normalized);
@@ -699,10 +700,12 @@ export async function enrichFixturesWithFootballApis(
 
   if (apiFootballEnabled && apiFootballConfigured()) {
     for (const date of dates) {
+      if (!apiFootballConfigured()) break;
       try {
         apiRaw.push(...await fetchApiFootballFixturesByDate(date));
         apiFootballSuccessfulRequests++;
       } catch (err) {
+        if (!apiFootballConfigured()) break;
         apiFootballFailedRequests++;
         errors.push('API-Football ' + date + ': ' + (err instanceof Error ? err.message : String(err)));
       }
@@ -711,10 +714,12 @@ export async function enrichFixturesWithFootballApis(
 
   if (sportmonksEnabled && sportmonksConfigured()) {
     for (const date of dates) {
+      if (!sportmonksConfigured()) break;
       try {
         sportmonksRaw.push(...await fetchSportmonksFixturesByDate(date));
         sportmonksSuccessfulRequests++;
       } catch (err) {
+        if (!sportmonksConfigured()) break;
         sportmonksFailedRequests++;
         errors.push('Sportmonks ' + date + ': ' + (err instanceof Error ? err.message : String(err)));
       }
@@ -955,6 +960,7 @@ export async function enrichFixturesWithFootballApis(
     for (const [team, side] of [[fixture.homeTeam, 'home'], [fixture.awayTeam, 'away']] as const) {
       const existingId = side === 'home' ? homeId : awayId;
       if (Number.isInteger(existingId) || sportmonksTeamSearchBudget.used >= providerLimit('SPORT_PROVIDER_MAX_TEAM_SEARCH_LOOKUPS', 50)) continue;
+      if (!sportmonksConfigured()) break;
       sportmonksTeamSearchBudget.used++;
       try {
         const resolved = await searchSportmonksExactTeam(team.name);
@@ -969,6 +975,7 @@ export async function enrichFixturesWithFootballApis(
           }
         }
       } catch (err) {
+        if (!sportmonksConfigured()) break;
         errors.push('Sportmonks team search ' + team.name + ': ' + (err instanceof Error ? err.message : String(err)));
       }
     }

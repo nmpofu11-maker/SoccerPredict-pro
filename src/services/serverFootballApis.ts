@@ -24,12 +24,39 @@ function getBaseUrl(value: string | undefined, fallback: string): string {
   return (value?.trim() || fallback).replace(/\/+$/, '');
 }
 
-export function apiFootballConfigured(): boolean {
+let sportmonksRateLimitedUntil = 0;
+let apiFootballRateLimitedUntil = 0;
+
+export function isSportmonksRateLimited(): boolean {
+  return Date.now() < sportmonksRateLimitedUntil;
+}
+
+export function setSportmonksRateLimited(resetInSeconds = 3600): void {
+  sportmonksRateLimitedUntil = Date.now() + Math.max(60, resetInSeconds) * 1000;
+}
+
+export function isApiFootballRateLimited(): boolean {
+  return Date.now() < apiFootballRateLimitedUntil;
+}
+
+export function setApiFootballRateLimited(resetInSeconds = 3600): void {
+  apiFootballRateLimitedUntil = Date.now() + Math.max(60, resetInSeconds) * 1000;
+}
+
+export function hasApiFootballKey(): boolean {
   return getApiFootballKey().length > 0;
 }
 
-export function sportmonksConfigured(): boolean {
+export function hasSportmonksKey(): boolean {
   return getSportmonksKey().length > 0;
+}
+
+export function apiFootballConfigured(): boolean {
+  return hasApiFootballKey() && !isApiFootballRateLimited();
+}
+
+export function sportmonksConfigured(): boolean {
+  return hasSportmonksKey() && !isSportmonksRateLimited();
 }
 
 function assertDate(date: string): void {
@@ -50,6 +77,13 @@ async function requestJson(url: URL, headers: Record<string, string>, provider: 
       : typeof body?.errors === 'object'
         ? JSON.stringify(body.errors).slice(0, 240)
         : `HTTP ${response.status}`;
+    if (response.status === 403 || message.toLowerCase().includes('not subscribed')) {
+      if (provider === 'API-Football') setApiFootballRateLimited(24 * 3600);
+      if (provider === 'Sportmonks') setSportmonksRateLimited(24 * 3600);
+    } else if (response.status === 429 || message.toLowerCase().includes('rate limit')) {
+      if (provider === 'Sportmonks') setSportmonksRateLimited(3600);
+      if (provider === 'API-Football') setApiFootballRateLimited(3600);
+    }
     throw new Error(`${provider} HTTP ${response.status}: ${message}`);
   }
   if (!body || typeof body !== 'object') {
@@ -80,9 +114,15 @@ export async function apiFootballGet(path: string, params: Record<string, string
 
 export async function fetchApiFootballFixturesByDate(date: string): Promise<any[]> {
   assertDate(date);
-  const body = await apiFootballGet('fixtures', { date });
-  if (!Array.isArray(body.response)) throw new Error('API-Football fixtures response.response is not an array');
-  return body.response;
+  if (isApiFootballRateLimited()) return [];
+  try {
+    const body = await apiFootballGet('fixtures', { date });
+    if (!Array.isArray(body.response)) throw new Error('API-Football fixtures response.response is not an array');
+    return body.response;
+  } catch (err) {
+    if (isApiFootballRateLimited()) return [];
+    throw err;
+  }
 }
 
 export async function fetchApiFootballHeadToHead(homeTeamId: number | string, awayTeamId: number | string): Promise<any[]> {
@@ -122,16 +162,30 @@ export async function sportmonksGet(path: string, params: Record<string, string 
 
 export async function fetchSportmonksTeamsBySearch(name: string): Promise<any[]> {
   const query = String(name || '').trim();
-  if (!query) throw new Error('Sportmonks team search name is required');
-  const body = await sportmonksGet(`teams/search/${encodeURIComponent(query)}`, { per_page: 10 });
-  return Array.isArray(body.data) ? body.data : [];
+  if (!query) return [];
+  try {
+    const body = await sportmonksGet(`teams/search/${encodeURIComponent(query)}`, { per_page: 10 });
+    return Array.isArray(body.data) ? body.data : [];
+  } catch (err) {
+    const msg = String(err instanceof Error ? err.message : err);
+    if (msg.includes('404') || msg.includes('not exist')) {
+      return [];
+    }
+    throw err;
+  }
 }
 
 export async function fetchSportmonksFixturesByDate(date: string, includes = 'participants;scores;league;state'): Promise<any[]> {
   assertDate(date);
-  const body = await sportmonksGet(`fixtures/date/${date}`, { include: includes });
-  if (!Array.isArray(body.data)) throw new Error('Sportmonks fixtures response.data is not an array');
-  return body.data;
+  if (isSportmonksRateLimited()) return [];
+  try {
+    const body = await sportmonksGet(`fixtures/date/${date}`, { include: includes });
+    if (!Array.isArray(body.data)) throw new Error('Sportmonks fixtures response.data is not an array');
+    return body.data;
+  } catch (err) {
+    if (isSportmonksRateLimited()) return [];
+    throw err;
+  }
 }
 
 export async function fetchSportmonksFixtureStatistics(fixtureId: number | string): Promise<any[]> {

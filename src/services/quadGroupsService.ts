@@ -88,7 +88,7 @@ export function generateDualQuadGroupsForMatchDay(
 
   const scored = candidateFixtures.map((fix) => {
     const pred = predictions[fix.id];
-    if (!pred) return null;
+    if (!pred || pred.predictedWinner === 'none') return null;
 
     const maxProb = Math.max(pred.homeWinPct, pred.awayWinPct, pred.drawPct);
     const selection =
