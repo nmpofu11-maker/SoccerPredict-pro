@@ -226,8 +226,11 @@ async function refreshPrimaryEvidenceForDailySlate(force = false): Promise<void>
       });
       if (!upcoming.length) return;
 
-      const evidenceCount = upcoming.filter(hasVerifiedPredictionEvidence).length;
-      if (!force && evidenceCount >= Math.max(1, Math.ceil(upcoming.length * 0.35))) return;
+      // Do not stop merely because a minority of fixtures has evidence.
+      // Any remaining schedule-only fixture can otherwise stay on the neutral prior
+      // indefinitely while enriched matches vary normally.
+      const hasMissingEvidence = upcoming.some((fixture: any) => !hasVerifiedPredictionEvidence(fixture));
+      if (!force && !hasMissingEvidence) return;
 
       const requestedDates = Array.from(new Set(
         upcoming
@@ -246,17 +249,19 @@ async function refreshPrimaryEvidenceForDailySlate(force = false): Promise<void>
 
       if (enriched.length > 0) {
         const currentByKey = new Map<string, any>();
+        const dailySlateKey = (fixture: any): string =>
+          normalizeTeamName(String(fixture?.homeTeam?.name || '')) + '|' +
+          normalizeTeamName(String(fixture?.awayTeam?.name || '')) + '|' +
+          String(fixture?.kickoffTime || '').slice(0, 10);
+
         for (const fixture of current) {
-          const key = String(fixture?.homeTeam?.name || '').toLowerCase() + '|' +
-            String(fixture?.awayTeam?.name || '').toLowerCase() + '|' +
-            String(fixture?.kickoffTime || '').slice(0, 10);
-          currentByKey.set(key, fixture);
+          currentByKey.set(dailySlateKey(fixture), fixture);
         }
         for (const fixture of enriched) {
-          const key = String(fixture?.homeTeam?.name || '').toLowerCase() + '|' +
-            String(fixture?.awayTeam?.name || '').toLowerCase() + '|' +
-            String(fixture?.kickoffTime || '').slice(0, 10);
-          currentByKey.set(key, fixture);
+          // Use the same normalized team/date identity as provider enrichment.
+          // This prevents timezone formatting, accents or FC/SC suffixes from
+          // creating duplicate schedule-only and enriched copies of one match.
+          currentByKey.set(dailySlateKey(fixture), fixture);
         }
 
         const verified = verifyAndSanitizeFixtures(Array.from(currentByKey.values()));
@@ -1955,6 +1960,13 @@ async function startServer() {
   // Daily Hollywoodbets and Master Slate Endpoint
   app.get('/api/fixtures/daily-slate', async (_req, res) => {
     try {
+      // A fresh Cloud Run instance may receive the browser request before the
+      // startup ingest timer (10s) has fired. Populate the manifest on demand
+      // so the first prediction request cannot fall back to stale/local data.
+      if (readRawDiskManifest().length === 0) {
+        await runDailyIngestJob();
+      }
+
       await refreshPrimaryEvidenceForDailySlate();
       const diskData = readDiskManifest();
       const { fixtures: validated } = verifyAndSanitizeFixtures(diskData);
@@ -1963,6 +1975,21 @@ async function startServer() {
         count: validated.length,
         syncedAt: new Date().toISOString(),
         provider: 'SportAPI.ai + Sportmonks primary evidence (Football-Data fallback when needed)',
+        evidenceSummary: {
+          fixturesWithForm: validated.filter((f: any) =>
+            Boolean(f?.homeTeam?.formSource) || Boolean(f?.awayTeam?.formSource)
+          ).length,
+          fixturesWithStandings: validated.filter((f: any) =>
+            (Boolean(f?.homeTeam?.standingsSource) && Number.isFinite(f?.homeTeam?.leagueRank)) ||
+            (Boolean(f?.awayTeam?.standingsSource) && Number.isFinite(f?.awayTeam?.leagueRank))
+          ).length,
+          fixturesWithMatchStats: validated.filter((f: any) =>
+            Boolean(f?.homeTeam?.matchStatsSource) || Boolean(f?.awayTeam?.matchStatsSource)
+          ).length,
+          fixturesWithH2H: validated.filter((f: any) => Boolean(f?.h2h?.source)).length,
+          fixturesWithVerifiedEvidence: validated.filter(hasVerifiedPredictionEvidence).length,
+          totalFixtures: validated.length,
+        },
         fixtures: validated,
       });
     } catch (err: unknown) {
