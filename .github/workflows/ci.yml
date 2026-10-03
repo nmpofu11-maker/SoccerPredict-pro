@@ -28,3 +28,31 @@ jobs:
         run: bun test
       - name: Production build
         run: bun run build
+
+      - name: Production startup smoke test
+        run: |
+          set -euo pipefail
+          PORT=4173 HOST=127.0.0.1 NODE_ENV=production node dist/server.cjs > /tmp/soccerpredict-server.log 2>&1 &
+          SERVER_PID=$!
+          cleanup() {
+            kill "$SERVER_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:4173/api/health; then
+              echo
+              echo "Production server startup smoke test passed."
+              exit 0
+            fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "Production server exited before becoming healthy."
+              cat /tmp/soccerpredict-server.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          echo "Production server did not become healthy within 30 seconds."
+          cat /tmp/soccerpredict-server.log
+          exit 1
