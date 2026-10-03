@@ -237,6 +237,7 @@ function extractScorePair(raw: any): { home: number; away: number } | null {
     [raw?.home_score, raw?.away_score],
     [raw?.homeScore, raw?.awayScore],
     [raw?.score?.home, raw?.score?.away],
+    [raw?.goals?.home, raw?.goals?.away],
     [raw?.score?.fulltime?.home, raw?.score?.fulltime?.away],
     [raw?.score?.fullTime?.home, raw?.score?.fullTime?.away],
   ];
