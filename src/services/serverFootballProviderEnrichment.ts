@@ -7,7 +7,17 @@ import {
   fetchApiFootballFixturesByDate,
   fetchApiFootballHeadToHead,
   fetchSportmonksFixturesByDate,
+  fetchSportmonksFixturesBetweenForTeam,
+  fetchSportmonksStandingsBySeason,
+  fetchSportmonksHeadToHead,
 } from './serverFootballApis';
+import {
+  sportApiAiConfigured,
+  fetchSportApiAiTeam,
+  fetchSportApiAiStandings,
+  fetchSportApiAiFixtureStats,
+  fetchSportApiAiHeadToHead,
+} from './serverSportApiAi';
 
 const TEAM_STATS_TTL_MS = 60 * 60 * 1000;
 const teamStatsCache = new Map<string, { expiresAt: number; value: any }>();
