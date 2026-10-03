@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { enrichFixturesWithFootballApis } from '../src/services/serverFootballProviderEnrichment';
+import type { MatchFixture } from '../src/types/soccer';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = {
