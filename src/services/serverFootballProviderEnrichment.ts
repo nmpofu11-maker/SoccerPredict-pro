@@ -623,6 +623,32 @@ function fixtureKey(f: MatchFixture): string {
   return `${normalizeProviderTeamName(f.homeTeam.name)}|${normalizeProviderTeamName(f.awayTeam.name)}|${f.kickoffTime.slice(0, 10)}`;
 }
 
+function isPrimarySource(source: unknown): boolean {
+  return source === 'SPORTAPI_AI' || source === 'SPORTMONKS';
+}
+
+function hasVerifiedForm(team: TeamStats): boolean {
+  return Boolean(team.formSource) && Array.isArray(team.form) && team.form.length > 0;
+}
+
+function hasVerifiedStanding(team: TeamStats): boolean {
+  return Boolean(team.standingsSource) && Number.isFinite(team.leagueRank) && team.leagueRank >= 1;
+}
+
+function hasVerifiedMatchStats(team: TeamStats): boolean {
+  return Boolean(team.matchStatsSource) &&
+    (Number.isFinite(team.avgPossession) || Number.isFinite(team.avgShotsOnTarget));
+}
+
+function hasVerifiedAdvancedStats(team: TeamStats): boolean {
+  return Boolean(team.advancedStatsSource) &&
+    (
+      Number.isFinite(team.expectedGoalsAvg) ||
+      Number.isFinite(team.avgMatchRating) ||
+      Number.isFinite(team.totalSquadValueEur)
+    );
+}
+
 /**
  * Adds multi-provider fixture coverage, then enriches exact provider identities;
  * fixture/team matches with current competition standings and provider form.
@@ -807,12 +833,15 @@ export async function enrichFixturesWithFootballApis(
           const id = entry[1];
           const standing = findProviderStanding(standings, String(id), team.name);
           if (standing) {
-            if (!(team.standingsSource && Number.isFinite(team.leagueRank))) {
+            // SportAPI.ai is the highest-priority primary evidence source.
+            // Replace stale/secondary provenance, but never replace an existing
+            // SportAPI.ai value with weaker data later in the pipeline.
+            if (standing) {
               team.leagueRank = standing.rank;
               team.points = standing.points;
               team.standingsSource = 'SPORTAPI_AI';
             }
-            if (!(team.formSource && team.form.length) && standing.form?.length) {
+            if (standing.form?.length) {
               team.form = standing.form.slice(-5);
               team.formSource = 'SPORTAPI_AI';
             }
@@ -839,7 +868,7 @@ export async function enrichFixturesWithFootballApis(
         const body = await getSportApiTeam(String(id));
         const matches = extractSportApiTeamMatches(body);
         const formPatch = summarizeFormFromMatches(team.name, String(id), matches, fixture.kickoffTime, 'SPORTAPI_AI');
-        if (!(team.formSource && team.form.length) && formPatch.form?.length) Object.assign(team, formPatch);
+        if (formPatch.form?.length && !isPrimarySource(team.formSource)) Object.assign(team, formPatch);
         team.scheduleSource = 'SPORTAPI_AI';
 
         if (!team.homeAwayFormSource) {
@@ -887,11 +916,11 @@ export async function enrichFixturesWithFootballApis(
           }
         }
 
-        if (!(team.matchStatsSource && Number.isFinite(team.avgPossession)) && possessionValues.length >= 3) {
+        if (possessionValues.length >= 3 && !isPrimarySource(team.matchStatsSource)) {
           team.avgPossession = Math.round((possessionValues.reduce((a, b) => a + b, 0) / possessionValues.length) * 10) / 10;
           team.matchStatsSource = 'SPORTAPI_AI';
         }
-        if (!(team.matchStatsSource && Number.isFinite(team.avgShotsOnTarget)) && shotsValues.length >= 3) {
+        if (shotsValues.length >= 3 && !isPrimarySource(team.matchStatsSource)) {
           team.avgShotsOnTarget = Math.round((shotsValues.reduce((a, b) => a + b, 0) / shotsValues.length) * 10) / 10;
           team.matchStatsSource = 'SPORTAPI_AI';
         }
@@ -978,15 +1007,15 @@ export async function enrichFixturesWithFootballApis(
           if (xg !== null && xg >= 0 && xg <= 10) xgValues.push(xg);
         }
 
-        if (!(team.matchStatsSource && Number.isFinite(team.avgPossession)) && possessionValues.length >= 3) {
+        if (possessionValues.length >= 3 && !isPrimarySource(team.matchStatsSource)) {
           team.avgPossession = Math.round((possessionValues.reduce((a, b) => a + b, 0) / possessionValues.length) * 10) / 10;
           team.matchStatsSource = 'SPORTMONKS';
         }
-        if (!(team.matchStatsSource && Number.isFinite(team.avgShotsOnTarget)) && shotsValues.length >= 3) {
+        if (shotsValues.length >= 3 && !isPrimarySource(team.matchStatsSource)) {
           team.avgShotsOnTarget = Math.round((shotsValues.reduce((a, b) => a + b, 0) / shotsValues.length) * 10) / 10;
           team.matchStatsSource = 'SPORTMONKS';
         }
-        if (!Number.isFinite(team.expectedGoalsAvg) && xgValues.length >= 3) {
+        if (xgValues.length >= 3 && !isPrimarySource(team.advancedStatsSource)) {
           team.expectedGoalsAvg = Math.round((xgValues.reduce((a, b) => a + b, 0) / xgValues.length) * 100) / 100;
           team.advancedStatsSource = 'SPORTMONKS';
         }
@@ -1026,12 +1055,14 @@ export async function enrichFixturesWithFootballApis(
           const id = entry[1];
           const standing = findProviderStanding(standings, String(id), team.name);
           if (standing) {
-            if (!(team.standingsSource && Number.isFinite(team.leagueRank))) {
+            // Sportmonks is a co-primary source. It may fill a missing field,
+            // but SportAPI.ai remains authoritative when it already supplied it.
+            if (!isPrimarySource(team.standingsSource)) {
               team.leagueRank = standing.rank;
               team.points = standing.points;
               team.standingsSource = 'SPORTMONKS';
             }
-            if (!(team.formSource && team.form.length) && standing.form?.length) {
+            if (standing.form?.length && !isPrimarySource(team.formSource)) {
               team.form = standing.form.slice(-5);
               team.formSource = 'SPORTMONKS';
             }
@@ -1080,13 +1111,16 @@ export async function enrichFixturesWithFootballApis(
     });
 
     const competitionText = String(raw.league?.name || '') + ' ' + String(raw.league?.country || '') + ' ' + String(fixture.league || '');
-    const isPriorityCompetition = /south africa.*premier|premier.*south africa|premier soccer league|premier league|la liga|serie a|bundesliga|ligue 1|champions league|world cup|afcon|nations league|copa america|euro/i.test(competitionText);
-    if (!isPriorityCompetition || !Number.isInteger(leagueId) || !Number.isInteger(season) || !Number.isInteger(homeId) || !Number.isInteger(awayId)) continue;
+    // API-Football is a fallback for any mapped competition, including
+    // international and youth competitions. Restricting it to a hand-maintained
+    // list caused fixtures such as U21/national-team qualifiers to remain on the
+    // neutral prior even when verified standings/form existed upstream.
+    if (!Number.isInteger(leagueId) || !Number.isInteger(season) || !Number.isInteger(homeId) || !Number.isInteger(awayId)) continue;
 
-    const needHomeForm = !(fixture.homeTeam.formSource && fixture.homeTeam.form.length);
-    const needAwayForm = !(fixture.awayTeam.formSource && fixture.awayTeam.form.length);
-    const needHomeStanding = !(fixture.homeTeam.standingsSource && Number.isFinite(fixture.homeTeam.leagueRank));
-    const needAwayStanding = !(fixture.awayTeam.standingsSource && Number.isFinite(fixture.awayTeam.leagueRank));
+    const needHomeForm = !hasVerifiedForm(fixture.homeTeam);
+    const needAwayForm = !hasVerifiedForm(fixture.awayTeam);
+    const needHomeStanding = !hasVerifiedStanding(fixture.homeTeam);
+    const needAwayStanding = !hasVerifiedStanding(fixture.awayTeam);
 
     if (needHomeForm || needAwayForm || needHomeStanding || needAwayStanding) {
       try {
@@ -1106,14 +1140,14 @@ export async function enrichFixturesWithFootballApis(
       }
     }
 
-    if (!fixture.h2h?.source) {
+    if (!fixture.h2h?.source || !isPrimarySource(fixture.h2h.source)) {
       try {
         const rawH2H = await fetchApiFootballHeadToHead(homeId, awayId);
         const parsed = buildH2HFromProviderFixtures(
           String(homeId), String(awayId), fixture.homeTeam.name, fixture.awayTeam.name,
           rawH2H, fixture.kickoffTime, 'SPORTAPI_AI'
         );
-        if (parsed) fixture.h2h = { ...parsed, source: 'API_FOOTBALL' };
+        if (parsed && !fixture.h2h?.source) fixture.h2h = { ...parsed, source: 'API_FOOTBALL' };
       } catch (err) {
         errors.push('API-Football H2H ' + fixture.homeTeam.name + ' / ' + fixture.awayTeam.name + ': ' + (err instanceof Error ? err.message : String(err)));
       }
