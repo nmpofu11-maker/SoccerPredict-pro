@@ -152,7 +152,7 @@ function sanitizeTeamStats(
   }
 
   // Form is usable only when a known provider provenance accompanies it.
-  const trustedFormSources = new Set(['API_FOOTBALL', 'FOOTBALL_DATA_ORG', 'ESPN']);
+  const trustedFormSources = new Set(['API_FOOTBALL', 'FOOTBALL_DATA_ORG', 'ESPN', 'SPORTMONKS', 'SPORTAPI_AI']);
   if (cleanTeam.form.length > 0 && (!cleanTeam.formSource || !trustedFormSources.has(cleanTeam.formSource))) {
     repairsLog.push({
       field: `${team.name} (form)`,
