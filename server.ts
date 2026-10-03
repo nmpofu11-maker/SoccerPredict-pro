@@ -225,6 +225,20 @@ function hasVerifiedPredictionEvidence(fixture: any): boolean {
   return hasForm || hasStandings || hasMatchStats || hasAdvancedStats || hasH2H;
 }
 
+function hasPrimaryPredictionEvidence(fixture: any): boolean {
+  const primary = (source: unknown) => source === 'SPORTAPI_AI' || source === 'SPORTMONKS';
+  const teams = [fixture?.homeTeam, fixture?.awayTeam];
+  return (
+    teams.some((team: any) => primary(team?.formSource) && Array.isArray(team?.form) && team.form.length > 0) ||
+    teams.some((team: any) => primary(team?.standingsSource) && Number.isFinite(team?.leagueRank) && team.leagueRank >= 1) ||
+    teams.some((team: any) => primary(team?.matchStatsSource) &&
+      (Number.isFinite(team?.avgPossession) || Number.isFinite(team?.avgShotsOnTarget))) ||
+    teams.some((team: any) => primary(team?.advancedStatsSource) &&
+      (Number.isFinite(team?.avgMatchRating) || Number.isFinite(team?.totalSquadValueEur) || Number.isFinite(team?.expectedGoalsAvg))) ||
+    (primary(fixture?.h2h?.source) && Number.isFinite(fixture?.h2h?.totalLast5) && fixture.h2h.totalLast5 > 0)
+  );
+}
+
 async function refreshPrimaryEvidenceForDailySlate(force = false): Promise<void> {
   const now = Date.now();
   if (!force && now - primarySlateRefreshAt < PRIMARY_SLATE_REFRESH_TTL_MS) return;
@@ -244,8 +258,11 @@ async function refreshPrimaryEvidenceForDailySlate(force = false): Promise<void>
       // Do not stop merely because a minority of fixtures has evidence.
       // Any remaining schedule-only fixture can otherwise stay on the neutral prior
       // indefinitely while enriched matches vary normally.
-      const hasMissingEvidence = upcoming.some((fixture: any) => !hasVerifiedPredictionEvidence(fixture));
-      if (!force && !hasMissingEvidence) return;
+      // Secondary evidence must not suppress a primary-provider refresh.
+      // A fixture with Football-Data/ESPN evidence but no SportAPI.ai/Sportmonks
+      // evidence still needs a primary attempt.
+      const hasMissingPrimaryEvidence = upcoming.some((fixture: any) => !hasPrimaryPredictionEvidence(fixture));
+      if (!force && !hasMissingPrimaryEvidence) return;
 
       const requestedDates = Array.from(new Set(
         upcoming
