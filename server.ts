@@ -2020,6 +2020,8 @@ async function startServer() {
           ).length,
           fixturesWithH2H: validated.filter((f: any) => Boolean(f?.h2h?.source)).length,
           fixturesWithVerifiedEvidence: validated.filter(hasVerifiedPredictionEvidence).length,
+          fixturesWithPrimaryEvidence: validated.filter(hasPrimaryPredictionEvidence).length,
+          fixturesUsingNeutralPrior: validated.filter((fixture: any) => !hasVerifiedPredictionEvidence(fixture)).length,
           totalFixtures: validated.length,
         },
         fixtures: validated,
