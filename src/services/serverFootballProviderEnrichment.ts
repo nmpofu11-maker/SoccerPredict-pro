@@ -593,7 +593,7 @@ function fixtureKey(f: MatchFixture): string {
 }
 
 /**
- * Adds API-Football and Sportmonks fixture coverage, then enriches exact API-Football
+ * Adds multi-provider fixture coverage, then enriches exact provider identities;
  * fixture/team matches with current competition standings and provider form.
  * No missing value is filled with a default or inferred from the opposing team.
  */
