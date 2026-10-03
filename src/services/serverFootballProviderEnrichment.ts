@@ -255,11 +255,16 @@ function extractScorePair(raw: any): { home: number; away: number } | null {
   return null;
 }
 
+function fixtureParticipantForSide(raw: any, side: 'home' | 'away'): any {
+  const direct = side === 'home' ? (raw?.home_team ?? raw?.teams?.home) : (raw?.away_team ?? raw?.teams?.away);
+  if (direct) return direct;
+  const participants = extractArray(raw?.participants?.data ?? raw?.participants);
+  return participants.find((p: any) => String(p?.meta?.location || p?.pivot?.location || '').toLowerCase() === side) || null;
+}
+
 function teamSideForFixture(raw: any, teamId: string, teamName: string): 'home' | 'away' | null {
   const targetId = String(teamId || '');
   const targetName = normalizeProviderTeamName(teamName);
-  const home = raw?.home_team ?? raw?.teams?.home;
-  const away = raw?.away_team ?? raw?.teams?.away;
   const matches = (side: any) => {
     if (!side) return false;
     const sideId = extractGenericTeamId(side);
@@ -267,8 +272,8 @@ function teamSideForFixture(raw: any, teamId: string, teamName: string): 'home' 
     return (targetId && sideId && targetId === sideId) ||
       (targetName && sideName && normalizeProviderTeamName(sideName) === targetName);
   };
-  if (matches(home)) return 'home';
-  if (matches(away)) return 'away';
+  if (matches(fixtureParticipantForSide(raw, 'home'))) return 'home';
+  if (matches(fixtureParticipantForSide(raw, 'away'))) return 'away';
   return null;
 }
 
@@ -309,7 +314,7 @@ function summarizeFormFromMatches(
       : side === 'home'
         ? (pair.home > pair.away ? 'W' : 'L')
         : (pair.away > pair.home ? 'W' : 'L');
-    const opponentRaw = side === 'home' ? (match.away_team ?? match.teams?.away) : (match.home_team ?? match.teams?.home);
+    const opponentRaw = side === 'home' ? fixtureParticipantForSide(match, 'away') : fixtureParticipantForSide(match, 'home');
     form.push(result);
     formDetails.push({
       result,
@@ -352,7 +357,7 @@ function extractSportmonksStatForTeam(
       ''
     ).toLowerCase();
     const wantedType = typeCodes.includes(code) || (typeId !== null && typeIds.includes(typeId));
-    const correctTeam = String(participantId ?? '') === String(teamId) || location === 'home' || location === 'away';
+    const correctTeam = String(participantId ?? '') === String(teamId);
     if (wantedType && correctTeam) return extractSportmonksStatisticValue(row);
   }
   return null;
@@ -434,10 +439,12 @@ function buildH2HFromProviderFixtures(
 ): H2HRecord | null {
   const pair = fixtures.filter((m) => {
     if (!completedProviderMatch(m, kickoffIso)) return false;
-    const hId = extractGenericTeamId(m?.home_team ?? m?.teams?.home);
-    const aId = extractGenericTeamId(m?.away_team ?? m?.teams?.away);
-    const hName = normalizeProviderTeamName(extractGenericTeamName(m?.home_team ?? m?.teams?.home));
-    const aName = normalizeProviderTeamName(extractGenericTeamName(m?.away_team ?? m?.teams?.away));
+    const homeParticipant = fixtureParticipantForSide(m, 'home');
+    const awayParticipant = fixtureParticipantForSide(m, 'away');
+    const hId = extractGenericTeamId(homeParticipant);
+    const aId = extractGenericTeamId(awayParticipant);
+    const hName = normalizeProviderTeamName(extractGenericTeamName(homeParticipant));
+    const aName = normalizeProviderTeamName(extractGenericTeamName(awayParticipant));
     const homeNorm = normalizeProviderTeamName(homeName);
     const awayNorm = normalizeProviderTeamName(awayName);
     return (homeTeamId && awayTeamId && hId === homeTeamId && aId === awayTeamId) ||
@@ -463,7 +470,7 @@ function buildH2HFromProviderFixtures(
     else if (side === 'home') score.home > score.away ? homeWins++ : awayWins++;
     else if (side === 'away') score.away > score.home ? homeWins++ : awayWins++;
     else {
-      const matchHome = normalizeProviderTeamName(extractGenericTeamName(match?.home_team ?? match?.teams?.home));
+      const matchHome = normalizeProviderTeamName(extractGenericTeamName(fixtureParticipantForSide(match, 'home')));
       if (matchHome === normalizeProviderTeamName(homeName)) score.home > score.away ? homeWins++ : awayWins++;
       else score.away > score.home ? homeWins++ : awayWins++;
     }
