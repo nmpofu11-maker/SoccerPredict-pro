@@ -221,6 +221,16 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
     assert.equal(out.awayTeam.leagueRank, 5);
     assert.deepEqual(out.homeTeam.form, ['W','W','D','L','W']);
     assert.equal(out.homeTeam.formSource, 'SPORTAPI_AI');
+    assert.equal(out.homeTeam.avgPossession, 56.7);
+    assert.equal(out.homeTeam.avgShotsOnTarget, 6);
+    assert.equal(out.homeTeam.matchStatsSource, 'SPORTAPI_AI');
+    assert.equal(out.awayTeam.avgPossession, 53);
+    assert.equal(out.awayTeam.avgShotsOnTarget, 4.7);
+    assert.equal(out.awayTeam.matchStatsSource, 'SPORTAPI_AI');
+    assert.equal(out.h2h?.source, 'SPORTAPI_AI');
+    assert.equal(out.h2h?.homeWins, 2);
+    assert.equal(out.h2h?.draws, 1);
+    assert.equal(out.h2h?.awayWins, 0);
   } finally {
     restoreEnvironment();
     delete process.env.SPORT_PROVIDER_MAX_TEAM_LOOKUPS;

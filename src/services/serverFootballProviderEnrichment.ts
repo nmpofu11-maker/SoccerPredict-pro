@@ -14,6 +14,7 @@ import {
 } from './serverFootballApis';
 import {
   sportApiAiConfigured,
+  fetchSportApiAiFixturesByDate,
   fetchSportApiAiTeam,
   fetchSportApiAiStandings,
   fetchSportApiAiFixtureStats,
@@ -739,6 +740,51 @@ export async function enrichFixturesWithFootballApis(
     }
   }
 
+  // Recover missing SportAPI.ai fixture/team IDs by exact home/away/date identity.
+  // This lets manually or third-party ingested slates reach the primary provider.
+  const sportApiFixtureIdsByKey = new Map<string, any>();
+  if (sportApiAiEnabled && sportApiAiConfigured()) {
+    for (const date of dates) {
+      try {
+        const rawFixtures = await fetchSportApiAiFixturesByDate(date);
+        for (const raw of rawFixtures) {
+          const homeName = raw?.home_team?.name || raw?.homeTeam?.name || '';
+          const awayName = raw?.away_team?.name || raw?.awayTeam?.name || '';
+          const rawKickoff = raw?.datetime || raw?.kickoff_time || raw?.utc_date || raw?.date;
+          if (!homeName || !awayName || typeof rawKickoff !== 'string' || !/[T ]\d{2}:\d{2}/.test(rawKickoff)) continue;
+          const parsed = new Date(rawKickoff);
+          if (!Number.isFinite(parsed.getTime())) continue;
+          const key = normalizeProviderTeamName(homeName) + '|' + normalizeProviderTeamName(awayName) + '|' + parsed.toISOString().slice(0, 10);
+          sportApiFixtureIdsByKey.set(key, {
+            fixtureId: raw?.id,
+            leagueId: raw?.league_id ?? raw?.league?.id,
+            homeTeamId: raw?.home_id ?? raw?.home_team?.id ?? raw?.homeTeam?.id,
+            awayTeamId: raw?.away_id ?? raw?.away_team?.id ?? raw?.awayTeam?.id,
+          });
+        }
+      } catch (err) {
+        errors.push('SportAPI.ai fixtures ' + date + ': ' + (err instanceof Error ? err.message : String(err)));
+      }
+    }
+  }
+
+  for (const fixture of byKey.values()) {
+    const ids = sportApiFixtureIdsByKey.get(fixtureKey(fixture));
+    if (!ids) continue;
+    if (!(fixture as any).sportApiAiFixtureId && ids.fixtureId !== undefined && ids.fixtureId !== null) {
+      (fixture as any).sportApiAiFixtureId = String(ids.fixtureId);
+    }
+    if (!Number.isInteger(Number((fixture as any).sportApiAiLeagueId)) && Number.isFinite(Number(ids.leagueId))) {
+      (fixture as any).sportApiAiLeagueId = Number(ids.leagueId);
+    }
+    if (!Number.isInteger(Number((fixture as any).sportApiAiHomeTeamId)) && Number.isFinite(Number(ids.homeTeamId))) {
+      (fixture as any).sportApiAiHomeTeamId = Number(ids.homeTeamId);
+    }
+    if (!Number.isInteger(Number((fixture as any).sportApiAiAwayTeamId)) && Number.isFinite(Number(ids.awayTeamId))) {
+      (fixture as any).sportApiAiAwayTeamId = Number(ids.awayTeamId);
+    }
+  }
+
   const sportApiTeamBudget = { used: 0 };
   const sportApiStatBudget = { used: 0 };
   const sportApiH2HBudget = { used: 0 };
@@ -777,34 +823,14 @@ export async function enrichFixturesWithFootballApis(
       }
     }
 
-    const teamEntries: Array<[TeamStats, number]> = [
+    // SportAPI.ai enrichment must use SportAPI.ai team IDs. The two providers
+    // have independent entity namespaces and their IDs must never be mixed.
+    const sportApiEntries: Array<[TeamStats, number]> = [
       [fixture.homeTeam, homeId],
       [fixture.awayTeam, awayId],
     ];
 
-    // When the current-date Sportmonks feed is unavailable, recover the provider
-    // team IDs by exact name search so historical evidence can still be queried.
-    const resolvedEntries: Array<[TeamStats, number]> = [];
-    for (const team of [fixture.homeTeam, fixture.awayTeam]) {
-      let id = Number((team === fixture.homeTeam ? (fixture as any).sportmonksHomeTeamId : (fixture as any).sportmonksAwayTeamId));
-      if (!Number.isInteger(id) && sportmonksTeamSearchBudget.used < providerLimit('SPORT_PROVIDER_MAX_TEAM_SEARCH_LOOKUPS', 50)) {
-        sportmonksTeamSearchBudget.used++;
-        try {
-          const resolved = await searchSportmonksExactTeam(team.name);
-          const resolvedId = Number(resolved?.id);
-          if (Number.isInteger(resolvedId)) {
-            id = resolvedId;
-            if (team === fixture.homeTeam) (fixture as any).sportmonksHomeTeamId = resolvedId;
-            else (fixture as any).sportmonksAwayTeamId = resolvedId;
-          }
-        } catch (err) {
-          errors.push('Sportmonks team search ' + team.name + ': ' + (err instanceof Error ? err.message : String(err)));
-        }
-      }
-      if (Number.isInteger(id)) resolvedEntries.push([team, id]);
-    }
-
-    for (const entry of resolvedEntries) {
+    for (const entry of sportApiEntries) {
       const team = entry[0];
       const id = entry[1];
       if (sportApiTeamBudget.used >= providerLimit('SPORT_PROVIDER_MAX_TEAM_LOOKUPS', DEFAULT_TEAM_LOOKUP_LIMIT)) break;

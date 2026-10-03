@@ -190,6 +190,95 @@ function loadInitialDiskCache(): LiveFixturesCache {
 let fixturesCache: LiveFixturesCache | null = loadInitialDiskCache();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache
 
+// Keep the persisted daily slate from serving schedule-only fixtures while the
+// primary provider enrichment cache is still cold after startup/redeploy.
+const PRIMARY_SLATE_REFRESH_TTL_MS = 5 * 60 * 1000;
+let primarySlateRefreshAt = 0;
+let primarySlateRefreshPromise: Promise<void> | null = null;
+
+function hasVerifiedPredictionEvidence(fixture: any): boolean {
+  return Boolean(
+    fixture?.homeTeam?.formSource ||
+    fixture?.awayTeam?.formSource ||
+    fixture?.homeTeam?.standingsSource ||
+    fixture?.awayTeam?.standingsSource ||
+    fixture?.h2h?.source ||
+    fixture?.homeTeam?.matchStatsSource ||
+    fixture?.awayTeam?.matchStatsSource ||
+    fixture?.homeTeam?.advancedStatsSource ||
+    fixture?.awayTeam?.advancedStatsSource
+  );
+}
+
+async function refreshPrimaryEvidenceForDailySlate(force = false): Promise<void> {
+  const now = Date.now();
+  if (!force && now - primarySlateRefreshAt < PRIMARY_SLATE_REFRESH_TTL_MS) return;
+  if (primarySlateRefreshPromise) return primarySlateRefreshPromise;
+
+  primarySlateRefreshPromise = (async () => {
+    try {
+      const current = readRawDiskManifest();
+      if (!current.length) return;
+
+      const upcoming = current.filter((fixture: any) => {
+        const kickoff = Date.parse(String(fixture?.kickoffTime || ''));
+        return Number.isFinite(kickoff) && kickoff >= now - 48 * 60 * 60 * 1000;
+      });
+      if (!upcoming.length) return;
+
+      const evidenceCount = upcoming.filter(hasVerifiedPredictionEvidence).length;
+      if (!force && evidenceCount >= Math.max(1, Math.ceil(upcoming.length * 0.35))) return;
+
+      const requestedDates = Array.from(new Set(
+        upcoming
+          .map((fixture: any) => String(fixture.kickoffTime).slice(0, 10))
+          .filter(Boolean)
+      ));
+
+      const providerResult = await enrichFixturesWithFootballApis(upcoming as any, requestedDates);
+      let enriched = providerResult.fixtures as any[];
+
+      // Football-Data.org is still a secondary fallback only.
+      if (footballDataConfigured() && enriched.length > 0) {
+        const fallback = await enrichFixturesWithFootballData(enriched);
+        enriched = fallback.fixtures as any[];
+      }
+
+      if (enriched.length > 0) {
+        const currentByKey = new Map<string, any>();
+        for (const fixture of current) {
+          const key = String(fixture?.homeTeam?.name || '').toLowerCase() + '|' +
+            String(fixture?.awayTeam?.name || '').toLowerCase() + '|' +
+            String(fixture?.kickoffTime || '').slice(0, 10);
+          currentByKey.set(key, fixture);
+        }
+        for (const fixture of enriched) {
+          const key = String(fixture?.homeTeam?.name || '').toLowerCase() + '|' +
+            String(fixture?.awayTeam?.name || '').toLowerCase() + '|' +
+            String(fixture?.kickoffTime || '').slice(0, 10);
+          currentByKey.set(key, fixture);
+        }
+
+        const verified = verifyAndSanitizeFixtures(Array.from(currentByKey.values()));
+        writeDiskManifest(verified.fixtures);
+        fixturesCache = {
+          fixtures: verified.fixtures,
+          syncedAt: new Date().toISOString(),
+          provider: 'SportAPI.ai + Sportmonks primary evidence (Football-Data fallback)',
+          auditReport: verified.auditReport,
+        };
+      }
+    } catch (err) {
+      console.warn('[daily-slate] primary evidence refresh failed safely:', err instanceof Error ? err.message : String(err));
+    } finally {
+      primarySlateRefreshAt = Date.now();
+      primarySlateRefreshPromise = null;
+    }
+  })();
+
+  return primarySlateRefreshPromise;
+}
+
 const HOLLYWOODBETS_LEAGUES = [
   // South Africa & Africa (Hollywoodbets Core Home Markets & Amateur/Regional)
   { code: 'rsa.1', name: 'South African Premiership', isHighStakes: true },
@@ -1864,14 +1953,16 @@ async function startServer() {
   });
 
   // Daily Hollywoodbets and Master Slate Endpoint
-  app.get('/api/fixtures/daily-slate', (_req, res) => {
+  app.get('/api/fixtures/daily-slate', async (_req, res) => {
     try {
+      await refreshPrimaryEvidenceForDailySlate();
       const diskData = readDiskManifest();
       const { fixtures: validated } = verifyAndSanitizeFixtures(diskData);
       return res.json({
         status: 'success',
         count: validated.length,
         syncedAt: new Date().toISOString(),
+        provider: 'SportAPI.ai + Sportmonks primary evidence (Football-Data fallback when needed)',
         fixtures: validated,
       });
     } catch (err: unknown) {
