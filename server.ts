@@ -1168,7 +1168,7 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     diagnostics.sportDb.notes.push(diagnostics.sportDb.configured ? 'Not queried because another provider produced usable fixtures.' : 'SPORTDB_API_KEY not configured.');
   }
 
-  // Primary provider enrichment runs before any secondary fallback enrichment.
+  // Primary provider enrichment runs first; secondary providers only fill verified gaps.
   // API-Football and Sportmonks are queried as independent schedule sources,
   // even when another provider already supplied fixtures. Exact team/date matches
   // enrich existing records; unmatched real fixtures expand competition coverage.
