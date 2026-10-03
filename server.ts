@@ -1999,14 +1999,33 @@ async function startServer() {
         await runDailyIngestJob();
       }
 
+      // Primary evidence pass: SportAPI.ai + Sportmonks first.
       await refreshPrimaryEvidenceForDailySlate();
-      const diskData = readDiskManifest();
-      const { fixtures: validated } = verifyAndSanitizeFixtures(diskData);
+
+      let diskData = readDiskManifest();
+      let validation = verifyAndSanitizeFixtures(diskData);
+
+      // Recovery path: when the primary providers are unavailable/restricted,
+      // do one fresh ESPN standings/form pass so the model still receives
+      // fixture-specific observed evidence instead of the identical neutral prior.
+      // ESPN is never used to overwrite existing primary-provider evidence.
+      const neutralBeforeFallback = validation.fixtures.filter((fixture: any) => !hasVerifiedPredictionEvidence(fixture)).length;
+      if (neutralBeforeFallback > 0) {
+        try {
+          const liveData = await getLiveScoreboardFixtures(true);
+          validation = verifyAndSanitizeFixtures(liveData.fixtures);
+          diskData = liveData.fixtures;
+        } catch (fallbackErr) {
+          console.warn('[daily-slate] ESPN evidence fallback failed safely:', fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr));
+        }
+      }
+
+      const validated = validation.fixtures;
       return res.json({
         status: 'success',
         count: validated.length,
         syncedAt: new Date().toISOString(),
-        provider: 'SportAPI.ai + Sportmonks primary evidence (Football-Data fallback when needed)',
+        provider: 'SportAPI.ai + Sportmonks primary; ESPN fallback when primary evidence is unavailable',
         evidenceSummary: {
           fixturesWithForm: validated.filter((f: any) =>
             Boolean(f?.homeTeam?.formSource) || Boolean(f?.awayTeam?.formSource)
@@ -2497,93 +2516,3 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       }
     }
   });
-
-  // Fetch fixture from link — same real parser/pipeline. Note: this only works for
-  // pages whose raw text already resembles a Hollywoodbets-style fixture list; it is
-  // NOT a general-purpose scraper and won't reliably extract from arbitrary bookmaker
-  // pages (most render odds via JavaScript, which a simple HTML fetch won't execute).
-  app.post('/api/admin/fetch-fixture-link', requireAdmin, async (req, res) => {
-    try {
-      const { url } = req.body;
-      if (!url) return res.status(400).json({ error: 'No URL provided' });
-      const text = await scrapeUrl(url);
-      const incomingFixtures = parseHollywoodbetsRawText(text);
-
-      if (incomingFixtures.length === 0) {
-        return res.status(400).json({ error: 'No fixtures could be parsed from this page. This works best with a page whose raw HTML already contains Hollywoodbets-format text, not a JavaScript-rendered odds page.' });
-      }
-
-      const { validatedFixtures } = await ingestFixturesIntoManifest(incomingFixtures);
-      res.json({ success: true, count: incomingFixtures.length, totalCount: validatedFixtures.length });
-    } catch (error) {
-      console.error('Error fetching fixture link:', error);
-      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to fetch fixture link' });
-    }
-  });
-
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
-
-  app.listen(PORT, HOST, () => {
-    console.log(`Soccer Prediction Server running on port ${PORT}`);
-
-    if (sportApiAiConfigured()) {
-      console.log('[startup] SportAPI.ai is configured as PRIMARY feed.');
-    } else {
-      console.log('[startup] SportAPI.ai is not configured (SPORTAPI_AI_KEY missing).');
-    }
-
-    if (theRundownConfigured()) {
-      console.log('[startup] TheRundown.io is configured as SECONDARY odds/coverage feed.');
-    } else {
-      console.log('[startup] TheRundown.io is not configured (THERUNDOWN_KEY missing).');
-    }
-
-    if (pitchApiConfigured()) {
-      console.log('[startup] PitchAPI is configured as TERTIARY feed.');
-    }
-
-    if (sportDbConfigured()) {
-      console.log('[startup] SportDB (dashboard.sportdb.dev) is configured as QUATERNARY feed.');
-    }
-    console.log('[startup] Scheduling daily ingestion (05:00) and settlement (every 3h).');
-
-    // Daily ingestion: pull the day's real fixtures at 05:00 server time.
-    cron.schedule('0 5 * * *', () => {
-      runDailyIngestJob().catch((e) => console.error('[cron:ingest] unhandled error', e));
-    });
-
-    // Settlement: check for finished matches every 3 hours around the clock,
-    // since kickoff times and match lengths vary across leagues/timezones.
-    cron.schedule('0 */3 * * *', () => {
-      runSettlementJob().catch((e) => console.error('[cron:settlement] unhandled error', e));
-    });
-
-    // Freeze predictions for upcoming fixtures every 30 minutes (once per fixture, never updated).
-    cron.schedule('*/30 * * * *', () => {
-      try { runPredictionFreezeJob(); } catch (e) { console.error('[cron:prediction-log] unhandled error', e); }
-    });
-
-    // Run both once, shortly after boot, so the pipeline doesn't sit idle
-    // until the next scheduled slot (e.g. after a redeploy).
-    setTimeout(() => {
-      runDailyIngestJob().catch((e) => console.error('[cron:ingest] startup run failed', e));
-      runSettlementJob().catch((e) => console.error('[cron:settlement] startup run failed', e));
-    }, 10_000);
-    setTimeout(() => { try { runPredictionFreezeJob(); } catch (e) { console.error('[prediction-log] startup freeze failed', e); } }, 25_000);
-  });
-}
-
-startServer();
