@@ -200,7 +200,7 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
     const out = result.fixtures[0];
     assert.equal(out.homeTeam.leagueRank, 2);
     assert.equal(out.awayTeam.leagueRank, 5);
-    assert.deepEqual(out.homeTeam.form, ['W','D','W']);
+    assert.deepEqual(out.homeTeam.form, ['W','W','D','L','W']);
     assert.equal(out.homeTeam.formSource, 'SPORTAPI_AI');
     assert.equal(out.homeTeam.avgPossession, 56.7);
     assert.equal(out.homeTeam.avgShotsOnTarget, 6);
