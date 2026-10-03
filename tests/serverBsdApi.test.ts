@@ -35,9 +35,17 @@ describe('server BSD (Bzzoiro Sports Data) provider client - Stage A', () => {
     assert.equal(bsdConfigured(), true);
   });
 
-  it('fetches real-time coverage from unauthenticated /coverage/ endpoint', async () => {
-    globalThis.fetch = (async (input: URL | RequestInfo) => {
+  it('rejects authenticated calls when BSD_API_KEY is not configured', async () => {
+    delete process.env.BSD_API_KEY;
+    await assert.rejects(fetchBsdEventsByDate('2026-10-15'), /BSD_API_KEY is not configured/);
+  });
+
+  it('fetches real-time coverage from unauthenticated /coverage/ endpoint without token', async () => {
+    delete process.env.BSD_API_KEY;
+    let capturedHeaders: any;
+    globalThis.fetch = (async (input: URL | RequestInfo, init?: RequestInit) => {
       assert.match(String(input), /\/api\/v2\/coverage\//);
+      capturedHeaders = init?.headers;
       return new Response(
         JSON.stringify({
           generated_at: '2026-10-03T18:00:00Z',
@@ -63,6 +71,7 @@ describe('server BSD (Bzzoiro Sports Data) provider client - Stage A', () => {
     const coverage = await fetchBsdCoverage();
     assert.equal(coverage.sports[0].sport, 'football');
     assert.equal(coverage.sports[0].events_next_7d, 397);
+    assert.equal(capturedHeaders?.['Authorization'], undefined);
   });
 
   it('uses Token auth header and fetches events by date', async () => {
@@ -100,9 +109,50 @@ describe('server BSD (Bzzoiro Sports Data) provider client - Stage A', () => {
     assert.equal(capturedHeaders?.['Authorization'], 'Token valid-token-abc');
   });
 
+  it('parses pagination envelopes (data array, root array, results array)', async () => {
+    process.env.BSD_API_KEY = 'valid-token';
+    // Test data envelope
+    globalThis.fetch = (async () => {
+      return new Response(
+        JSON.stringify({ data: [{ id: 101, date: '2026-10-15', league: { id: 1 }, home_team: { id: 2 }, away_team: { id: 3 } }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+    }) as typeof fetch;
+    const eventsData = await fetchBsdEventsByDate('2026-10-15');
+    assert.equal(eventsData.length, 1);
+    assert.equal(eventsData[0].id, 101);
+
+    // Test root array
+    globalThis.fetch = (async () => {
+      return new Response(
+        JSON.stringify([{ id: 102, date: '2026-10-15', league: { id: 1 }, home_team: { id: 2 }, away_team: { id: 3 } }]),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+    }) as typeof fetch;
+    const eventsRoot = await fetchBsdEventsByDate('2026-10-15');
+    assert.equal(eventsRoot.length, 1);
+    assert.equal(eventsRoot[0].id, 102);
+  });
+
   it('rejects invalid date formats before network request', async () => {
     process.env.BSD_API_KEY = 'test-token';
     await assert.rejects(fetchBsdEventsByDate('15-10-2026'), /YYYY-MM-DD/);
+  });
+
+  it('fetches event availability correctly', async () => {
+    process.env.BSD_API_KEY = 'test-token';
+    globalThis.fetch = (async (input: URL | RequestInfo) => {
+      assert.match(String(input), /\/events\/98124\/availability\//);
+      return new Response(
+        JSON.stringify({ stats: true, lineups: true, shotmap: true, odds: true, prediction: true }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    const avail = await fetchBsdEventAvailability(98124);
+    assert.equal(avail.stats, true);
+    assert.equal(avail.shotmap, true);
+    assert.equal(avail.prediction, true);
   });
 
   it('fetches match stats and shot-level xG correctly', async () => {
@@ -184,7 +234,33 @@ describe('server BSD (Bzzoiro Sports Data) provider client - Stage A', () => {
     assert.equal(standings.entries[0].points, 19);
   });
 
-  it('handles API error envelopes cleanly', async () => {
+  it('fetches team form metrics correctly', async () => {
+    process.env.BSD_API_KEY = 'test-token';
+    globalThis.fetch = (async (input: URL | RequestInfo) => {
+      assert.match(String(input), /\/teams\/42\/form\//);
+      return new Response(
+        JSON.stringify({
+          team_id: 42,
+          matches_count: 5,
+          ppg: 2.6,
+          wins: 4,
+          draws: 1,
+          losses: 0,
+          goals_scored_avg: 2.2,
+          goals_conceded_avg: 0.6,
+          form_sequence: ['W', 'W', 'W', 'D', 'W'],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    const form = await fetchBsdTeamForm(42);
+    assert.ok(form);
+    assert.equal(form.ppg, 2.6);
+    assert.deepEqual(form.form_sequence, ['W', 'W', 'W', 'D', 'W']);
+  });
+
+  it('handles API 401 unauthorized cleanly', async () => {
     process.env.BSD_API_KEY = 'invalid-token';
     globalThis.fetch = (async () => {
       return new Response(
@@ -196,6 +272,80 @@ describe('server BSD (Bzzoiro Sports Data) provider client - Stage A', () => {
     await assert.rejects(
       fetchBsdEventDetail(123),
       /BSD API error 401: Invalid token or account expired/
+    );
+  });
+
+  it('handles API 403 forbidden cleanly', async () => {
+    process.env.BSD_API_KEY = 'unauthorized-token';
+    globalThis.fetch = (async () => {
+      return new Response(
+        JSON.stringify({ error: true, status: 403, detail: 'Endpoint requires paid sports addon' }),
+        { status: 403, headers: { 'content-type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    await assert.rejects(
+      fetchBsdEventDetail(123),
+      /BSD API error 403: Endpoint requires paid sports addon/
+    );
+  });
+
+  it('handles API 429 rate limit cleanly', async () => {
+    process.env.BSD_API_KEY = 'valid-token';
+    globalThis.fetch = (async () => {
+      return new Response(
+        JSON.stringify({ error: true, status: 429, detail: 'Rate limit exceeded: 10 req/s' }),
+        { status: 429, headers: { 'content-type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    await assert.rejects(
+      fetchBsdEventDetail(123),
+      /BSD API error 429: Rate limit exceeded/
+    );
+  });
+
+  it('handles HTML error pages from Nginx/Cloudflare gracefully', async () => {
+    process.env.BSD_API_KEY = 'valid-token';
+    globalThis.fetch = (async () => {
+      return new Response('<html><body>502 Bad Gateway</body></html>', {
+        status: 502,
+        headers: { 'content-type': 'text/html' },
+      });
+    }) as typeof fetch;
+
+    await assert.rejects(
+      fetchBsdEventDetail(123),
+      /BSD API error 502/
+    );
+  });
+
+  it('handles HTTP 500 Internal Server Error cleanly', async () => {
+    process.env.BSD_API_KEY = 'valid-token';
+    globalThis.fetch = (async () => {
+      return new Response(JSON.stringify({ error: true, status: 500, detail: 'Internal server error' }), {
+        status: 500,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    await assert.rejects(
+      fetchBsdEventDetail(123),
+      /BSD API error 500: Internal server error/
+    );
+  });
+
+  it('handles network timeouts and abort errors cleanly', async () => {
+    process.env.BSD_API_KEY = 'valid-token';
+    globalThis.fetch = (async () => {
+      const err = new Error('The operation was aborted due to timeout');
+      err.name = 'TimeoutError';
+      throw err;
+    }) as typeof fetch;
+
+    await assert.rejects(
+      fetchBsdEventDetail(123),
+      /aborted due to timeout/
     );
   });
 });
