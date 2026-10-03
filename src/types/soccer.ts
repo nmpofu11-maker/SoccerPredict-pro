@@ -10,11 +10,11 @@ export interface TeamStats {
   points: number | null;
   form: ('W' | 'D' | 'L')[];
   formSource?: 'API_FOOTBALL' | 'FOOTBALL_DATA_ORG' | 'ESPN' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB';
-  standingsSource?: 'API_FOOTBALL' | 'FOOTBALL_DATA_ORG' | 'ESPN' | 'SPORTMONKS';
-  matchStatsSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'ESPN';
-  advancedStatsSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'FOOTBALL_DATA_ORG';
-  homeAwayFormSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'FOOTBALL_DATA_ORG';
-  scheduleSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'ESPN';
+  standingsSource?: 'API_FOOTBALL' | 'FOOTBALL_DATA_ORG' | 'ESPN' | 'SPORTMONKS' | 'SPORTAPI_AI';
+  matchStatsSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'ESPN';
+  advancedStatsSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'FOOTBALL_DATA_ORG';
+  homeAwayFormSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'FOOTBALL_DATA_ORG';
+  scheduleSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'ESPN';
   formScores?: string[]; // FT scores for last 5 matches e.g. ["2-1", "3-0", "1-1", "2-0", "1-0"]
   formDetails?: {
     result: 'W' | 'D' | 'L';
@@ -48,7 +48,7 @@ export interface H2HRecord {
   awayWins: number | null;
   totalLast5: number | null;
   scoresLast5?: string[]; // e.g. ["2-1", "3-0", "1-1", "2-0", "4-1"]
-  source?: 'FOOTBALL_DATA_ORG' | 'API_FOOTBALL' | 'SPORTMONKS';
+  source?: 'FOOTBALL_DATA_ORG' | 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI';
 }
 
 export interface MatchFixture {
@@ -63,6 +63,20 @@ export interface MatchFixture {
   homeTeam: TeamStats;
   awayTeam: TeamStats;
   h2h: H2HRecord | null;
+  sportApiAiFixtureId?: string;
+  sportApiAiLeagueId?: number;
+  sportApiAiHomeTeamId?: number;
+  sportApiAiAwayTeamId?: number;
+  sportMonksSeasonId?: number;
+  sportmonksFixtureId?: string;
+  sportmonksLeagueId?: number;
+  sportmonksHomeTeamId?: number;
+  sportmonksAwayTeamId?: number;
+  apiFootballFixtureId?: string;
+  apiFootballLeagueId?: number;
+  apiFootballSeason?: number;
+  apiFootballHomeTeamId?: number;
+  apiFootballAwayTeamId?: number;
   odds?: {
     home: number;
     draw?: number;

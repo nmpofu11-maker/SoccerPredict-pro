@@ -802,6 +802,9 @@ function mapSportApiAiToInternalFixture(f: any, providerDate?: string): any {
   return {
     id: `sportapiai_${idStr}`,
     sportApiAiFixtureId: idStr,
+    sportApiAiLeagueId: Number(f.league_id || f.league?.id) || undefined,
+    sportApiAiHomeTeamId: Number(f.home_id || f.home_team?.id || f.homeTeam?.id) || undefined,
+    sportApiAiAwayTeamId: Number(f.away_id || f.away_team?.id || f.awayTeam?.id) || undefined,
     automationSource: 'SPORTAPI_AI',
     kickoffTime,
     league: leagueName,

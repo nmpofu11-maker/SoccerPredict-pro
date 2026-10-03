@@ -118,6 +118,15 @@ export async function sportmonksGet(path: string, params: Record<string, string 
   return requestJson(url, {}, 'Sportmonks');
 }
 
+
+
+export async function fetchSportmonksTeamsBySearch(name: string): Promise<any[]> {
+  const query = String(name || '').trim();
+  if (!query) throw new Error('Sportmonks team search name is required');
+  const body = await sportmonksGet(`teams/search/${encodeURIComponent(query)}`, { per_page: 10 });
+  return Array.isArray(body.data) ? body.data : [];
+}
+
 export async function fetchSportmonksFixturesByDate(date: string, includes = 'participants;scores;league;state'): Promise<any[]> {
   assertDate(date);
   const body = await sportmonksGet(`fixtures/date/${date}`, { include: includes });
@@ -129,4 +138,56 @@ export async function fetchSportmonksFixtureStatistics(fixtureId: number | strin
   const body = await sportmonksGet(`fixtures/${fixtureId}`, { include: 'statistics.type;participants' });
   const stats = body.data?.statistics?.data ?? body.data?.statistics;
   return Array.isArray(stats) ? stats : [];
+}
+
+export async function fetchSportmonksFixturesBetween(
+  startDate: string,
+  endDate: string,
+  includes = 'participants;scores;league;state;venue;round;season'
+): Promise<any[]> {
+  assertDate(startDate);
+  assertDate(endDate);
+  if (startDate > endDate) throw new Error('Start date must be on or before end date');
+  const body = await sportmonksGet(`fixtures/between/${startDate}/${endDate}`, {
+    include: includes,
+    per_page: 100,
+  });
+  if (!Array.isArray(body.data)) throw new Error('Sportmonks fixture range response.data is not an array');
+  return body.data;
+}
+
+export async function fetchSportmonksFixturesBetweenForTeam(
+  startDate: string,
+  endDate: string,
+  teamId: number | string,
+  includes = 'participants;scores;league;state;venue;round;season;statistics.type;xGFixture'
+): Promise<any[]> {
+  assertDate(startDate);
+  assertDate(endDate);
+  if (startDate > endDate) throw new Error('Start date must be on or before end date');
+  if (!String(teamId).trim()) throw new Error('Sportmonks team id is required');
+  const body = await sportmonksGet(`fixtures/between/${startDate}/${endDate}/${encodeURIComponent(String(teamId))}`, {
+    include: includes,
+    per_page: 25,
+  });
+  if (!Array.isArray(body.data)) throw new Error('Sportmonks team fixture response.data is not an array');
+  return body.data;
+}
+
+export async function fetchSportmonksStandingsBySeason(seasonId: number | string): Promise<any[]> {
+  if (!String(seasonId).trim()) throw new Error('Sportmonks season id is required');
+  const body = await sportmonksGet(`standings/seasons/${encodeURIComponent(String(seasonId))}`, {});
+  return Array.isArray(body.data) ? body.data : [];
+}
+
+export async function fetchSportmonksHeadToHead(
+  team1Id: number | string,
+  team2Id: number | string
+): Promise<any[]> {
+  if (!String(team1Id).trim() || !String(team2Id).trim()) throw new Error('Sportmonks team ids are required');
+  const body = await sportmonksGet(
+    `fixtures/head-to-head/${encodeURIComponent(String(team1Id))}/${encodeURIComponent(String(team2Id))}`,
+    { include: 'participants;scores;league;state;season' }
+  );
+  return Array.isArray(body.data) ? body.data : [];
 }

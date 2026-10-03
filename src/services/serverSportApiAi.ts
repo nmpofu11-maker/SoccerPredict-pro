@@ -134,3 +134,49 @@ export function getSportApiAiScores(f: any): { home: number | null; away: number
   const outcome: 'home' | 'draw' | 'away' = home > away ? 'home' : away > home ? 'away' : 'draw';
   return { home, away, outcome };
 }
+
+export async function sportApiAiGet(path: string): Promise<any> {
+  if (!sportApiAiConfigured()) {
+    throw new Error('SPORTAPI_AI_KEY is not configured in environment variables.');
+  }
+  const key = (process.env.SPORTAPI_AI_KEY || process.env.SPORTAPI_API_KEY)!.trim();
+  const url = `${getBaseUrl()}/${path.replace(/^\/+/, '')}`;
+  const res = await fetch(url, {
+    headers: {
+      'X-Api-Key': key,
+      'Authorization': `Bearer ${key}`,
+      'Accept': 'application/json',
+    },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => '');
+    throw new Error(`SportAPI.ai HTTP ${res.status}: ${errorText.slice(0, 300)}`);
+  }
+  return res.json();
+}
+
+export async function fetchSportApiAiTeam(teamId: number | string): Promise<any> {
+  const body = await sportApiAiGet(`teams/${encodeURIComponent(String(teamId))}`);
+  // Keep the envelope because providers may place recent matches alongside the
+  // nested team object. The enrichment parser handles both shapes.
+  return body;
+}
+
+export async function fetchSportApiAiStandings(leagueId: number | string): Promise<any[]> {
+  const body = await sportApiAiGet(`standings/${encodeURIComponent(String(leagueId))}`);
+  const standings = body?.data?.standings ?? body?.standings ?? body?.data;
+  return Array.isArray(standings) ? standings : [];
+}
+
+export async function fetchSportApiAiFixtureStats(fixtureId: number | string): Promise<any> {
+  const body = await sportApiAiGet(`fixtures/${encodeURIComponent(String(fixtureId))}/stats`);
+  return body?.data ?? body;
+}
+
+export async function fetchSportApiAiHeadToHead(team1Id: number | string, team2Id: number | string): Promise<any> {
+  const body = await sportApiAiGet(
+    `fixtures/h2h/${encodeURIComponent(String(team1Id))}/${encodeURIComponent(String(team2Id))}`
+  );
+  return body;
+}
