@@ -129,7 +129,7 @@ function sanitizeTeamStats(
     }
     cleanTeam.standingsSource = 'ESPN';
   } else {
-    const trustedStandingsSources = new Set(['API_FOOTBALL', 'FOOTBALL_DATA_ORG', 'ESPN', 'SPORTMONKS', 'SPORTAPI_AI']);
+    const trustedStandingsSources = new Set(['API_FOOTBALL', 'FOOTBALL_DATA_ORG', 'ESPN', 'SPORTMONKS', 'SPORTAPI_AI', 'BSD']);
     if (!cleanTeam.standingsSource || !trustedStandingsSources.has(cleanTeam.standingsSource)) {
       if ((cleanTeam.leagueRank !== null && cleanTeam.leagueRank !== undefined) || (cleanTeam.points !== null && cleanTeam.points !== undefined)) {
         repairsLog.push({ field: `${team.name} (standings)`, originalValue: { rank: cleanTeam.leagueRank, points: cleanTeam.points }, repairedValue: null, reason: 'Removed standings without recognized provider provenance' });
@@ -152,7 +152,7 @@ function sanitizeTeamStats(
   }
 
   // Form is usable only when a known provider provenance accompanies it.
-  const trustedFormSources = new Set(['API_FOOTBALL', 'FOOTBALL_DATA_ORG', 'ESPN', 'SPORTMONKS', 'SPORTAPI_AI']);
+  const trustedFormSources = new Set(['API_FOOTBALL', 'FOOTBALL_DATA_ORG', 'ESPN', 'SPORTMONKS', 'SPORTAPI_AI', 'BSD']);
   if (cleanTeam.form.length > 0 && (!cleanTeam.formSource || !trustedFormSources.has(cleanTeam.formSource))) {
     repairsLog.push({
       field: `${team.name} (form)`,
@@ -168,7 +168,7 @@ function sanitizeTeamStats(
 
   // Score details are retained only for provenance-rich match records. SportAPI.ai,
   // Sportmonks and Football-Data.org now qualify; legacy unverified score arrays do not.
-  if (!['FOOTBALL_DATA_ORG', 'SPORTMONKS', 'SPORTAPI_AI'].includes(cleanTeam.formSource || '')) {
+  if (!['FOOTBALL_DATA_ORG', 'SPORTMONKS', 'SPORTAPI_AI', 'BSD'].includes(cleanTeam.formSource || '')) {
     if ((cleanTeam.formScores?.length || 0) > 0 || (cleanTeam.formDetails?.length || 0) > 0) {
       repairsLog.push({ field: `${team.name} (form scores)`, originalValue: { formScores: cleanTeam.formScores, formDetails: cleanTeam.formDetails }, repairedValue: [], reason: 'Removed score details without a provenance-rich match record source' });
     }
@@ -176,7 +176,7 @@ function sanitizeTeamStats(
     cleanTeam.formDetails = [];
   }
   // 3. Tactical metrics require explicit provider provenance.
-  if (!cleanTeam.matchStatsSource || !['API_FOOTBALL', 'SPORTMONKS', 'SPORTAPI_AI', 'ESPN'].includes(cleanTeam.matchStatsSource)) {
+  if (!cleanTeam.matchStatsSource || !['API_FOOTBALL', 'SPORTMONKS', 'SPORTAPI_AI', 'ESPN', 'BSD'].includes(cleanTeam.matchStatsSource)) {
     if ((cleanTeam.avgPossession !== null && cleanTeam.avgPossession !== undefined) || (cleanTeam.avgShotsOnTarget !== null && cleanTeam.avgShotsOnTarget !== undefined)) {
       repairsLog.push({ field: `${team.name} (match metrics)`, originalValue: { avgPossession: cleanTeam.avgPossession, avgShotsOnTarget: cleanTeam.avgShotsOnTarget }, repairedValue: null, reason: 'Removed match metrics without recognized provider provenance' });
     }
@@ -190,7 +190,7 @@ function sanitizeTeamStats(
 
   // Advanced ratings, xG, market value and prior-season data are not currently
   // populated by a trusted provider in this pipeline. Drop legacy unproven values.
-  const trustedAdvancedSources = ['API_FOOTBALL', 'SPORTMONKS', 'SPORTAPI_AI', 'FOOTBALL_DATA_ORG'];
+  const trustedAdvancedSources = ['API_FOOTBALL', 'SPORTMONKS', 'SPORTAPI_AI', 'FOOTBALL_DATA_ORG', 'BSD'];
   if (!cleanTeam.advancedStatsSource || !trustedAdvancedSources.includes(cleanTeam.advancedStatsSource)) {
     const hadAdvancedStats = [cleanTeam.lastSeasonRank, cleanTeam.lastSeasonPoints, cleanTeam.totalSquadValueEur, cleanTeam.avgMatchRating, cleanTeam.expectedGoalsAvg].some((v) => v !== undefined && v !== null) || Boolean(cleanTeam.lastSeasonStanding) || Boolean(cleanTeam.keyPlayerAbsenceSeverity);
     if (hadAdvancedStats) repairsLog.push({ field: `${team.name} (advanced stats)`, originalValue: 'unverified advanced team data', repairedValue: null, reason: 'Removed advanced team metrics without recognized provider provenance' });
@@ -205,14 +205,14 @@ function sanitizeTeamStats(
   }
 
   // Split-form and schedule flags remain off until a provider explicitly supplies them.
-  const trustedSplitSources = ['API_FOOTBALL', 'SPORTMONKS', 'SPORTAPI_AI', 'FOOTBALL_DATA_ORG'];
+  const trustedSplitSources = ['API_FOOTBALL', 'SPORTMONKS', 'SPORTAPI_AI', 'FOOTBALL_DATA_ORG', 'BSD'];
   if (!cleanTeam.homeAwayFormSource || !trustedSplitSources.includes(cleanTeam.homeAwayFormSource)) {
     if (cleanTeam.isHomeDominant || cleanTeam.hasTopTierAwayForm) repairsLog.push({ field: `${team.name} (home/away split flags)`, originalValue: { isHomeDominant: cleanTeam.isHomeDominant, hasTopTierAwayForm: cleanTeam.hasTopTierAwayForm }, repairedValue: false, reason: 'Removed home/away split flags without split-form provenance' });
     cleanTeam.isHomeDominant = false;
     cleanTeam.hasTopTierAwayForm = false;
     cleanTeam.homeAwayFormSource = undefined;
   }
-  const trustedScheduleSources = ['API_FOOTBALL', 'SPORTMONKS', 'SPORTAPI_AI', 'ESPN'];
+  const trustedScheduleSources = ['API_FOOTBALL', 'SPORTMONKS', 'SPORTAPI_AI', 'ESPN', 'BSD'];
   if (!cleanTeam.scheduleSource || !trustedScheduleSources.includes(cleanTeam.scheduleSource)) {
     if (cleanTeam.hasMidweekFatigue72h) repairsLog.push({ field: `${team.name} (schedule fatigue)`, originalValue: true, repairedValue: false, reason: 'Removed fatigue flag without schedule-source provenance' });
     cleanTeam.hasMidweekFatigue72h = false;
