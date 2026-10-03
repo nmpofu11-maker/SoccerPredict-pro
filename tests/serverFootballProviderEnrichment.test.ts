@@ -28,7 +28,7 @@ function restoreEnvironment() {
 
 test('API-Football fixture, standings, team form and South African H2H are normalized with provenance', async () => {
   process.env.API_FOOTBALL_USE_RAPIDAPI = 'test-rapid-key';
-  process.env.SPORTMONKS_API_KEY = 'test-sportmonks-key';
+  delete process.env.SPORTMONKS_API_KEY;
   process.env.API_FOOTBALL_BASE_URL = 'https://api-football.test/v3';
   process.env.SPORTMONKS_BASE_URL = 'https://sportmonks.test/v3/football';
 
@@ -197,6 +197,7 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
 
   try {
     const result = await enrichFixturesWithFootballApis([fixture], ['2026-10-10']);
+    assert.deepEqual(result.errors, []);
     const out = result.fixtures[0];
     assert.equal(out.homeTeam.leagueRank, 2);
     assert.equal(out.awayTeam.leagueRank, 5);
