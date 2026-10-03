@@ -158,7 +158,9 @@ export async function sportApiAiGet(path: string): Promise<any> {
 
 export async function fetchSportApiAiTeam(teamId: number | string): Promise<any> {
   const body = await sportApiAiGet(`teams/${encodeURIComponent(String(teamId))}`);
-  return body?.team ?? body;
+  // Keep the envelope because providers may place recent matches alongside the
+  // nested team object. The enrichment parser handles both shapes.
+  return body;
 }
 
 export async function fetchSportApiAiStandings(leagueId: number | string): Promise<any[]> {
