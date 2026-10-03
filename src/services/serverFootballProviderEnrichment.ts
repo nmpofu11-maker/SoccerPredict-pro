@@ -916,11 +916,11 @@ export async function enrichFixturesWithFootballApis(
           }
         }
 
-        if (possessionValues.length >= 3 && !isPrimarySource(team.matchStatsSource)) {
+        if (possessionValues.length >= 3 && (!isPrimarySource(team.matchStatsSource) || team.matchStatsSource === 'SPORTAPI_AI')) {
           team.avgPossession = Math.round((possessionValues.reduce((a, b) => a + b, 0) / possessionValues.length) * 10) / 10;
           team.matchStatsSource = 'SPORTAPI_AI';
         }
-        if (shotsValues.length >= 3 && !isPrimarySource(team.matchStatsSource)) {
+        if (shotsValues.length >= 3 && (!isPrimarySource(team.matchStatsSource) || team.matchStatsSource === 'SPORTAPI_AI')) {
           team.avgShotsOnTarget = Math.round((shotsValues.reduce((a, b) => a + b, 0) / shotsValues.length) * 10) / 10;
           team.matchStatsSource = 'SPORTAPI_AI';
         }
@@ -1007,11 +1007,11 @@ export async function enrichFixturesWithFootballApis(
           if (xg !== null && xg >= 0 && xg <= 10) xgValues.push(xg);
         }
 
-        if (possessionValues.length >= 3 && !isPrimarySource(team.matchStatsSource)) {
+        if (possessionValues.length >= 3 && (!isPrimarySource(team.matchStatsSource) || team.matchStatsSource === 'SPORTMONKS')) {
           team.avgPossession = Math.round((possessionValues.reduce((a, b) => a + b, 0) / possessionValues.length) * 10) / 10;
           team.matchStatsSource = 'SPORTMONKS';
         }
-        if (shotsValues.length >= 3 && !isPrimarySource(team.matchStatsSource)) {
+        if (shotsValues.length >= 3 && (!isPrimarySource(team.matchStatsSource) || team.matchStatsSource === 'SPORTMONKS')) {
           team.avgShotsOnTarget = Math.round((shotsValues.reduce((a, b) => a + b, 0) / shotsValues.length) * 10) / 10;
           team.matchStatsSource = 'SPORTMONKS';
         }
