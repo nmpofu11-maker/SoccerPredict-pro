@@ -88,7 +88,7 @@ test('API-Football fixture, standings, team form and South African H2H are norma
   }) as typeof fetch;
 
   try {
-    const result = await enrichFixturesWithFootballApis([], ['2026-10-10']);
+    const result = await enrichFixturesWithFootballApis([], ['2026-10-10'], { enableSportmonks: false, enableSportApiAi: false });
     assert.equal(result.apiFootballFixtures, 3);
     assert.equal(result.apiFootballMappedFixtures, 1);
     assert.equal(result.fixtures.length, 1);
@@ -215,7 +215,7 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
   };
 
   try {
-    const result = await enrichFixturesWithFootballApis([fixture], ['2026-10-10']);
+    const result = await enrichFixturesWithFootballApis([fixture], ['2026-10-10'], { enableApiFootball: false, enableSportmonks: false });
     assert.deepEqual(result.errors, []);
     const out = result.fixtures[0];
     assert.equal(out.homeTeam.leagueRank, 2);
@@ -320,7 +320,7 @@ test('Sportmonks supplies verified form, standings, possession, shots-on-target 
   };
 
   try {
-    const result = await enrichFixturesWithFootballApis([fixture], ['2026-10-10']);
+    const result = await enrichFixturesWithFootballApis([fixture], ['2026-10-10'], { enableApiFootball: false, enableSportApiAi: false });
     const out = result.fixtures[0];
     assert.equal(out.homeTeam.leagueRank, 2);
     assert.equal(out.homeTeam.standingsSource, 'SPORTMONKS');
@@ -406,7 +406,7 @@ test('Sportmonks team-search fallback enriches historical evidence when current-
   };
 
   try {
-    const result = await enrichFixturesWithFootballApis([fixture], ['2026-10-10']);
+    const result = await enrichFixturesWithFootballApis([fixture], ['2026-10-10'], { enableApiFootball: false, enableSportApiAi: false });
     const out = result.fixtures[0];
     assert.equal(out.sportmonksHomeTeamId, 111);
     assert.equal(out.sportmonksAwayTeamId, 222);
