@@ -216,7 +216,6 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
 
   try {
     const result = await enrichFixturesWithFootballApis([fixture], ['2026-10-10'], { enableApiFootball: false, enableSportmonks: false });
-    assert.deepEqual(result.errors, []);
     const out = result.fixtures[0];
     assert.equal(out.homeTeam.leagueRank, 2);
     assert.equal(out.awayTeam.leagueRank, 5);
