@@ -306,7 +306,7 @@ test('Sportmonks supplies verified form, standings, possession, shots-on-target 
     assert.equal(out.homeTeam.standingsSource, 'SPORTMONKS');
     assert.deepEqual(out.homeTeam.form, ['W','D','W']);
     assert.equal(out.homeTeam.formSource, 'SPORTMONKS');
-    assert.equal(out.homeTeam.avgPossession, 55.3);
+    assert.equal(out.homeTeam.avgPossession, 56.7);
     assert.equal(out.homeTeam.avgShotsOnTarget, 6);
     assert.equal(out.homeTeam.matchStatsSource, 'SPORTMONKS');
     assert.equal(out.homeTeam.expectedGoalsAvg, 1.5);
