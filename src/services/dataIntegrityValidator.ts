@@ -129,7 +129,7 @@ function sanitizeTeamStats(
     }
     cleanTeam.standingsSource = 'ESPN';
   } else {
-    const trustedStandingsSources = new Set(['API_FOOTBALL', 'FOOTBALL_DATA_ORG', 'ESPN', 'SPORTMONKS']);
+    const trustedStandingsSources = new Set(['API_FOOTBALL', 'FOOTBALL_DATA_ORG', 'ESPN', 'SPORTMONKS', 'SPORTAPI_AI']);
     if (!cleanTeam.standingsSource || !trustedStandingsSources.has(cleanTeam.standingsSource)) {
       if ((cleanTeam.leagueRank !== null && cleanTeam.leagueRank !== undefined) || (cleanTeam.points !== null && cleanTeam.points !== undefined)) {
         repairsLog.push({ field: `${team.name} (standings)`, originalValue: { rank: cleanTeam.leagueRank, points: cleanTeam.points }, repairedValue: null, reason: 'Removed standings without recognized provider provenance' });
@@ -176,7 +176,7 @@ function sanitizeTeamStats(
   }
 
   // 3. Tactical metrics require explicit provider provenance.
-  if (!cleanTeam.matchStatsSource || !['API_FOOTBALL', 'SPORTMONKS', 'ESPN'].includes(cleanTeam.matchStatsSource)) {
+  if (!cleanTeam.matchStatsSource || !['API_FOOTBALL', 'SPORTMONKS', 'SPORTAPI_AI', 'ESPN'].includes(cleanTeam.matchStatsSource)) {
     if ((cleanTeam.avgPossession !== null && cleanTeam.avgPossession !== undefined) || (cleanTeam.avgShotsOnTarget !== null && cleanTeam.avgShotsOnTarget !== undefined)) {
       repairsLog.push({ field: `${team.name} (match metrics)`, originalValue: { avgPossession: cleanTeam.avgPossession, avgShotsOnTarget: cleanTeam.avgShotsOnTarget }, repairedValue: null, reason: 'Removed match metrics without recognized provider provenance' });
     }
@@ -190,7 +190,7 @@ function sanitizeTeamStats(
 
   // Advanced ratings, xG, market value and prior-season data are not currently
   // populated by a trusted provider in this pipeline. Drop legacy unproven values.
-  const trustedAdvancedSources = ['API_FOOTBALL', 'SPORTMONKS', 'FOOTBALL_DATA_ORG'];
+  const trustedAdvancedSources = ['API_FOOTBALL', 'SPORTMONKS', 'SPORTAPI_AI', 'FOOTBALL_DATA_ORG'];
   if (!cleanTeam.advancedStatsSource || !trustedAdvancedSources.includes(cleanTeam.advancedStatsSource)) {
     const hadAdvancedStats = [cleanTeam.lastSeasonRank, cleanTeam.lastSeasonPoints, cleanTeam.totalSquadValueEur, cleanTeam.avgMatchRating, cleanTeam.expectedGoalsAvg].some((v) => v !== undefined && v !== null) || Boolean(cleanTeam.lastSeasonStanding) || Boolean(cleanTeam.keyPlayerAbsenceSeverity);
     if (hadAdvancedStats) repairsLog.push({ field: `${team.name} (advanced stats)`, originalValue: 'unverified advanced team data', repairedValue: null, reason: 'Removed advanced team metrics without recognized provider provenance' });
@@ -205,7 +205,7 @@ function sanitizeTeamStats(
   }
 
   // Split-form and schedule flags remain off until a provider explicitly supplies them.
-  const trustedSplitSources = ['API_FOOTBALL', 'SPORTMONKS', 'FOOTBALL_DATA_ORG'];
+  const trustedSplitSources = ['API_FOOTBALL', 'SPORTMONKS', 'SPORTAPI_AI', 'FOOTBALL_DATA_ORG'];
   if (!cleanTeam.homeAwayFormSource || !trustedSplitSources.includes(cleanTeam.homeAwayFormSource)) {
     if (cleanTeam.isHomeDominant || cleanTeam.hasTopTierAwayForm) repairsLog.push({ field: `${team.name} (home/away split flags)`, originalValue: { isHomeDominant: cleanTeam.isHomeDominant, hasTopTierAwayForm: cleanTeam.hasTopTierAwayForm }, repairedValue: false, reason: 'Removed home/away split flags without split-form provenance' });
     cleanTeam.isHomeDominant = false;
