@@ -390,17 +390,41 @@ export async function enrichFixturesWithFootballData(fixtures: MatchFixture[]): 
     const awayFormRes = matches ? computeTeamFormFromFinishedMatches(fixture.awayTeam.name, matches, fixture.kickoffTime) : null;
     const realH2H = matches ? computeH2HFromFinishedMatches(fixture.homeTeam.name, fixture.awayTeam.name, matches, fixture.kickoffTime) : null;
 
-    const hasRealStandings = Boolean(homeStanding || awayStanding);
-    const bothStandingsVerified = Boolean(homeStanding && awayStanding);
+    const homeStandingAlreadyVerified =
+      Boolean(fixture.homeTeam.standingsSource) && Number.isFinite(fixture.homeTeam.leagueRank) && fixture.homeTeam.leagueRank >= 1;
+    const awayStandingAlreadyVerified =
+      Boolean(fixture.awayTeam.standingsSource) && Number.isFinite(fixture.awayTeam.leagueRank) && fixture.awayTeam.leagueRank >= 1;
+    const homeFormAlreadyVerified =
+      Boolean(fixture.homeTeam.formSource) && Array.isArray(fixture.homeTeam.form) && fixture.homeTeam.form.length > 0;
+    const awayFormAlreadyVerified =
+      Boolean(fixture.awayTeam.formSource) && Array.isArray(fixture.awayTeam.form) && fixture.awayTeam.form.length > 0;
 
-    if (!hasRealStandings && (!homeFormRes || homeFormRes.form.length === 0) && (!awayFormRes || awayFormRes.form.length === 0)) {
+    // Football-Data.org is a secondary fallback. Never overwrite primary-provider
+    // evidence (SportAPI.ai/Sportmonks) or any other already-verified source.
+    const usableHomeStanding = homeStandingAlreadyVerified ? null : homeStanding;
+    const usableAwayStanding = awayStandingAlreadyVerified ? null : awayStanding;
+    const usableHomeForm = homeFormAlreadyVerified ? null : homeFormRes;
+    const usableAwayForm = awayFormAlreadyVerified ? null : awayFormRes;
+
+    const finalHomeStandingValid = homeStandingAlreadyVerified || Boolean(usableHomeStanding);
+    const finalAwayStandingValid = awayStandingAlreadyVerified || Boolean(usableAwayStanding);
+    const bothStandingsVerified = finalHomeStandingValid && finalAwayStandingValid;
+    const didEnrich =
+      Boolean(usableHomeStanding) ||
+      Boolean(usableAwayStanding) ||
+      Boolean(usableHomeForm?.form.length) ||
+      Boolean(usableAwayForm?.form.length) ||
+      (!fixture.h2h?.source && realH2H !== null);
+
+    if (!didEnrich) {
       return fixture;
     }
 
     enrichedCount++;
 
     const nowIso = new Date().toISOString();
-    const authenticity: MatchAuthenticityStamp = bothStandingsVerified
+    const fallbackProvidedBothStandings = Boolean(usableHomeStanding && usableAwayStanding);
+    const authenticity: MatchAuthenticityStamp = fixture.authenticity || (fallbackProvidedBothStandings
       ? {
           status: 'VERIFIED_AUTHENTIC',
           authenticityScore: 100,
@@ -411,36 +435,36 @@ export async function enrichFixturesWithFootballData(fixtures: MatchFixture[]): 
             {
               checkName: 'Official League Table Cross-Reference',
               passed: true,
-              details: `Ranks verified from Football-Data.org: ${fixture.homeTeam.name} (#${homeStanding?.rank}) vs ${fixture.awayTeam.name} (#${awayStanding?.rank})`,
+              details: `Ranks verified from Football-Data.org: ${fixture.homeTeam.name} (#${usableHomeStanding?.rank}) vs ${fixture.awayTeam.name} (#${usableAwayStanding?.rank})`,
               severity: 'critical',
             },
             {
               checkName: 'Recent Finished Matches Form',
               passed: true,
-              details: `Form computed from finished matches: Home [${homeFormRes?.form.join('') || 'none'}] Away [${awayFormRes?.form.join('') || 'none'}]`,
+              details: `Form computed from finished matches: Home [${usableHomeForm?.form.join('') || fixture.homeTeam.form.join('') || 'none'}] Away [${usableAwayForm?.form.join('') || fixture.awayTeam.form.join('') || 'none'}]`,
               severity: 'info',
             },
           ],
         }
-      : fixture.authenticity;
+      : fixture.authenticity);
 
     return {
       ...fixture,
       homeTeam: {
         ...fixture.homeTeam,
-        ...(homeStanding ? { leagueRank: homeStanding.rank, points: homeStanding.points, standingsSource: 'FOOTBALL_DATA_ORG' as const } : {}),
-        ...(homeFormRes && homeFormRes.form.length > 0
-          ? { form: homeFormRes.form, formSource: 'FOOTBALL_DATA_ORG' as const, formScores: homeFormRes.formScores, formDetails: homeFormRes.formDetails }
+        ...(usableHomeStanding ? { leagueRank: usableHomeStanding.rank, points: usableHomeStanding.points, standingsSource: 'FOOTBALL_DATA_ORG' as const } : {}),
+        ...(usableHomeForm && usableHomeForm.form.length > 0
+          ? { form: usableHomeForm.form, formSource: 'FOOTBALL_DATA_ORG' as const, formScores: usableHomeForm.formScores, formDetails: usableHomeForm.formDetails }
           : {}),
       },
       awayTeam: {
         ...fixture.awayTeam,
-        ...(awayStanding ? { leagueRank: awayStanding.rank, points: awayStanding.points, standingsSource: 'FOOTBALL_DATA_ORG' as const } : {}),
-        ...(awayFormRes && awayFormRes.form.length > 0
-          ? { form: awayFormRes.form, formSource: 'FOOTBALL_DATA_ORG' as const, formScores: awayFormRes.formScores, formDetails: awayFormRes.formDetails }
+        ...(usableAwayStanding ? { leagueRank: usableAwayStanding.rank, points: usableAwayStanding.points, standingsSource: 'FOOTBALL_DATA_ORG' as const } : {}),
+        ...(usableAwayForm && usableAwayForm.form.length > 0
+          ? { form: usableAwayForm.form, formSource: 'FOOTBALL_DATA_ORG' as const, formScores: usableAwayForm.formScores, formDetails: usableAwayForm.formDetails }
           : {}),
       },
-      h2h: realH2H !== null ? realH2H : fixture.h2h,
+      h2h: (!fixture.h2h?.source && realH2H !== null) ? realH2H : fixture.h2h,
       isStandingsVerified: bothStandingsVerified,
       authenticity,
     };
