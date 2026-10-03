@@ -42,7 +42,7 @@ function teamStatsFromApiFootball(
 }
 
 function parseApiFootballStandings(body: any): Map<string, { rank: number; points: number | null }> {
-  const out = new Map<string, { rank: number; points: number | null }>();
+  const out = new Map<string, { rank: number; points: number | null; form?: ('W' | 'D' | 'L')[] }>();
   const response = Array.isArray(body?.response) ? body.response : [];
   for (const block of response) {
     const groups = block?.league?.standings;
@@ -431,7 +431,7 @@ function findProviderStanding(
   map: Map<string, { rank: number; points: number | null; form?: ('W' | 'D' | 'L')[] }>,
   teamId: string,
   teamName: string
-): { rank: number; points: number | null } | undefined {
+): { rank: number; points: number | null; form?: ('W' | 'D' | 'L')[] } | undefined {
   return map.get(String(teamId || '')) || map.get('name:' + normalizeProviderTeamName(teamName));
 }
 
@@ -721,10 +721,16 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
           const team = entry[0];
           const id = entry[1];
           const standing = findProviderStanding(standings, String(id), team.name);
-          if (standing && !(team.standingsSource && Number.isFinite(team.leagueRank))) {
-            team.leagueRank = standing.rank;
-            team.points = standing.points;
-            team.standingsSource = 'SPORTAPI_AI';
+          if (standing) {
+            if (!(team.standingsSource && Number.isFinite(team.leagueRank))) {
+              team.leagueRank = standing.rank;
+              team.points = standing.points;
+              team.standingsSource = 'SPORTAPI_AI';
+            }
+            if (!(team.formSource && team.form.length) && standing.form?.length) {
+              team.form = standing.form.slice(-5);
+              team.formSource = 'SPORTAPI_AI';
+            }
           }
         }
       } catch (err) {
