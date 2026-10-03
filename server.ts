@@ -1999,14 +1999,37 @@ async function startServer() {
         await runDailyIngestJob();
       }
 
+      // Primary evidence pass: SportAPI.ai + Sportmonks first.
       await refreshPrimaryEvidenceForDailySlate();
-      const diskData = readDiskManifest();
-      const { fixtures: validated } = verifyAndSanitizeFixtures(diskData);
+
+      let diskData = readDiskManifest();
+      let validation = verifyAndSanitizeFixtures(diskData);
+
+      // Recovery path: if primary providers return no usable evidence, run one
+      // fresh ESPN standings/form pass. This is real observed data, not synthetic
+      // defaults, and is used only when a fixture would otherwise be neutral.
+      const neutralBeforeFallback = validation.fixtures.filter(
+        (fixture: any) => !hasVerifiedPredictionEvidence(fixture)
+      ).length;
+      if (neutralBeforeFallback > 0) {
+        try {
+          const liveData = await getLiveScoreboardFixtures(true);
+          validation = verifyAndSanitizeFixtures(liveData.fixtures);
+          diskData = liveData.fixtures;
+        } catch (fallbackErr) {
+          console.warn(
+            '[daily-slate] ESPN evidence fallback failed safely:',
+            fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
+          );
+        }
+      }
+
+      const validated = validation.fixtures;
       return res.json({
         status: 'success',
         count: validated.length,
         syncedAt: new Date().toISOString(),
-        provider: 'SportAPI.ai + Sportmonks primary evidence (Football-Data fallback when needed)',
+        provider: 'SportAPI.ai + Sportmonks primary; ESPN fallback when primary evidence is unavailable',
         evidenceSummary: {
           fixturesWithForm: validated.filter((f: any) =>
             Boolean(f?.homeTeam?.formSource) || Boolean(f?.awayTeam?.formSource)
