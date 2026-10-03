@@ -929,7 +929,7 @@ export async function enrichFixturesWithFootballApis(
       }
     }
 
-    if (!fixture.h2h?.source && sportApiH2HBudget.used < providerLimit('SPORT_PROVIDER_MAX_H2H_LOOKUPS', DEFAULT_H2H_LOOKUP_LIMIT)) {
+    if ((!fixture.h2h?.source || !isPrimarySource(fixture.h2h.source)) && sportApiH2HBudget.used < providerLimit('SPORT_PROVIDER_MAX_H2H_LOOKUPS', DEFAULT_H2H_LOOKUP_LIMIT)) {
       sportApiH2HBudget.used++;
       try {
         const body = await getSportApiH2H(String(homeId), String(awayId));
@@ -1073,7 +1073,7 @@ export async function enrichFixturesWithFootballApis(
       }
     }
 
-    if (!fixture.h2h?.source && sportmonksH2HBudget.used < providerLimit('SPORT_PROVIDER_MAX_H2H_LOOKUPS', DEFAULT_H2H_LOOKUP_LIMIT)) {
+    if ((!fixture.h2h?.source || fixture.h2h.source === 'API_FOOTBALL' || fixture.h2h.source === 'FOOTBALL_DATA_ORG') && sportmonksH2HBudget.used < providerLimit('SPORT_PROVIDER_MAX_H2H_LOOKUPS', DEFAULT_H2H_LOOKUP_LIMIT)) {
       sportmonksH2HBudget.used++;
       try {
         const raw = await getSportmonksH2H(String(homeId), String(awayId));
