@@ -200,3 +200,103 @@ test('Rule 4 H2H: null h2h cleanly skips Rule 4; populated 4+ home wins triggers
   assert.equal(rule4Populated.beneficiary, 'home');
   assert.match(rule4Populated.ruleName, /H2H/i);
 });
+
+test('Football-Data fallback preserves already-verified primary provider evidence', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.FOOTBALL_DATA_KEY;
+  process.env.FOOTBALL_DATA_KEY = 'test-token';
+
+  try {
+    globalThis.fetch = (async (url: any) => {
+      const value = String(url);
+      if (value.includes('/standings')) {
+        return new Response(JSON.stringify({
+          standings: [{
+            type: 'TOTAL',
+            table: [
+              { position: 9, points: 12, team: { id: 1, name: 'Arsenal FC', shortName: 'Arsenal' } },
+              { position: 2, points: 30, team: { id: 2, name: 'Chelsea FC', shortName: 'Chelsea' } },
+            ],
+          }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({
+        matches: [{
+          id: 1,
+          utcDate: '2026-09-30T15:00:00Z',
+          status: 'FINISHED',
+          homeTeam: { id: 1, name: 'Arsenal FC', shortName: 'Arsenal' },
+          awayTeam: { id: 3, name: 'Fulham FC', shortName: 'Fulham' },
+          score: { winner: 'HOME_TEAM', fullTime: { home: 4, away: 0 } },
+        }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as any;
+
+    const fixture: MatchFixture = {
+      id: 'primary-precedence-test',
+      kickoffTime: '2026-10-15T15:00:00Z',
+      league: 'England • Premier League',
+      venue: 'Emirates Stadium',
+      isHighStakes: false,
+      motivation: 'regular',
+      homeTeam: {
+        id: 'sportapi_team_1',
+        name: 'Arsenal',
+        shortName: 'ARS',
+        leagueRank: 2,
+        points: 28,
+        standingsSource: 'SPORTAPI_AI',
+        form: ['W', 'W', 'D', 'W', 'W'],
+        formSource: 'SPORTAPI_AI',
+        avgPossession: null,
+        avgShotsOnTarget: null,
+        isHomeDominant: false,
+        hasTopTierAwayForm: false,
+      },
+      awayTeam: {
+        id: 'sportapi_team_2',
+        name: 'Chelsea',
+        shortName: 'CHE',
+        leagueRank: 6,
+        points: 20,
+        standingsSource: 'SPORTAPI_AI',
+        form: ['L', 'W', 'D', 'W', 'L'],
+        formSource: 'SPORTAPI_AI',
+        avgPossession: null,
+        avgShotsOnTarget: null,
+        isHomeDominant: false,
+        hasTopTierAwayForm: false,
+      },
+      h2h: {
+        homeWins: 3,
+        draws: 1,
+        awayWins: 1,
+        totalLast5: 5,
+        scoresLast5: ['2-1', '1-0', '1-1', '0-1', '3-2'],
+        source: 'SPORTAPI_AI',
+      },
+    };
+
+    const result = await enrichFixturesWithFootballData([fixture]);
+    assert.equal(result.enrichedCount, 0, 'Fallback should not report an update when all targeted fields are already verified');
+    const actual = result.fixtures[0];
+
+    assert.equal(actual.homeTeam.leagueRank, 2);
+    assert.equal(actual.homeTeam.points, 28);
+    assert.equal(actual.homeTeam.standingsSource, 'SPORTAPI_AI');
+    assert.deepEqual(actual.homeTeam.form, ['W', 'W', 'D', 'W', 'W']);
+    assert.equal(actual.homeTeam.formSource, 'SPORTAPI_AI');
+
+    assert.equal(actual.awayTeam.leagueRank, 6);
+    assert.equal(actual.awayTeam.points, 20);
+    assert.equal(actual.awayTeam.standingsSource, 'SPORTAPI_AI');
+    assert.deepEqual(actual.awayTeam.form, ['L', 'W', 'D', 'W', 'L']);
+    assert.equal(actual.awayTeam.formSource, 'SPORTAPI_AI');
+
+    assert.equal(actual.h2h?.source, 'SPORTAPI_AI');
+    assert.deepEqual(actual.h2h?.scoresLast5, ['2-1', '1-0', '1-1', '0-1', '3-2']);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.FOOTBALL_DATA_KEY = originalKey;
+  }
+});
