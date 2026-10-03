@@ -8,6 +8,7 @@ import {
   fetchApiFootballHeadToHead,
   fetchSportmonksFixturesByDate,
   fetchSportmonksFixturesBetweenForTeam,
+  fetchSportmonksTeamsBySearch,
   fetchSportmonksStandingsBySeason,
   fetchSportmonksHeadToHead,
 } from './serverFootballApis';
@@ -181,6 +182,7 @@ const sportApiStandingsCache = new Map<string, { expiresAt: number; value: Map<s
 const sportApiFixtureStatsCache = new Map<string, { expiresAt: number; value: any }>();
 const sportApiH2HCache = new Map<string, { expiresAt: number; value: any }>();
 const sportmonksTeamFixturesCache = new Map<string, { expiresAt: number; value: any[] }>();
+const sportmonksTeamSearchCache = new Map<string, { expiresAt: number; value: any[] }>();
 const sportmonksStandingsCache = new Map<string, { expiresAt: number; value: Map<string, { rank: number; points: number | null; form?: ('W' | 'D' | 'L')[] }> }>();
 const sportmonksH2HCache = new Map<string, { expiresAt: number; value: any[] }>();
 
@@ -497,6 +499,19 @@ function buildH2HFromProviderFixtures(
   return totalLast5 ? { homeWins, draws, awayWins, totalLast5, scoresLast5, source } : null;
 }
 
+
+
+async function searchSportmonksExactTeam(name: string): Promise<any | null> {
+  const normalized = normalizeProviderTeamName(name);
+  if (!normalized) return null;
+  const cached = sportmonksTeamSearchCache.get(normalized);
+  if (cached && cached.expiresAt > Date.now()) return cached.value[0] ?? null;
+  const rows = await fetchSportmonksTeamsBySearch(name);
+  const exact = rows.find((row: any) => normalizeProviderTeamName(row?.name) === normalized) ?? null;
+  sportmonksTeamSearchCache.set(normalized, { expiresAt: Date.now() + PROVIDER_CACHE_TTL_MS, value: exact ? [exact] : [] });
+  return exact;
+}
+
 async function getSportmonksTeamFixtures(teamId: string, kickoffIso: string): Promise<any[]> {
   const start = providerDateFromKickoff(kickoffIso, -120);
   const end = providerDateFromKickoff(kickoffIso, -1);
@@ -707,6 +722,7 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
   const sportApiH2HBudget = { used: 0 };
   const sportmonksTeamBudget = { used: 0 };
   const sportmonksH2HBudget = { used: 0 };
+  const sportmonksTeamSearchBudget = { used: 0 };
 
   async function enrichFromSportApi(fixture: MatchFixture): Promise<void> {
     if (!sportApiAiConfigured()) return;
@@ -739,8 +755,34 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
       }
     }
 
-    const teamEntries: Array<[TeamStats, number]> = [[fixture.homeTeam, homeId], [fixture.awayTeam, awayId]];
-    for (const entry of teamEntries) {
+    const teamEntries: Array<[TeamStats, number]> = [
+      [fixture.homeTeam, homeId],
+      [fixture.awayTeam, awayId],
+    ];
+
+    // When the current-date Sportmonks feed is unavailable, recover the provider
+    // team IDs by exact name search so historical evidence can still be queried.
+    const resolvedEntries: Array<[TeamStats, number]> = [];
+    for (const team of [fixture.homeTeam, fixture.awayTeam]) {
+      let id = Number((team === fixture.homeTeam ? (fixture as any).sportmonksHomeTeamId : (fixture as any).sportmonksAwayTeamId));
+      if (!Number.isInteger(id) && sportmonksTeamSearchBudget.used < providerLimit('SPORT_PROVIDER_MAX_TEAM_SEARCH_LOOKUPS', 50)) {
+        sportmonksTeamSearchBudget.used++;
+        try {
+          const resolved = await searchSportmonksExactTeam(team.name);
+          const resolvedId = Number(resolved?.id);
+          if (Number.isInteger(resolvedId)) {
+            id = resolvedId;
+            if (team === fixture.homeTeam) (fixture as any).sportmonksHomeTeamId = resolvedId;
+            else (fixture as any).sportmonksAwayTeamId = resolvedId;
+          }
+        } catch (err) {
+          errors.push('Sportmonks team search ' + team.name + ': ' + (err instanceof Error ? err.message : String(err)));
+        }
+      }
+      if (Number.isInteger(id)) resolvedEntries.push([team, id]);
+    }
+
+    for (const entry of resolvedEntries) {
       const team = entry[0];
       const id = entry[1];
       if (sportApiTeamBudget.used >= providerLimit('SPORT_PROVIDER_MAX_TEAM_LOOKUPS', DEFAULT_TEAM_LOOKUP_LIMIT)) break;
