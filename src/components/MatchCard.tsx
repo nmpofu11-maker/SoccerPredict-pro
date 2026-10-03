@@ -596,17 +596,17 @@ export const MatchCard: React.FC<MatchCardProps> = ({
         <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden flex mb-2">
           <div
             className="bg-emerald-500 h-full transition-all duration-300"
-            style={{ width: `${Math.max(4, safeHomePct)}%` }}
+            style={{ width: `${safeHomePct !== null ? Math.max(4, safeHomePct) : 0}%` }}
             title={`Home Win: ${safeHomePct !== null ? safeHomePct.toFixed(1) : '--'}%`}
           />
           <div
             className="bg-sky-400 h-full transition-all duration-300"
-            style={{ width: `${Math.max(4, safeDrawPct)}%` }}
+            style={{ width: `${safeDrawPct !== null ? Math.max(4, safeDrawPct) : 0}%` }}
             title={`Draw: ${safeDrawPct !== null ? safeDrawPct.toFixed(1) : '--'}%`}
           />
           <div
             className="bg-rose-500 h-full transition-all duration-300"
-            style={{ width: `${Math.max(4, safeAwayPct)}%` }}
+            style={{ width: `${safeAwayPct !== null ? Math.max(4, safeAwayPct) : 0}%` }}
             title={`Away Win: ${safeAwayPct !== null ? safeAwayPct.toFixed(1) : '--'}%`}
           />
         </div>
@@ -637,7 +637,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             >
               <Ticket className="w-3 h-3 text-emerald-400 opacity-70" />
               <span>1:</span>
-              <strong className="text-white">{safeHomePct.toFixed(0)}%</strong>
+              <strong className="text-white">{safeHomePct !== null ? safeHomePct.toFixed(0) + '%' : 'N/A'}</strong>
               <span className="text-[9.5px] text-emerald-400 font-bold">[{homeOdds}]</span>
             </button>
 
@@ -663,7 +663,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             >
               <Ticket className="w-3 h-3 text-sky-400 opacity-70" />
               <span>X:</span>
-              <strong className="text-white">{safeDrawPct.toFixed(0)}%</strong>
+              <strong className="text-white">{safeDrawPct !== null ? safeDrawPct.toFixed(0) + '%' : 'N/A'}</strong>
               <span className="text-[9.5px] text-sky-400 font-bold">[{drawOdds}]</span>
             </button>
 
@@ -689,7 +689,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             >
               <Ticket className="w-3 h-3 text-rose-400 opacity-70" />
               <span>2:</span>
-              <strong className="text-white">{safeAwayPct.toFixed(0)}%</strong>
+              <strong className="text-white">{safeAwayPct !== null ? safeAwayPct.toFixed(0) + '%' : 'N/A'}</strong>
               <span className="text-[9.5px] text-rose-400 font-bold">[{awayOdds}]</span>
             </button>
           </div>
