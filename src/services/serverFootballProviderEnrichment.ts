@@ -1032,8 +1032,8 @@ export async function enrichFixturesWithFootballApis(
   }
 
   for (const fixture of enriched) {
-    await enrichFromSportApi(fixture);
-    await enrichFromSportmonks(fixture);
+    if (sportApiAiEnabled) await enrichFromSportApi(fixture);
+    if (sportmonksEnabled) await enrichFromSportmonks(fixture);
 
     // API-Football is fallback-only and never displaces verified SportAPI.ai or Sportmonks evidence.
     const match = apiByKey.get(fixtureKey(fixture));
