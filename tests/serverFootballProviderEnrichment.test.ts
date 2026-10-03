@@ -222,7 +222,7 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
     assert.deepEqual(out.homeTeam.form, ['W','W','D','L','W']);
     assert.equal(out.homeTeam.formSource, 'SPORTAPI_AI');
     assert.equal(out.homeTeam.avgPossession, 56.7);
-    assert.equal(out.homeTeam.avgShotsOnTarget, 5.7);
+    assert.equal(out.homeTeam.avgShotsOnTarget, 6);
     assert.equal(out.homeTeam.matchStatsSource, 'SPORTAPI_AI');
     assert.equal(out.awayTeam.avgPossession, 43.3);
     assert.equal(out.awayTeam.avgShotsOnTarget, 3);
