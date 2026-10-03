@@ -908,10 +908,16 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
           const team = entry[0];
           const id = entry[1];
           const standing = findProviderStanding(standings, String(id), team.name);
-          if (standing && !(team.standingsSource && Number.isFinite(team.leagueRank))) {
-            team.leagueRank = standing.rank;
-            team.points = standing.points;
-            team.standingsSource = 'SPORTMONKS';
+          if (standing) {
+            if (!(team.standingsSource && Number.isFinite(team.leagueRank))) {
+              team.leagueRank = standing.rank;
+              team.points = standing.points;
+              team.standingsSource = 'SPORTMONKS';
+            }
+            if (!(team.formSource && team.form.length) && standing.form?.length) {
+              team.form = standing.form.slice(-5);
+              team.formSource = 'SPORTMONKS';
+            }
           }
         }
       } catch (err) {
