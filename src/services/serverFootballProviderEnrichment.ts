@@ -628,7 +628,17 @@ function fixtureKey(f: MatchFixture): string {
  * No missing value is filled with a default or inferred from the opposing team.
  */
 
-export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], requestedDates: string[] = []): Promise<{
+export interface FootballProviderEnrichmentOptions {
+  enableApiFootball?: boolean;
+  enableSportmonks?: boolean;
+  enableSportApiAi?: boolean;
+}
+
+export async function enrichFixturesWithFootballApis(
+  fixtures: MatchFixture[],
+  requestedDates: string[] = [],
+  options: FootballProviderEnrichmentOptions = {}
+): Promise<{
   fixtures: MatchFixture[];
   apiFootballFixtures: number;
   sportmonksFixtures: number;
@@ -642,6 +652,9 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
   errors: string[];
 }> {
   const errors: string[] = [];
+  const apiFootballEnabled = options.enableApiFootball !== false;
+  const sportmonksEnabled = options.enableSportmonks !== false;
+  const sportApiAiEnabled = options.enableSportApiAi !== false;
   const byKey = new Map<string, MatchFixture>();
   for (const fixture of fixtures) byKey.set(fixtureKey(fixture), fixture);
 
@@ -657,7 +670,7 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
   let apiFootballFailedRequests = 0;
   let sportmonksFailedRequests = 0;
 
-  if (apiFootballConfigured()) {
+  if (apiFootballEnabled && apiFootballConfigured()) {
     for (const date of dates) {
       try {
         apiRaw.push(...await fetchApiFootballFixturesByDate(date));
@@ -669,7 +682,7 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
     }
   }
 
-  if (sportmonksConfigured()) {
+  if (sportmonksEnabled && sportmonksConfigured()) {
     for (const date of dates) {
       try {
         sportmonksRaw.push(...await fetchSportmonksFixturesByDate(date));
@@ -734,7 +747,7 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
   const sportmonksTeamSearchBudget = { used: 0 };
 
   async function enrichFromSportApi(fixture: MatchFixture): Promise<void> {
-    if (!sportApiAiConfigured()) return;
+    if (!sportApiAiEnabled || !sportApiAiConfigured()) return;
     const homeId = Number((fixture as any).sportApiAiHomeTeamId);
     const awayId = Number((fixture as any).sportApiAiAwayTeamId);
     const leagueId = Number((fixture as any).sportApiAiLeagueId);
@@ -877,7 +890,7 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
   }
 
   async function enrichFromSportmonks(fixture: MatchFixture): Promise<void> {
-    if (!sportmonksConfigured()) return;
+    if (!sportmonksEnabled || !sportmonksConfigured()) return;
     let homeId = Number((fixture as any).sportmonksHomeTeamId);
     let awayId = Number((fixture as any).sportmonksAwayTeamId);
     const seasonId = Number((fixture as any).sportMonksSeasonId);
@@ -1024,7 +1037,7 @@ export async function enrichFixturesWithFootballApis(fixtures: MatchFixture[], r
 
     // API-Football is fallback-only and never displaces verified SportAPI.ai or Sportmonks evidence.
     const match = apiByKey.get(fixtureKey(fixture));
-    if (!match || !apiFootballConfigured()) continue;
+    if (!match || !apiFootballEnabled || !apiFootballConfigured()) continue;
 
     const raw = match.raw;
     const leagueId = Number(raw.league?.id);
