@@ -445,7 +445,7 @@ function buildH2HFromProviderFixtures(
   awayName: string,
   fixtures: any[],
   kickoffIso: string,
-  source: 'SPORTMONKS' | 'SPORTAPI_AI'
+  source: 'SPORTMONKS' | 'SPORTAPI_AI' | 'API_FOOTBALL'
 ): H2HRecord | null {
   const pair = fixtures.filter((m) => {
     if (!completedProviderMatch(m, kickoffIso)) return false;
