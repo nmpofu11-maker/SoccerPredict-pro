@@ -14,7 +14,7 @@ export interface TeamStats {
   matchStatsSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'ESPN';
   advancedStatsSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'FOOTBALL_DATA_ORG';
   homeAwayFormSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'FOOTBALL_DATA_ORG';
-  scheduleSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'ESPN';
+  scheduleSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'ESPN';
   formScores?: string[]; // FT scores for last 5 matches e.g. ["2-1", "3-0", "1-1", "2-0", "1-0"]
   formDetails?: {
     result: 'W' | 'D' | 'L';
@@ -39,6 +39,12 @@ export interface TeamStats {
   totalSquadValueEur?: number; // Total squad market value in millions of EUR (e.g. 1170 = €1.17B, 340 = €340M)
   avgMatchRating?: number; // Squad average match rating across the season (6.40 - 7.35 scale)
   expectedGoalsAvg?: number; // Average Expected Goals (xG) generated per match (e.g. 1.85)
+  sportApiAiLeagueId?: number;
+  sportApiAiHomeTeamId?: number;
+  sportApiAiAwayTeamId?: number;
+  sportMonksSeasonId?: number;
+  sportMonksHomeTeamId?: number;
+  sportMonksAwayTeamId?: number;
   keyPlayerAbsenceSeverity?: 'none' | 'minor' | 'critical'; // Lineup availability status
 }
 
