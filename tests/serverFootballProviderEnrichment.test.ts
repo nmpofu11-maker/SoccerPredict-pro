@@ -44,6 +44,9 @@ test('API-Football fixture, standings, team form and South African H2H are norma
 
   globalThis.fetch = (async (input: URL | RequestInfo) => {
     const url = new URL(String(input));
+    if (url.host.includes('sportmonks')) {
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    }
     if (url.pathname.endsWith('/fixtures') && url.searchParams.has('date')) {
       return new Response(JSON.stringify({ response: [{
         fixture: { id: 700, date: '2026-10-10T15:00:00Z', status: { short: 'NS' }, venue: { name: 'FNB Stadium' } },
@@ -127,6 +130,9 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
 
   globalThis.fetch = (async (input: URL | RequestInfo) => {
     const url = new URL(String(input));
+    if (url.host.includes('sportmonks')) {
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    }
     if (url.pathname.endsWith('/fixtures/date/2026-10-10')) {
       return new Response(JSON.stringify({ success: true, fixtures: [] }), { status: 200 });
     }
