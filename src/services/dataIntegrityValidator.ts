@@ -166,15 +166,15 @@ function sanitizeTeamStats(
     cleanTeam.formSource = undefined;
   }
 
-  // Legacy formScores alone do not carry opponent/date/source provenance.
-  if (cleanTeam.formSource !== 'FOOTBALL_DATA_ORG') {
+  // Score details are retained only for provenance-rich match records. SportAPI.ai,
+  // Sportmonks and Football-Data.org now qualify; legacy unverified score arrays do not.
+  if (!['FOOTBALL_DATA_ORG', 'SPORTMONKS', 'SPORTAPI_AI'].includes(cleanTeam.formSource || '')) {
     if ((cleanTeam.formScores?.length || 0) > 0 || (cleanTeam.formDetails?.length || 0) > 0) {
       repairsLog.push({ field: `${team.name} (form scores)`, originalValue: { formScores: cleanTeam.formScores, formDetails: cleanTeam.formDetails }, repairedValue: [], reason: 'Removed score details without a provenance-rich match record source' });
     }
     cleanTeam.formScores = [];
     cleanTeam.formDetails = [];
   }
-
   // 3. Tactical metrics require explicit provider provenance.
   if (!cleanTeam.matchStatsSource || !['API_FOOTBALL', 'SPORTMONKS', 'SPORTAPI_AI', 'ESPN'].includes(cleanTeam.matchStatsSource)) {
     if ((cleanTeam.avgPossession !== null && cleanTeam.avgPossession !== undefined) || (cleanTeam.avgShotsOnTarget !== null && cleanTeam.avgShotsOnTarget !== undefined)) {
