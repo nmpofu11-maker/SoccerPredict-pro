@@ -63,6 +63,11 @@ export interface MatchFixture {
   homeTeam: TeamStats;
   awayTeam: TeamStats;
   h2h: H2HRecord | null;
+  /** BSD identifiers are isolated from SportAPI.ai and Sportmonks namespaces. */
+  bsdFixtureId?: string;
+  bsdLeagueId?: string;
+  bsdHomeTeamId?: string;
+  bsdAwayTeamId?: string;
   sportApiAiFixtureId?: string;
   sportApiAiLeagueId?: number;
   sportApiAiHomeTeamId?: number;
