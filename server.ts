@@ -197,17 +197,32 @@ let primarySlateRefreshAt = 0;
 let primarySlateRefreshPromise: Promise<void> | null = null;
 
 function hasVerifiedPredictionEvidence(fixture: any): boolean {
-  return Boolean(
-    fixture?.homeTeam?.formSource ||
-    fixture?.awayTeam?.formSource ||
-    fixture?.homeTeam?.standingsSource ||
-    fixture?.awayTeam?.standingsSource ||
-    fixture?.h2h?.source ||
-    fixture?.homeTeam?.matchStatsSource ||
-    fixture?.awayTeam?.matchStatsSource ||
-    fixture?.homeTeam?.advancedStatsSource ||
-    fixture?.awayTeam?.advancedStatsSource
+  const teams = [fixture?.homeTeam, fixture?.awayTeam];
+  const hasForm = teams.some((team: any) =>
+    Boolean(team?.formSource) && Array.isArray(team?.form) && team.form.length > 0
   );
+  const hasStandings = teams.some((team: any) =>
+    Boolean(team?.standingsSource) &&
+    Number.isFinite(team?.leagueRank) &&
+    team.leagueRank >= 1
+  );
+  const hasMatchStats = teams.some((team: any) =>
+    Boolean(team?.matchStatsSource) &&
+    (Number.isFinite(team?.avgPossession) || Number.isFinite(team?.avgShotsOnTarget))
+  );
+  const hasAdvancedStats = teams.some((team: any) =>
+    Boolean(team?.advancedStatsSource) &&
+    (
+      Number.isFinite(team?.avgMatchRating) ||
+      Number.isFinite(team?.totalSquadValueEur) ||
+      Number.isFinite(team?.expectedGoalsAvg)
+    )
+  );
+  const hasH2H = Boolean(fixture?.h2h?.source) &&
+    Number.isFinite(fixture?.h2h?.totalLast5) &&
+    fixture.h2h.totalLast5 > 0;
+
+  return hasForm || hasStandings || hasMatchStats || hasAdvancedStats || hasH2H;
 }
 
 async function refreshPrimaryEvidenceForDailySlate(force = false): Promise<void> {
