@@ -212,7 +212,7 @@ function sanitizeTeamStats(
     cleanTeam.hasTopTierAwayForm = false;
     cleanTeam.homeAwayFormSource = undefined;
   }
-  const trustedScheduleSources = ['API_FOOTBALL', 'SPORTMONKS', 'ESPN'];
+  const trustedScheduleSources = ['API_FOOTBALL', 'SPORTMONKS', 'SPORTAPI_AI', 'ESPN'];
   if (!cleanTeam.scheduleSource || !trustedScheduleSources.includes(cleanTeam.scheduleSource)) {
     if (cleanTeam.hasMidweekFatigue72h) repairsLog.push({ field: `${team.name} (schedule fatigue)`, originalValue: true, repairedValue: false, reason: 'Removed fatigue flag without schedule-source provenance' });
     cleanTeam.hasMidweekFatigue72h = false;
