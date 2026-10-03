@@ -95,10 +95,10 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     drawPct: NaN,
     awayWinPct: NaN,
     predictedWinner: 'draw' as const,
-    modelLeaderProbabilityPct: 0,
+    modelLeaderProbabilityPct: NaN,
     appliedRules: [],
-    rawPoints: { home: 10, away: 8.5, draw: 6.8 },
-    finalPoints: { home: 10, away: 8.5, draw: 6.8 },
+    rawPoints: { home: NaN, away: NaN, draw: NaN },
+    finalPoints: { home: NaN, away: NaN, draw: NaN },
     isFavouriteMatch: false,
     favouriteTeams: [],
     manualOverride: 'none' as const,
@@ -237,9 +237,9 @@ export const MatchCard: React.FC<MatchCardProps> = ({
       {/* Confidence Level Heatmap Top Strip */}
       <div 
         className={`absolute top-0 left-0 w-full h-1.5 rounded-t-xl opacity-90 ${
-          prediction.modelLeaderProbabilityPct > 75 
+          Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75 
             ? 'bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 shadow-[0_2px_10px_rgba(16,185,129,0.3)]' 
-            : prediction.modelLeaderProbabilityPct >= 50 
+            : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct >= 50 
             ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 shadow-[0_2px_10px_rgba(245,158,11,0.2)]' 
             : 'bg-gradient-to-r from-rose-500 via-red-400 to-rose-500 shadow-[0_2px_10px_rgba(239,68,68,0.2)]'
         }`}
@@ -251,25 +251,25 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           {/* Confidence Level Heatmap Pill */}
           <span
             className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-[9.5px] font-mono font-bold uppercase tracking-wide shadow-sm ${
-              prediction.modelLeaderProbabilityPct > 75
+              Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                : prediction.modelLeaderProbabilityPct >= 50
+                : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct >= 50
                 ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
                 : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
             }`}
-            title={`Leading Model Probability: ${prediction.modelLeaderProbabilityPct}%`}
+            title={`Leading Model Probability: ${Number.isFinite(prediction.modelLeaderProbabilityPct) ? prediction.modelLeaderProbabilityPct : 'N/A'}%`}
           >
             <span className={`w-1.5 h-1.5 rounded-full ${
-              prediction.modelLeaderProbabilityPct > 75
+              Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
                 ? 'bg-emerald-400 animate-pulse'
-                : prediction.modelLeaderProbabilityPct >= 50
+                : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct >= 50
                 ? 'bg-amber-400 animate-pulse'
                 : 'bg-rose-400'
             }`} />
             <span>
-              {prediction.modelLeaderProbabilityPct > 75
+              {Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
                 ? `High Lead Prob (${prediction.modelLeaderProbabilityPct}%)`
-                : prediction.modelLeaderProbabilityPct >= 50
+                : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct >= 50
                 ? `Moderate Lead Prob (${prediction.modelLeaderProbabilityPct}%)`
                 : `Low Lead Prob (${prediction.modelLeaderProbabilityPct}%)`}
             </span>
@@ -315,7 +315,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             <span
               id={`quick-bet-badge-${fixture.id}`}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-400/15 text-amber-300 border border-amber-400/40 text-[9.5px] font-mono uppercase font-black tracking-wider shadow-sm"
-              title={`Quick Bet: High leading-probability match with ${prediction.modelLeaderProbabilityPct}% leading probability (>80%)`}
+              title={`Quick Bet: High leading-probability match with ${Number.isFinite(prediction.modelLeaderProbabilityPct) ? prediction.modelLeaderProbabilityPct : 'N/A'}% leading probability (>80%)`}
             >
               <Zap className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
               Quick Bet
@@ -499,7 +499,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
               <span
                 id={`quick-bet-hero-${fixture.id}`}
                 className="inline-flex items-center gap-0.5 px-1.5 py-0.5 mb-1 rounded bg-amber-400 text-slate-950 text-[8px] font-mono font-black uppercase tracking-wider shadow"
-                title={`High Lead-Probability Match: ${prediction.modelLeaderProbabilityPct}% leading probability (>80%)`}
+                title={`High Lead-Probability Match: ${Number.isFinite(prediction.modelLeaderProbabilityPct) ? prediction.modelLeaderProbabilityPct : 'N/A'}% leading probability (>80%)`}
               >
                 <Zap className="w-2 h-2 fill-slate-950" />
                 Quick Bet
@@ -873,13 +873,13 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           {/* Points Breakdown */}
           <div className="grid grid-cols-3 gap-2 pt-1 text-center font-mono text-[10px]">
             <div className="bg-slate-950 p-1.5 rounded border border-slate-800 text-slate-400">
-              Home: <span className="text-emerald-400 font-bold">{prediction.finalPoints.home} pts</span>
+              Home: <span className="text-emerald-400 font-bold">{Number.isFinite(prediction.finalPoints.home) ? `${prediction.finalPoints.home} pts` : 'N/A'}</span>
             </div>
             <div className="bg-slate-950 p-1.5 rounded border border-slate-800 text-slate-400">
-              Draw: <span className="text-slate-200 font-bold">{prediction.finalPoints.draw} pts</span>
+              Draw: <span className="text-slate-200 font-bold">{Number.isFinite(prediction.finalPoints.draw) ? `${prediction.finalPoints.draw} pts` : 'N/A'}</span>
             </div>
             <div className="bg-slate-950 p-1.5 rounded border border-slate-800 text-slate-400">
-              Away: <span className="text-rose-400 font-bold">{prediction.finalPoints.away} pts</span>
+              Away: <span className="text-rose-400 font-bold">{Number.isFinite(prediction.finalPoints.away) ? `${prediction.finalPoints.away} pts` : 'N/A'}</span>
             </div>
           </div>
         </div>
