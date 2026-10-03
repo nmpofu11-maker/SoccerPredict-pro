@@ -321,3 +321,80 @@ test('Sportmonks supplies verified form, standings, possession, shots-on-target 
     delete process.env.SPORT_PROVIDER_MAX_H2H_LOOKUPS;
   }
 });
+
+
+test('Sportmonks team-search fallback enriches historical evidence when current-date fixtures are unavailable', async () => {
+  delete process.env.API_FOOTBALL_USE_RAPIDAPI;
+  delete process.env.SPORTAPI_AI_KEY;
+  process.env.SPORTMONKS_API_KEY = 'test-sportmonks-key';
+  process.env.SPORT_PROVIDER_MAX_TEAM_SEARCH_LOOKUPS = '4';
+  process.env.SPORT_PROVIDER_MAX_TEAM_LOOKUPS = '4';
+
+  const makeMatch = (id: number, date: string, homeId: number, awayId: number, hg: number, ag: number) => ({
+    id,
+    starting_at: date,
+    state: { data: { short_name: 'FT' } },
+    participants: [
+      { id: homeId, name: homeId === 111 ? 'Search Home FC' : 'Opponent ' + homeId, meta: { location: 'home' } },
+      { id: awayId, name: awayId === 222 ? 'Search Away FC' : 'Opponent ' + awayId, meta: { location: 'away' } },
+    ],
+    scores: { data: [
+      { description: 'CURRENT', score: { participant: 'home', goals: hg } },
+      { description: 'CURRENT', score: { participant: 'away', goals: ag } },
+    ] },
+    statistics: { data: [
+      { participant_id: homeId, type: { id: 45, code: 'BALL_POSSESSION' }, data: { value: 60 } },
+      { participant_id: awayId, type: { id: 45, code: 'BALL_POSSESSION' }, data: { value: 40 } },
+    ] },
+  });
+
+  globalThis.fetch = (async (input: URL | RequestInfo) => {
+    const url = new URL(String(input));
+    if (url.pathname.includes('/fixtures/date/')) return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    if (url.pathname.includes('/teams/search/')) {
+      const last = decodeURIComponent(url.pathname.split('/').pop() || '');
+      const id = last === 'Search Home FC' ? 111 : 222;
+      return new Response(JSON.stringify({ data: [{ id, name: last, type: 'domestic' }] }), { status: 200 });
+    }
+    if (url.pathname.endsWith('/fixtures/between/2026-06-12/2026-10-09/111')) {
+      return new Response(JSON.stringify({ data: [
+        makeMatch(6101, '2026-10-01T15:00:00Z', 111, 311, 2, 0),
+        makeMatch(6102, '2026-09-24T15:00:00Z', 312, 111, 1, 1),
+        makeMatch(6103, '2026-09-17T15:00:00Z', 111, 313, 3, 1),
+      ] }), { status: 200 });
+    }
+    if (url.pathname.endsWith('/fixtures/between/2026-06-12/2026-10-09/222')) {
+      return new Response(JSON.stringify({ data: [
+        makeMatch(6201, '2026-10-02T15:00:00Z', 421, 222, 0, 2),
+        makeMatch(6202, '2026-09-25T15:00:00Z', 222, 422, 0, 1),
+        makeMatch(6203, '2026-09-18T15:00:00Z', 423, 222, 1, 1),
+      ] }), { status: 200 });
+    }
+    throw new Error('Unexpected Sportmonks search-fallback request: ' + url.toString());
+  }) as typeof fetch;
+
+  const fixture: MatchFixture = {
+    id: 'sportmonks_search_fixture',
+    kickoffTime: '2026-10-10T15:00:00Z',
+    league: 'English Premier League',
+    venue: 'Test Ground',
+    isHighStakes: false,
+    motivation: 'regular',
+    homeTeam: { id: 'home', name: 'Search Home FC', shortName: 'SHF', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    awayTeam: { id: 'away', name: 'Search Away FC', shortName: 'SAF', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    h2h: null,
+  };
+
+  try {
+    const result = await enrichFixturesWithFootballApis([fixture], ['2026-10-10']);
+    const out = result.fixtures[0];
+    assert.equal(out.sportmonksHomeTeamId, 111);
+    assert.equal(out.sportmonksAwayTeamId, 222);
+    assert.deepEqual(out.homeTeam.form, ['W', 'D', 'W']);
+    assert.equal(out.homeTeam.formSource, 'SPORTMONKS');
+  } finally {
+    restoreEnvironment();
+    delete process.env.SPORT_PROVIDER_MAX_TEAM_SEARCH_LOOKUPS;
+    delete process.env.SPORT_PROVIDER_MAX_TEAM_LOOKUPS;
+  }
+});
