@@ -6,8 +6,11 @@ import type { MatchFixture } from '../src/types/soccer';
 const originalFetch = globalThis.fetch;
 const originalEnv = {
   apiKey: process.env.API_FOOTBALL_USE_RAPIDAPI,
+  apiFootballKey: process.env.API_FOOTBALL_KEY,
   sportmonksKey: process.env.SPORTMONKS_API_KEY,
+  sportmonksToken: process.env.SPORTMONKS_API_TOKEN,
   sportApiKey: process.env.SPORTAPI_AI_KEY,
+  sportApiFallback: process.env.SPORTAPI_API_KEY,
   apiBase: process.env.API_FOOTBALL_BASE_URL,
   sportmonksBase: process.env.SPORTMONKS_BASE_URL,
 };
@@ -16,10 +19,16 @@ function restoreEnvironment() {
   globalThis.fetch = originalFetch;
   if (originalEnv.apiKey === undefined) delete process.env.API_FOOTBALL_USE_RAPIDAPI;
   else process.env.API_FOOTBALL_USE_RAPIDAPI = originalEnv.apiKey;
+  if (originalEnv.apiFootballKey === undefined) delete process.env.API_FOOTBALL_KEY;
+  else process.env.API_FOOTBALL_KEY = originalEnv.apiFootballKey;
   if (originalEnv.sportmonksKey === undefined) delete process.env.SPORTMONKS_API_KEY;
   else process.env.SPORTMONKS_API_KEY = originalEnv.sportmonksKey;
+  if (originalEnv.sportmonksToken === undefined) delete process.env.SPORTMONKS_API_TOKEN;
+  else process.env.SPORTMONKS_API_TOKEN = originalEnv.sportmonksToken;
   if (originalEnv.sportApiKey === undefined) delete process.env.SPORTAPI_AI_KEY;
   else process.env.SPORTAPI_AI_KEY = originalEnv.sportApiKey;
+  if (originalEnv.sportApiFallback === undefined) delete process.env.SPORTAPI_API_KEY;
+  else process.env.SPORTAPI_API_KEY = originalEnv.sportApiFallback;
   if (originalEnv.apiBase === undefined) delete process.env.API_FOOTBALL_BASE_URL;
   else process.env.API_FOOTBALL_BASE_URL = originalEnv.apiBase;
   if (originalEnv.sportmonksBase === undefined) delete process.env.SPORTMONKS_BASE_URL;
@@ -29,6 +38,7 @@ function restoreEnvironment() {
 test('API-Football fixture, standings, team form and South African H2H are normalized with provenance', async () => {
   process.env.API_FOOTBALL_USE_RAPIDAPI = 'test-rapid-key';
   delete process.env.SPORTMONKS_API_KEY;
+  delete process.env.SPORTMONKS_API_TOKEN;
   process.env.API_FOOTBALL_BASE_URL = 'https://api-football.test/v3';
   process.env.SPORTMONKS_BASE_URL = 'https://sportmonks.test/v3/football';
 
@@ -106,6 +116,9 @@ test('API-Football fixture, standings, team form and South African H2H are norma
 
 test('SportAPI.ai supplies verified standings, form, match stats and H2H without API-Football', async () => {
   delete process.env.API_FOOTBALL_USE_RAPIDAPI;
+  delete process.env.API_FOOTBALL_KEY;
+  delete process.env.SPORTMONKS_API_KEY;
+  delete process.env.SPORTMONKS_API_TOKEN;
   process.env.SPORTAPI_AI_KEY = 'test-sportapi-key';
   delete process.env.SPORTMONKS_API_KEY;
   process.env.SPORT_PROVIDER_MAX_TEAM_LOOKUPS = '4';
