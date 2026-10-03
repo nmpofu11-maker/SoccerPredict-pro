@@ -1145,9 +1145,9 @@ export async function enrichFixturesWithFootballApis(
         const rawH2H = await fetchApiFootballHeadToHead(homeId, awayId);
         const parsed = buildH2HFromProviderFixtures(
           String(homeId), String(awayId), fixture.homeTeam.name, fixture.awayTeam.name,
-          rawH2H, fixture.kickoffTime, 'SPORTAPI_AI'
+          rawH2H, fixture.kickoffTime, 'API_FOOTBALL'
         );
-        if (parsed && !fixture.h2h?.source) fixture.h2h = { ...parsed, source: 'API_FOOTBALL' };
+        if (parsed && !fixture.h2h?.source) fixture.h2h = parsed;
       } catch (err) {
         errors.push('API-Football H2H ' + fixture.homeTeam.name + ' / ' + fixture.awayTeam.name + ': ' + (err instanceof Error ? err.message : String(err)));
       }
