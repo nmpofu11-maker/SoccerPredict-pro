@@ -1197,6 +1197,12 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     diagnostics.sportmonks.notes.push(...providerResult.errors.filter((e) => e.startsWith('Sportmonks')));
     if (beforeProviderEnrichment === 0 && providerResult.apiFootballFixtures > 0) sourceUsed = 'API_FOOTBALL';
     if (beforeProviderEnrichment === 0 && providerResult.apiFootballFixtures === 0 && providerResult.sportmonksFixtures > 0) sourceUsed = 'SPORTMONKS';
+  } catch (err) {
+    diagnostics.apiFootball.failedRequests++;
+    diagnostics.sportmonks.failedRequests++;
+    const message = err instanceof Error ? err.message : String(err);
+    diagnostics.apiFootball.httpErrors.push(message);
+    diagnostics.sportmonks.httpErrors.push(message);
   }
 
   // Secondary Football-Data.org fallback: fill only fields still missing after
