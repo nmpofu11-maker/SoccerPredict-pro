@@ -133,14 +133,31 @@ function mapApiFootballFixture(raw: any): MatchFixture | null {
   } as MatchFixture;
 }
 
+function sportmonksParticipantEntries(raw: any): any[] {
+  const direct = Array.isArray(raw?.participants) ? raw.participants : [];
+  const nested = Array.isArray(raw?.participants?.data) ? raw.participants.data : [];
+  return [...direct, ...nested].filter((participant) => participant && typeof participant === 'object');
+}
+
+function sportmonksParticipantIdentity(raw: any): { homeName?: string; awayName?: string; homeId?: string; awayId?: string } {
+  const participants = sportmonksParticipantEntries(raw);
+  const home = participants.find((p: any) => String(p?.meta?.location || p?.pivot?.location || '').toLowerCase() === 'home');
+  const away = participants.find((p: any) => String(p?.meta?.location || p?.pivot?.location || '').toLowerCase() === 'away');
+  return {
+    homeName: typeof home?.name === 'string' && home.name.trim() ? home.name.trim() : undefined,
+    awayName: typeof away?.name === 'string' && away.name.trim() ? away.name.trim() : undefined,
+    homeId: home && (home.id !== undefined && home.id !== null) ? String(home.id) : undefined,
+    awayId: away && (away.id !== undefined && away.id !== null) ? String(away.id) : undefined,
+  };
+}
+
 function mapSportmonksFixture(raw: any): MatchFixture | null {
   const fixtureId = raw?.id;
   const state = raw?.state?.data || raw?.state;
   if (isCompletedOrCancelledStatus(state?.short_name || state?.name)) return null;
-  const participants = Array.isArray(raw?.participants?.data) ? raw.participants.data :
-    Array.isArray(raw?.participants) ? raw.participants : [];
-  const home = participants.find((p: any) => p?.meta?.location === 'home' || p?.pivot?.location === 'home');
-  const away = participants.find((p: any) => p?.meta?.location === 'away' || p?.pivot?.location === 'away');
+  const participants = sportmonksParticipantEntries(raw);
+  const home = participants.find((p: any) => String(p?.meta?.location || p?.pivot?.location || '').toLowerCase() === 'home');
+  const away = participants.find((p: any) => String(p?.meta?.location || p?.pivot?.location || '').toLowerCase() === 'away');
   const kickoffTime = typeof raw?.starting_at === 'string' && /[T ]\d{2}:\d{2}/.test(raw.starting_at) ? new Date(raw.starting_at) : null;
   const leagueName = raw?.league?.data?.name || raw?.league?.name;
   if (!fixtureId || !home?.name || !away?.name || !kickoffTime ||
@@ -176,7 +193,6 @@ function mapSportmonksFixture(raw: any): MatchFixture | null {
     sportmonksAwayTeamId: Number(away.id) || undefined,
   } as MatchFixture;
 }
-
 
 const sportApiTeamCache = new Map<string, { expiresAt: number; value: any }>();
 const sportApiStandingsCache = new Map<string, { expiresAt: number; value: Map<string, { rank: number; points: number | null; form?: ('W' | 'D' | 'L')[] }> }>();
@@ -272,7 +288,7 @@ function extractScorePair(raw: any): { home: number; away: number } | null {
 function fixtureParticipantForSide(raw: any, side: 'home' | 'away'): any {
   const direct = side === 'home' ? (raw?.home_team ?? raw?.teams?.home) : (raw?.away_team ?? raw?.teams?.away);
   if (direct) return direct;
-  const participants = extractArray(raw?.participants?.data ?? raw?.participants);
+  const participants = sportmonksParticipantEntries(raw);
   return participants.find((p: any) => String(p?.meta?.location || p?.pivot?.location || '').toLowerCase() === side) || null;
 }
 
@@ -406,6 +422,7 @@ function sportmonksXGForTeam(fixture: any, teamId: string): number | null {
       : null;
   return finiteNumber(direct?.value ?? direct);
 }
+
 function sportmonksStandingMap(rows: any[]): Map<string, { rank: number; points: number | null; form?: ('W' | 'D' | 'L')[] }> {
   const out = new Map<string, { rank: number; points: number | null }>();
   for (const row of rows) {
@@ -508,8 +525,6 @@ function buildH2HFromProviderFixtures(
   const totalLast5 = homeWins + awayWins + draws;
   return totalLast5 ? { homeWins, draws, awayWins, totalLast5, scoresLast5, source } : null;
 }
-
-
 
 async function searchSportmonksExactTeam(name: string): Promise<any | null> {
   if (!sportmonksConfigured()) return null;
@@ -624,6 +639,59 @@ function fixtureKey(f: MatchFixture): string {
   return `${normalizeProviderTeamName(f.homeTeam.name)}|${normalizeProviderTeamName(f.awayTeam.name)}|${f.kickoffTime.slice(0, 10)}`;
 }
 
+function hasPositiveInteger(value: unknown): boolean {
+  const num = Number(value);
+  return Number.isFinite(num) && Number.isInteger(num) && num > 0;
+}
+
+function parseKickoff(value: unknown): number | null {
+  if (typeof value !== 'string' || !value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.getTime() : null;
+}
+
+function sameName(a: unknown, b: unknown): boolean {
+  const aa = normalizeProviderTeamName(a);
+  const bb = normalizeProviderTeamName(b);
+  return Boolean(aa && bb && aa === bb);
+}
+
+function candidateMatchesFixture(candidate: MatchFixture | any, fixture: MatchFixture): boolean {
+  const candidateKickoff = parseKickoff(candidate?.kickoffTime ?? candidate?.starting_at ?? candidate?.datetime ?? candidate?.utc_date ?? candidate?.date);
+  const slateKickoff = parseKickoff(fixture.kickoffTime);
+  if (!candidateKickoff || !slateKickoff) return false;
+  if (Math.abs(candidateKickoff - slateKickoff) > 3 * 60 * 60 * 1000) return false;
+
+  const candidateNames = candidate?.homeTeam && candidate?.awayTeam
+    ? { homeName: candidate.homeTeam.name, awayName: candidate.awayTeam.name, homeId: candidate.homeTeam.id, awayId: candidate.awayTeam.id }
+    : sportmonksParticipantIdentity(candidate);
+
+  const homeName = candidateNames.homeName;
+  const awayName = candidateNames.awayName;
+  if (!homeName || !awayName) return false;
+
+  const homeMatches = sameName(homeName, fixture.homeTeam.name) || sameName(homeName, fixture.awayTeam.name);
+  const awayMatches = sameName(awayName, fixture.homeTeam.name) || sameName(awayName, fixture.awayTeam.name);
+  if (!homeMatches || !awayMatches) return false;
+
+  const homeId = candidateNames.homeId;
+  const awayId = candidateNames.awayId;
+  if ((homeId && hasPositiveInteger(homeId) && !sameName(homeId, (fixture as any).sportmonksHomeTeamId ?? (fixture as any).sportApiAiHomeTeamId ?? (fixture as any).apiFootballHomeTeamId ?? '')) &&
+      (fixture.homeTeam.id && normalizeProviderTeamName(String(fixture.homeTeam.id)) !== normalizeProviderTeamName(String(homeId)))) {
+    return false;
+  }
+  if ((awayId && hasPositiveInteger(awayId) && !sameName(awayId, (fixture as any).sportmonksAwayTeamId ?? (fixture as any).sportApiAiAwayTeamId ?? (fixture as any).apiFootballAwayTeamId ?? '')) &&
+      (fixture.awayTeam.id && normalizeProviderTeamName(String(fixture.awayTeam.id)) !== normalizeProviderTeamName(String(awayId)))) {
+    return false;
+  }
+
+  const candidateCompetition = candidate?.competition ?? candidate?.league ?? candidate?.leagueName ?? candidate?.league?.name;
+  const fixtureCompetition = fixture.competition ?? fixture.league;
+  if (candidateCompetition && fixtureCompetition && normalizeCompetitionName(candidateCompetition) !== normalizeCompetitionName(fixtureCompetition)) return false;
+
+  return true;
+}
+
 function isPrimarySource(source: unknown): boolean {
   return source === 'SPORTAPI_AI' || source === 'SPORTMONKS';
 }
@@ -683,8 +751,8 @@ export async function enrichFixturesWithFootballApis(
   const apiFootballEnabled = options.enableApiFootball !== false;
   const sportmonksEnabled = options.enableSportmonks !== false;
   const sportApiAiEnabled = options.enableSportApiAi !== false;
-  const byKey = new Map<string, MatchFixture>();
-  for (const fixture of fixtures) byKey.set(fixtureKey(fixture), fixture);
+
+  const enriched: MatchFixture[] = fixtures.map((fixture) => ({ ...fixture, homeTeam: { ...fixture.homeTeam }, awayTeam: { ...fixture.awayTeam } }));
 
   const dates = Array.from(new Set([
     ...requestedDates,
@@ -736,43 +804,24 @@ export async function enrichFixturesWithFootballApis(
     }
   }
 
-  const enriched: MatchFixture[] = Array.from(byKey.values());
-  const enrichedKeys = new Set(enriched.map(fixtureKey));
-
   for (const [key, match] of apiByKey) {
-    if (!enrichedKeys.has(key)) {
+    const existing = enriched.find((fixture) => candidateMatchesFixture(match.mapped, fixture));
+    if (!existing) {
       enriched.push(match.mapped);
-      enrichedKeys.add(key);
     }
   }
 
-  // Sportmonks is an independent evidence source. Attach its IDs to exact
-  // fixtures and preserve existing fixture-source data.
   let sportmonksMappedFixtures = 0;
   for (const raw of sportmonksRaw) {
     const mapped = mapSportmonksFixture(raw);
     if (!mapped || !isTargetCompetition(raw, mapped)) continue;
     sportmonksMappedFixtures++;
-    const key = fixtureKey(mapped);
-    if (!enrichedKeys.has(key)) {
+    const existing = enriched.find((fixture) => candidateMatchesFixture(mapped, fixture));
+    if (!existing) {
       enriched.push(mapped);
-      enrichedKeys.add(key);
-    } else {
-      const existing = enriched.find((f) => fixtureKey(f) === key);
-      if (existing) {
-        Object.assign(existing, {
-          sportmonksFixtureId: (mapped as any).sportmonksFixtureId,
-          sportmonksLeagueId: (mapped as any).sportmonksLeagueId,
-          sportMonksSeasonId: (mapped as any).sportMonksSeasonId,
-          sportmonksHomeTeamId: (mapped as any).sportmonksHomeTeamId,
-          sportmonksAwayTeamId: (mapped as any).sportmonksAwayTeamId,
-        });
-      }
     }
   }
 
-  // Recover missing SportAPI.ai fixture/team IDs by exact home/away/date identity.
-  // This lets manually or third-party ingested slates reach the primary provider.
   const sportApiFixtureIdsByKey = new Map<string, any>();
   if (sportApiAiEnabled && sportApiAiConfigured()) {
     for (const date of dates) {
@@ -799,7 +848,7 @@ export async function enrichFixturesWithFootballApis(
     }
   }
 
-  for (const fixture of byKey.values()) {
+  for (const fixture of enriched) {
     const ids = sportApiFixtureIdsByKey.get(fixtureKey(fixture));
     if (!ids) continue;
     if (!(fixture as any).sportApiAiFixtureId && ids.fixtureId !== undefined && ids.fixtureId !== null) {
@@ -838,14 +887,9 @@ export async function enrichFixturesWithFootballApis(
           const id = entry[1];
           const standing = findProviderStanding(standings, String(id), team.name);
           if (standing) {
-            // SportAPI.ai is the highest-priority primary evidence source.
-            // Replace stale/secondary provenance, but never replace an existing
-            // SportAPI.ai value with weaker data later in the pipeline.
-            if (standing) {
-              team.leagueRank = standing.rank;
-              team.points = standing.points;
-              team.standingsSource = 'SPORTAPI_AI';
-            }
+            team.leagueRank = standing.rank;
+            team.points = standing.points;
+            team.standingsSource = 'SPORTAPI_AI';
             if (standing.form?.length) {
               team.form = standing.form.slice(-5);
               team.formSource = 'SPORTAPI_AI';
@@ -857,12 +901,7 @@ export async function enrichFixturesWithFootballApis(
       }
     }
 
-    // SportAPI.ai enrichment must use SportAPI.ai team IDs. The two providers
-    // have independent entity namespaces and their IDs must never be mixed.
-    const sportApiEntries: Array<[TeamStats, number]> = [
-      [fixture.homeTeam, homeId],
-      [fixture.awayTeam, awayId],
-    ];
+    const sportApiEntries: Array<[TeamStats, number]> = [[fixture.homeTeam, homeId], [fixture.awayTeam, awayId]];
 
     for (const entry of sportApiEntries) {
       const team = entry[0];
@@ -955,8 +994,6 @@ export async function enrichFixturesWithFootballApis(
     let awayId = Number((fixture as any).sportmonksAwayTeamId);
     const seasonId = Number((fixture as any).sportMonksSeasonId);
 
-    // The current-date fixture feed may be empty under a restricted plan. Recover
-    // team IDs by exact provider-name lookup so historical evidence can still be used.
     for (const [team, side] of [[fixture.homeTeam, 'home'], [fixture.awayTeam, 'away']] as const) {
       const existingId = side === 'home' ? homeId : awayId;
       if (Number.isInteger(existingId) || sportmonksTeamSearchBudget.used >= providerLimit('SPORT_PROVIDER_MAX_TEAM_SEARCH_LOOKUPS', 50)) continue;
@@ -1062,8 +1099,6 @@ export async function enrichFixturesWithFootballApis(
           const id = entry[1];
           const standing = findProviderStanding(standings, String(id), team.name);
           if (standing) {
-            // Sportmonks is a co-primary source. It may fill a missing field,
-            // but SportAPI.ai remains authoritative when it already supplied it.
             if (!isPrimarySource(team.standingsSource)) {
               team.leagueRank = standing.rank;
               team.points = standing.points;
@@ -1099,7 +1134,6 @@ export async function enrichFixturesWithFootballApis(
     if (sportApiAiEnabled) await enrichFromSportApi(fixture);
     if (sportmonksEnabled) await enrichFromSportmonks(fixture);
 
-    // API-Football is fallback-only and never displaces verified SportAPI.ai or Sportmonks evidence.
     const match = apiByKey.get(fixtureKey(fixture));
     if (!match || !apiFootballEnabled || !apiFootballConfigured()) continue;
 
@@ -1117,11 +1151,6 @@ export async function enrichFixturesWithFootballApis(
       apiFootballAwayTeamId: awayId,
     });
 
-    const competitionText = String(raw.league?.name || '') + ' ' + String(raw.league?.country || '') + ' ' + String(fixture.league || '');
-    // API-Football is a fallback for any mapped competition, including
-    // international and youth competitions. Restricting it to a hand-maintained
-    // list caused fixtures such as U21/national-team qualifiers to remain on the
-    // neutral prior even when verified standings/form existed upstream.
     if (!Number.isInteger(leagueId) || !Number.isInteger(season) || !Number.isInteger(homeId) || !Number.isInteger(awayId)) continue;
 
     const needHomeForm = !hasVerifiedForm(fixture.homeTeam);
