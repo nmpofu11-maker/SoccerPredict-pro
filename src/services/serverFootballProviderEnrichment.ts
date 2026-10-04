@@ -676,12 +676,10 @@ function candidateMatchesFixture(candidate: MatchFixture | any, fixture: MatchFi
 
   const homeId = candidateNames.homeId;
   const awayId = candidateNames.awayId;
-  if ((homeId && hasPositiveInteger(homeId) && !sameName(homeId, (fixture as any).sportmonksHomeTeamId ?? (fixture as any).sportApiAiHomeTeamId ?? (fixture as any).apiFootballHomeTeamId ?? '')) &&
-      (fixture.homeTeam.id && normalizeProviderTeamName(String(fixture.homeTeam.id)) !== normalizeProviderTeamName(String(homeId)))) {
+  if (homeId && hasPositiveInteger(homeId) && String(homeId) !== String((fixture as any).sportmonksHomeTeamId ?? (fixture as any).sportApiAiHomeTeamId ?? (fixture as any).apiFootballHomeTeamId ?? '')) {
     return false;
   }
-  if ((awayId && hasPositiveInteger(awayId) && !sameName(awayId, (fixture as any).sportmonksAwayTeamId ?? (fixture as any).sportApiAiAwayTeamId ?? (fixture as any).apiFootballAwayTeamId ?? '')) &&
-      (fixture.awayTeam.id && normalizeProviderTeamName(String(fixture.awayTeam.id)) !== normalizeProviderTeamName(String(awayId)))) {
+  if (awayId && hasPositiveInteger(awayId) && String(awayId) !== String((fixture as any).sportmonksAwayTeamId ?? (fixture as any).sportApiAiAwayTeamId ?? (fixture as any).apiFootballAwayTeamId ?? '')) {
     return false;
   }
 
@@ -804,7 +802,7 @@ export async function enrichFixturesWithFootballApis(
     }
   }
 
-  for (const [key, match] of apiByKey) {
+  for (const match of apiByKey.values()) {
     const existing = enriched.find((fixture) => candidateMatchesFixture(match.mapped, fixture));
     if (!existing) {
       enriched.push(match.mapped);
