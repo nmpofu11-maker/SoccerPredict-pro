@@ -1,355 +1,224 @@
 /**
- * Bzzoiro Sports Data (BSD) API Client (https://sports.bzzoiro.com/docs/football/)
+ * Bzzoiro Sports Data (BSD) isolated server-side REST client.
  *
- * Provides football results, live scores, league standings, team form,
- * xG shotmaps, multi-bookmaker odds, and Dixon-Coles statistical predictions.
- *
- * Auth: Header `Authorization: Token <BSD_API_KEY>`
- * Rate Limit: 10 requests/second per IP with burst.
+ * Stage A only: no prediction-engine or fixture-enrichment integration.
+ * BSD identifiers remain in the bsd* namespace and are never translated into
+ * SportAPI.ai or Sportmonks identifiers.
  */
+const DEFAULT_BASE_URL = 'https://sports.bzzoiro.com/api/v2';
+const DEFAULT_TIMEOUT_MS = 12_000;
+const DEFAULT_CACHE_TTL_MS = 5 * 60_000;
+const MIN_REQUEST_INTERVAL_MS = 100; // BSD documents 10 requests/second per IP.
+const MAX_CACHE_ENTRIES = 500;
 
-function getApiKey(): string {
-  return (
-    process.env.BSD_API_KEY?.trim() ||
-    process.env.BZZOIRO_API_KEY?.trim() ||
-    process.env.BZZOIRO_KEY?.trim() ||
-    ''
-  );
+export type BsdResource = 'availability' | 'stats' | 'lineups' | 'incidents' |
+  'player-stats' | 'odds' | 'odds/comparison' | 'prediction' | 'shotmap';
+
+export interface BsdEnvelope<T = unknown> {
+  data: T;
+  source: 'BSD';
+  fetchedAt: string;
+  endpoint: string;
+  httpStatus: number;
+  cacheHit: boolean;
+  rateLimit: { limit?: string; remaining?: string; reset?: string };
 }
 
-function getBaseUrl(): string {
-  return (
-    process.env.BSD_BASE_URL?.trim() ||
-    'https://sports.bzzoiro.com/api/v2'
-  ).replace(/\/+$/, '');
+export interface BsdRequestOptions {
+  cacheTtlMs?: number;
+  forceRefresh?: boolean;
+  timeoutMs?: number;
+}
+
+export class BsdApiError extends Error {
+  constructor(message: string, public readonly status: number, public readonly retryAfterSeconds?: number) {
+    super(message);
+    this.name = 'BsdApiError';
+  }
+}
+
+const responseCache = new Map<string, { expiresAt: number; value: BsdEnvelope }>();
+let nextRequestAt = 0;
+let requestQueue: Promise<void> = Promise.resolve();
+let rateLimitedUntil = 0;
+
+function apiKey(): string {
+  return (process.env.BSD_API_KEY || '').trim();
 }
 
 export function bsdConfigured(): boolean {
-  return getApiKey().length > 0;
+  return apiKey().length > 0;
 }
 
-export interface BsdSportCoverage {
-  sport: string;
-  name: string;
-  status: string;
-  events_next_7d: number;
-  events_next_30d: number;
-  events_last_7d: number;
-  priced_next_7d: number;
-  live_now: number;
-  next_event_at: string | null;
-  last_event_at: string | null;
-  docs_url?: string;
+export function bsdBaseUrl(): string {
+  return (process.env.BSD_API_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
 }
 
-export interface BsdCoverage {
-  generated_at: string;
-  sports: BsdSportCoverage[];
+export function clearBsdCache(): void {
+  responseCache.clear();
 }
 
-export interface BsdEvent {
-  id: number;
-  date: string;
-  kickoff_time?: string;
-  utc_date?: string;
-  status?: string;
-  league: {
-    id: number;
-    name: string;
-    country?: string;
-    season?: string;
-  };
-  home_team: {
-    id: number;
-    name: string;
-    short_name?: string;
-  };
-  away_team: {
-    id: number;
-    name: string;
-    short_name?: string;
-  };
-  score?: {
-    home?: number | null;
-    away?: number | null;
-    ht_home?: number | null;
-    ht_away?: number | null;
-  };
-  venue?: {
-    id?: number;
-    name?: string;
-    city?: string;
-    capacity?: number;
-  };
-  [key: string]: any;
+export function isBsdRateLimited(): boolean {
+  return Date.now() < rateLimitedUntil;
 }
 
-export interface BsdShot {
-  id: number;
-  minute: number;
-  team_id: number;
-  player_name?: string;
-  xg: number;
-  x: number;
-  y: number;
-  outcome: string;
-  situation: string;
-  body_part: string;
+function headerValue(headers: Headers, name: string): string | undefined {
+  return headers.get(name) ?? headers.get(name.toLowerCase()) ?? undefined;
 }
 
-export interface BsdStats {
-  match_id: number;
-  possession?: {
-    home: number;
-    away: number;
-  };
-  shots_total?: {
-    home: number;
-    away: number;
-  };
-  shots_on_target?: {
-    home: number;
-    away: number;
-  };
-  xg?: {
-    home: number;
-    away: number;
-  };
-  corners?: {
-    home: number;
-    away: number;
-  };
-  cards_yellow?: {
-    home: number;
-    away: number;
-  };
-  cards_red?: {
-    home: number;
-    away: number;
-  };
-  passes_total?: {
-    home: number;
-    away: number;
-  };
-  pass_accuracy?: {
-    home: number;
-    away: number;
-  };
-  shots?: BsdShot[];
-  [key: string]: any;
+function retryAfterSeconds(headers: Headers): number | undefined {
+  const raw = headerValue(headers, 'retry-after');
+  if (!raw) return undefined;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds)) return Math.max(1, seconds);
+  const date = Date.parse(raw);
+  return Number.isFinite(date) ? Math.max(1, Math.ceil((date - Date.now()) / 1000)) : undefined;
 }
 
-export interface BsdPlayer {
-  id: number;
-  name: string;
-  shirt_number?: number;
-  position?: string;
-  rating?: number;
-  xg?: number;
-  xa?: number;
-}
-
-export interface BsdLineup {
-  confirmed: boolean;
-  home: {
-    formation?: string;
-    starting_xi: BsdPlayer[];
-    bench: BsdPlayer[];
-  };
-  away: {
-    formation?: string;
-    starting_xi: BsdPlayer[];
-    bench: BsdPlayer[];
-  };
-}
-
-export interface BsdPrediction {
-  event_id: number;
-  model: string; // 'dixon-coles-analytic-blend'
-  markets: {
-    full_time_result?: {
-      home: number;
-      draw: number;
-      away: number;
-    };
-    over_under_25?: {
-      over: number;
-      under: number;
-    };
-    btts?: {
-      yes: number;
-      no: number;
-    };
-  };
-  expected_goals?: {
-    home: number;
-    away: number;
-    total: number;
-  };
-  [key: string]: any;
-}
-
-export interface BsdStandingsEntry {
-  rank: number;
-  team_id: number;
-  team_name: string;
-  played: number;
-  won: number;
-  drawn: number;
-  lost: number;
-  goals_for: number;
-  goals_against: number;
-  goal_difference: number;
-  points: number;
-  form?: string;
-}
-
-export interface BsdStandings {
-  league_id: number;
-  season: string;
-  entries: BsdStandingsEntry[];
-}
-
-export interface BsdTeamForm {
-  team_id: number;
-  matches_count: number;
-  ppg: number;
-  wins: number;
-  draws: number;
-  losses: number;
-  goals_scored_avg: number;
-  goals_conceded_avg: number;
-  xg_for_avg?: number;
-  xg_against_avg?: number;
-  form_sequence: ('W' | 'D' | 'L')[];
-  last_matches?: any[];
-}
-
-/**
- * Generic BSD API Request Helper with token auth, rate-limit awareness and error handling.
- */
-async function bsdFetch<T>(endpoint: string, options: { authRequired?: boolean; timeoutMs?: number } = {}): Promise<T> {
-  const { authRequired = true, timeoutMs = 8000 } = options;
-  const apiKey = getApiKey();
-  if (authRequired && !apiKey) {
-    throw new Error('BSD_API_KEY is not configured');
-  }
-
-  const baseUrl = getBaseUrl();
-  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  const url = `${baseUrl}${cleanEndpoint}`;
-
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-    'User-Agent': 'SoccerPredict-Pro/1.0',
-  };
-
-  if (apiKey) {
-    headers['Authorization'] = `Token ${apiKey}`;
-  }
-
-  const res = await fetch(url, {
-    headers,
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-
-  const contentType = res.headers.get('content-type') || '';
-  const isJson = contentType.includes('application/json');
-  const body = isJson ? await res.json().catch(() => null) : await res.text().catch(() => '');
-
-  if (!res.ok) {
-    const errorDetail =
-      typeof body === 'object' && body !== null && 'detail' in body
-        ? (body as any).detail
-        : typeof body === 'object' && body !== null && 'message' in body
-        ? (body as any).message
-        : `HTTP ${res.status}`;
-    throw new Error(`BSD API error ${res.status}: ${errorDetail}`);
-  }
-
-  return body as T;
-}
-
-/**
- * Check real-time seasonal data coverage without requiring an API key.
- */
-export async function fetchBsdCoverage(): Promise<BsdCoverage> {
-  return bsdFetch<BsdCoverage>('/coverage/', { authRequired: false, timeoutMs: 5000 });
-}
-
-/**
- * Fetch matches/fixtures for a specified calendar date (YYYY-MM-DD).
- */
-export async function fetchBsdEventsByDate(date: string): Promise<BsdEvent[]> {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new Error('BSD date must be YYYY-MM-DD');
-  }
-
-  const body = await bsdFetch<any>(`/events/?date=${encodeURIComponent(date)}`);
-  if (Array.isArray(body)) return body;
-  if (Array.isArray(body?.results)) return body.results;
-  if (Array.isArray(body?.data)) return body.data;
-  if (Array.isArray(body?.events)) return body.events;
-  return [];
-}
-
-/**
- * Fetch detailed match metadata for a specific BSD event ID.
- */
-export async function fetchBsdEventDetail(eventId: string | number): Promise<BsdEvent | null> {
-  if (!eventId) return null;
-  return bsdFetch<BsdEvent>(`/events/${encodeURIComponent(eventId)}/`);
-}
-
-/**
- * Check which sub-resources exist for an event in one call.
- */
-export async function fetchBsdEventAvailability(eventId: string | number): Promise<Record<string, boolean>> {
-  if (!eventId) return {};
+async function paceRequests(): Promise<void> {
+  const previous = requestQueue;
+  let release!: () => void;
+  requestQueue = new Promise<void>(resolve => { release = resolve; });
+  await previous;
   try {
-    const body = await bsdFetch<any>(`/events/${encodeURIComponent(eventId)}/availability/`);
-    return typeof body === 'object' && body !== null ? body : {};
-  } catch {
-    return {};
+    const wait = Math.max(0, nextRequestAt - Date.now());
+    if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+    if (Date.now() < rateLimitedUntil) {
+      throw new BsdApiError('BSD rate limit is active; request skipped.', 429,
+        Math.ceil((rateLimitedUntil - Date.now()) / 1000));
+    }
+    nextRequestAt = Date.now() + MIN_REQUEST_INTERVAL_MS;
+  } finally {
+    release();
   }
 }
 
-/**
- * Fetch match statistics and shot-level xG for a specific BSD event ID.
- */
-export async function fetchBsdEventStats(eventId: string | number): Promise<BsdStats | null> {
-  if (!eventId) return null;
-  return bsdFetch<BsdStats>(`/events/${encodeURIComponent(eventId)}/stats/`);
+function normalizePayload(payload: any): any {
+  if (payload && typeof payload === 'object' && payload.error === true) {
+    throw new BsdApiError(String(payload.detail || 'BSD API returned an error.'), Number(payload.status) || 502);
+  }
+  return payload;
 }
 
-/**
- * Fetch team lineups (starting XI, bench, formation) for a specific BSD event ID.
- */
-export async function fetchBsdEventLineups(eventId: string | number): Promise<BsdLineup | null> {
-  if (!eventId) return null;
-  return bsdFetch<BsdLineup>(`/events/${encodeURIComponent(eventId)}/lineups/`);
+export async function bsdGet<T = unknown>(
+  endpoint: string,
+  options: BsdRequestOptions = {},
+): Promise<BsdEnvelope<T>> {
+  if (!bsdConfigured()) throw new BsdApiError('BSD_API_KEY is not configured; BSD remains disabled.', 503);
+  const cleanPath = endpoint.replace(/^\/+/, '');
+  if (!cleanPath || cleanPath.split('/').some(part => part === '..')) {
+    throw new BsdApiError('Invalid BSD endpoint path.', 400);
+  }
+
+  const url = bsdBaseUrl() + '/' + cleanPath;
+  const cacheKey = url;
+  const cached = responseCache.get(cacheKey);
+  if (!options.forceRefresh && cached && cached.expiresAt > Date.now()) {
+    return { ...cached.value, cacheHit: true } as BsdEnvelope<T>;
+  }
+
+  await paceRequests();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: 'Token ' + apiKey(),
+        Accept: 'application/json',
+      },
+      signal: controller.signal,
+    });
+    const raw = await response.text();
+    let body: any = null;
+    if (raw) {
+      try { body = JSON.parse(raw); }
+      catch { throw new BsdApiError('BSD returned non-JSON content for ' + cleanPath, response.status || 502); }
+    }
+
+    if (!response.ok) {
+      const retry = retryAfterSeconds(response.headers);
+      if (response.status === 429) rateLimitedUntil = Date.now() + (retry ?? 60) * 1000;
+      const detail = typeof body?.detail === 'string' ? body.detail :
+        typeof body?.message === 'string' ? body.message : 'HTTP ' + response.status;
+      throw new BsdApiError('BSD ' + response.status + ': ' + detail, response.status, retry);
+    }
+
+    body = normalizePayload(body);
+    const envelope: BsdEnvelope<T> = {
+      data: (body && typeof body === 'object' && 'data' in body ? body.data : body) as T,
+      source: 'BSD',
+      fetchedAt: new Date().toISOString(),
+      endpoint: cleanPath,
+      httpStatus: response.status,
+      cacheHit: false,
+      rateLimit: {
+        limit: headerValue(response.headers, 'ratelimit-limit'),
+        remaining: headerValue(response.headers, 'ratelimit-remaining'),
+        reset: headerValue(response.headers, 'ratelimit-reset'),
+      },
+    };
+    const ttl = Math.max(0, options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS);
+    if (ttl > 0) {
+      if (responseCache.size >= MAX_CACHE_ENTRIES) {
+        const oldest = responseCache.keys().next().value;
+        if (oldest) responseCache.delete(oldest);
+      }
+      responseCache.set(cacheKey, { expiresAt: Date.now() + ttl, value: envelope });
+    }
+    return envelope;
+  } catch (error) {
+    if (error instanceof BsdApiError) throw error;
+    if ((error as Error)?.name === 'AbortError') throw new BsdApiError('BSD request timed out.', 408);
+    throw new BsdApiError('BSD network request failed: ' + (error instanceof Error ? error.message : String(error)), 502);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
-/**
- * Fetch statistical Dixon-Coles prediction probabilities for a specific BSD event ID.
- */
-export async function fetchBsdEventPrediction(eventId: string | number): Promise<BsdPrediction | null> {
-  if (!eventId) return null;
-  return bsdFetch<BsdPrediction>(`/events/${encodeURIComponent(eventId)}/prediction/`);
+/** Public coverage catalogue. */
+export function fetchBsdCoverage(options?: BsdRequestOptions): Promise<BsdEnvelope> {
+  return bsdGet('coverage/', options);
 }
 
-/**
- * Fetch standings table for a specific BSD league ID.
- */
-export async function fetchBsdLeagueStandings(leagueId: string | number): Promise<BsdStandings | null> {
-  if (!leagueId) return null;
-  return bsdFetch<BsdStandings>(`/leagues/${encodeURIComponent(leagueId)}/standings/`);
+/** Authenticated paginated league catalogue. */
+export function fetchBsdLeagues(params: { limit?: number; offset?: number } = {}, options?: BsdRequestOptions): Promise<BsdEnvelope> {
+  const query = new URLSearchParams();
+  if (params.limit !== undefined) query.set('limit', String(Math.min(200, Math.max(1, Math.floor(params.limit)))));
+  if (params.offset !== undefined) query.set('offset', String(Math.max(0, Math.floor(params.offset))));
+  return bsdGet('leagues/' + (query.size ? '?' + query.toString() : ''), options);
 }
 
-/**
- * Fetch averaged team form and metrics for a specific BSD team ID.
- */
-export async function fetchBsdTeamForm(teamId: string | number): Promise<BsdTeamForm | null> {
-  if (!teamId) return null;
-  return bsdFetch<BsdTeamForm>(`/teams/${encodeURIComponent(teamId)}/form/`);
+/** Fixture list; date/status filters are passed as documented query parameters. */
+export function fetchBsdEvents(params: Record<string, string | number | undefined> = {}, options?: BsdRequestOptions): Promise<BsdEnvelope> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value !== undefined) query.set(key, String(value));
+  return bsdGet('events/' + (query.size ? '?' + query.toString() : ''), options);
+}
+
+export function fetchBsdEventDetail(bsdFixtureId: string | number, options?: BsdRequestOptions): Promise<BsdEnvelope> {
+  return bsdGet('events/' + encodeURIComponent(String(bsdFixtureId)) + '/', options);
+}
+
+export function fetchBsdEventResource(
+  bsdFixtureId: string | number,
+  resource: BsdResource,
+  options?: BsdRequestOptions,
+): Promise<BsdEnvelope> {
+  const allowed: BsdResource[] = ['availability', 'stats', 'lineups', 'incidents', 'player-stats', 'odds', 'odds/comparison', 'prediction', 'shotmap'];
+  if (!allowed.includes(resource)) throw new BsdApiError('Unsupported BSD event resource.', 400);
+  return bsdGet('events/' + encodeURIComponent(String(bsdFixtureId)) + '/' + resource + '/', options);
+}
+
+/** Stable provider namespace helper; never assign these values to another provider's ID fields. */
+export function withBsdIds<T extends Record<string, any>>(
+  fixture: T,
+  ids: { fixtureId?: string | number; homeTeamId?: string | number; awayTeamId?: string | number },
+): T & { bsdFixtureId?: string; bsdHomeTeamId?: string; bsdAwayTeamId?: string } {
+  return {
+    ...fixture,
+    ...(ids.fixtureId !== undefined ? { bsdFixtureId: String(ids.fixtureId) } : {}),
+    ...(ids.homeTeamId !== undefined ? { bsdHomeTeamId: String(ids.homeTeamId) } : {}),
+    ...(ids.awayTeamId !== undefined ? { bsdAwayTeamId: String(ids.awayTeamId) } : {}),
+  };
 }

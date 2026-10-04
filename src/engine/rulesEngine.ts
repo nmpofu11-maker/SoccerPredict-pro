@@ -724,6 +724,40 @@ export function evaluateFixturePrediction(
   const maxPct = Math.max(roundedHome, roundedAway, roundedDraw);
   const modelLeaderProbabilityPct = Math.min(100, Math.max(0, Math.round(maxPct)));
 
+  // Evidence Transparency Logic
+  let evidenceLevel: 'verified' | 'partial' | 'neutral' = 'neutral';
+  let provider: 'SportAPI.ai' | 'Sportmonks' | 'API-Football' | 'Football-Data' | 'none' = 'none';
+  let modelType: 'evidence model' | 'partial model' | 'neutral prior' = 'neutral prior';
+
+  const hasProviderId = Boolean(fixture.sportApiAiFixtureId || fixture.sportmonksFixtureId || fixture.apiFootballFixtureId || fixture.bsdFixtureId);
+  const isVerified = Boolean(fixture.sportApiAiFixtureId || fixture.sportmonksFixtureId || fixture.apiFootballFixtureId || fixture.isStandingsVerified);
+
+  if (!insufficientTeamData) {
+    evidenceLevel = isVerified ? 'verified' : 'partial';
+
+    const rawSource = (fixture as any).evidenceSource || fixture.homeTeam.formSource || fixture.homeTeam.standingsSource;
+    if (rawSource === 'SPORTAPI_AI' || rawSource === 'SportAPI.ai-team-history') provider = 'SportAPI.ai';
+    else if (rawSource === 'SPORTMONKS' || rawSource === 'Sportmonks-team-history') provider = 'Sportmonks';
+    else if (rawSource === 'API_FOOTBALL' || rawSource === 'API-Football-team-history') provider = 'API-Football';
+    else if (rawSource === 'FOOTBALL_DATA_ORG') provider = 'Football-Data';
+
+    if (evidenceLevel === 'partial') {
+      modelType = 'partial model';
+    } else {
+      const homeHasData = teamHasVerifiedStrength(fixture.homeTeam);
+      const awayHasData = teamHasVerifiedStrength(fixture.awayTeam);
+      modelType = (homeHasData && awayHasData) ? 'evidence model' : 'partial model';
+    }
+  } else {
+    // Even if insufficient data, try to identify the intended provider from fixture IDs
+    if (fixture.sportApiAiFixtureId) provider = 'SportAPI.ai';
+    else if (fixture.sportmonksFixtureId) provider = 'Sportmonks';
+    else if (fixture.apiFootballFixtureId) provider = 'API-Football';
+    else if (fixture.homeTeam.formSource === 'FOOTBALL_DATA_ORG') provider = 'Football-Data';
+  }
+
+  const lastMatchesCount = (fixture.homeTeam.form?.length || 0) + (fixture.awayTeam.form?.length || 0);
+
   return {
     matchId: fixture.id,
     homeWinPct: roundedHome,
@@ -747,6 +781,11 @@ export function evaluateFixturePrediction(
     favouriteTeams,
     manualOverride,
     isVolatilityCompressed,
+    evidenceSource: (fixture as any).evidenceSource,
+    evidenceLevel,
+    provider,
+    lastMatchesCount,
+    modelType,
   };
 }
 

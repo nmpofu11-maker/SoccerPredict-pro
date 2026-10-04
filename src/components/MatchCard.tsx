@@ -104,6 +104,10 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     favouriteTeams: [],
     manualOverride: 'none' as const,
     isVolatilityCompressed: false,
+    evidenceLevel: 'neutral' as const,
+    provider: 'none' as const,
+    lastMatchesCount: 0,
+    modelType: 'neutral prior' as const,
   };
 
   const isInternational = isInternationalCompetition(safeFixture?.league || '');
@@ -811,6 +815,50 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             historicalResults={historicalResults}
             matchId={fixture.id}
           />
+
+          {/* Prediction Evidence Transparency */}
+          <div className="bg-slate-950/40 rounded-lg border border-slate-800/40 p-2 space-y-1.5">
+            <div className="flex items-center justify-between text-[9px] uppercase tracking-wider text-slate-500 font-bold mb-0.5">
+              <span>Prediction Evidence Transparency</span>
+              <div className="flex items-center gap-1 text-sky-500/70">
+                <ShieldCheck className="w-2.5 h-2.5" />
+                <span>Verified Traceability</span>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] text-slate-400">Evidence</span>
+                <span className={`text-[11px] font-bold capitalize ${
+                  prediction.evidenceLevel === 'verified' ? 'text-emerald-400' : 
+                  prediction.evidenceLevel === 'partial' ? 'text-amber-400' : 'text-slate-400'
+                }`}>
+                  {prediction.evidenceLevel}
+                </span>
+              </div>
+              
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] text-slate-400">Provider</span>
+                <span className="text-[11px] font-bold text-slate-200">
+                  {prediction.provider === 'none' ? '—' : prediction.provider}
+                </span>
+              </div>
+              
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] text-slate-400">Model</span>
+                <span className="text-[11px] font-bold text-slate-200 capitalize">
+                  {prediction.modelType}
+                </span>
+              </div>
+              
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] text-slate-400">Historical Matches</span>
+                <span className="text-[11px] font-bold text-slate-200">
+                  {prediction.lastMatchesCount} games
+                </span>
+              </div>
+            </div>
+          </div>
 
           {/* Applied Rules Modifiers Audit */}
           <RulesAuditChips rules={prediction.appliedRules} matchId={fixture.id} />

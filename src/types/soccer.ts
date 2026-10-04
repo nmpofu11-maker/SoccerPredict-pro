@@ -9,12 +9,12 @@ export interface TeamStats {
   leagueRank: number | null;
   points: number | null;
   form: ('W' | 'D' | 'L')[];
-  formSource?: 'API_FOOTBALL' | 'FOOTBALL_DATA_ORG' | 'ESPN' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | 'BSD';
-  standingsSource?: 'API_FOOTBALL' | 'FOOTBALL_DATA_ORG' | 'ESPN' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'BSD';
-  matchStatsSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'ESPN' | 'BSD';
-  advancedStatsSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'FOOTBALL_DATA_ORG' | 'BSD';
-  homeAwayFormSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'FOOTBALL_DATA_ORG' | 'BSD';
-  scheduleSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'ESPN' | 'BSD';
+  formSource?: 'API_FOOTBALL' | 'FOOTBALL_DATA_ORG' | 'ESPN' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB';
+  standingsSource?: 'API_FOOTBALL' | 'FOOTBALL_DATA_ORG' | 'ESPN' | 'SPORTMONKS' | 'SPORTAPI_AI';
+  matchStatsSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'ESPN';
+  advancedStatsSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'FOOTBALL_DATA_ORG';
+  homeAwayFormSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'FOOTBALL_DATA_ORG';
+  scheduleSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'ESPN';
   formScores?: string[]; // FT scores for last 5 matches e.g. ["2-1", "3-0", "1-1", "2-0", "1-0"]
   formDetails?: {
     result: 'W' | 'D' | 'L';
@@ -63,6 +63,11 @@ export interface MatchFixture {
   homeTeam: TeamStats;
   awayTeam: TeamStats;
   h2h: H2HRecord | null;
+  /** BSD identifiers are isolated from SportAPI.ai and Sportmonks namespaces. */
+  bsdFixtureId?: string;
+  bsdLeagueId?: string;
+  bsdHomeTeamId?: string;
+  bsdAwayTeamId?: string;
   sportApiAiFixtureId?: string;
   sportApiAiLeagueId?: number;
   sportApiAiHomeTeamId?: number;
@@ -126,6 +131,12 @@ export interface PredictionResult {
   favouriteTeams: string[];
   manualOverride: ManualOverrideType;
   isVolatilityCompressed: boolean;
+  // Evidence Transparency
+  evidenceSource?: string;
+  evidenceLevel: 'verified' | 'partial' | 'neutral';
+  provider: 'SportAPI.ai' | 'Sportmonks' | 'API-Football' | 'Football-Data' | 'none';
+  lastMatchesCount: number;
+  modelType: 'evidence model' | 'partial model' | 'neutral prior';
 }
 
 export interface IngestionMetadata {

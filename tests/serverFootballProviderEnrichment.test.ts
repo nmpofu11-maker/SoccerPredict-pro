@@ -420,3 +420,178 @@ test('Sportmonks team-search fallback enriches historical evidence when current-
     delete process.env.SPORT_PROVIDER_MAX_TEAM_LOOKUPS;
   }
 });
+
+test('Bookmaker fixture team-history fallback enrichment regression tests', async () => {
+  // Mock SportAPI.ai or Sportmonks for bookmaker fixtures fallback
+  process.env.SPORTMONKS_API_KEY = 'test-sportmonks-key';
+  process.env.API_FOOTBALL_USE_RAPIDAPI = 'test-rapid-key';
+  process.env.API_FOOTBALL_BASE_URL = 'https://api-football.test/v3';
+  process.env.SPORTMONKS_BASE_URL = 'https://sportmonks.test/v3/football';
+
+  const makeMatch = (id: number, date: string, homeId: number, awayId: number, hg: number, ag: number) => ({
+    id,
+    starting_at: date,
+    state: { data: { short_name: 'FT' } },
+    participants: [
+      { id: homeId, name: homeId === 701 ? 'Bookie Home' : 'Other Team', meta: { location: 'home' } },
+      { id: awayId, name: awayId === 702 ? 'Bookie Away' : 'Other Team', meta: { location: 'away' } },
+    ],
+    scores: { data: [
+      { description: 'CURRENT', score: { participant: 'home', goals: hg } },
+      { description: 'CURRENT', score: { participant: 'away', goals: ag } },
+    ] },
+    statistics: { data: [] },
+  });
+
+  globalThis.fetch = (async (input: URL | RequestInfo) => {
+    const url = new URL(String(input));
+    if (url.pathname.includes('/fixtures/date/')) {
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    }
+    if (url.pathname.includes('/teams/search/')) {
+      const last = decodeURIComponent(url.pathname.split('/').pop() || '');
+      const id = last === 'Bookie Home' ? 701 : 702;
+      return new Response(JSON.stringify({ data: [{ id, name: last }] }), { status: 200 });
+    }
+    if (url.pathname.includes('/fixtures/between/')) {
+      const isHome = url.pathname.endsWith('/701');
+      if (isHome) {
+        return new Response(JSON.stringify({ data: [
+          makeMatch(8001, '2026-10-01T15:00:00Z', 701, 999, 3, 0),
+          makeMatch(8002, '2026-09-24T15:00:00Z', 999, 701, 1, 2),
+        ] }), { status: 200 });
+      } else {
+        return new Response(JSON.stringify({ data: [
+          makeMatch(8101, '2026-10-02T15:00:00Z', 999, 702, 0, 1),
+          makeMatch(8102, '2026-09-25T15:00:00Z', 702, 999, 1, 1),
+        ] }), { status: 200 });
+      }
+    }
+    throw new Error('Unexpected fallback test request: ' + url.toString());
+  }) as typeof fetch;
+
+  const bookmakerFixture: MatchFixture = {
+    id: 'hollywoodbets_unmatched_123',
+    kickoffTime: '2026-10-10T15:00:00Z',
+    league: 'South African Premier Division',
+    venue: 'Rand Stadium',
+    isHighStakes: false,
+    motivation: 'regular',
+    homeTeam: { id: 'bk_home', name: 'Bookie Home', shortName: 'BHM', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    awayTeam: { id: 'bk_away', name: 'Bookie Away', shortName: 'BAW', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    h2h: null,
+  };
+
+  try {
+    const result = await enrichFixturesWithFootballApis([bookmakerFixture], ['2026-10-10'], { enableSportApiAi: false, enableSportmonks: true, enableApiFootball: false });
+    assert.equal(result.fixtures.length, 1);
+    const enrichedFix = result.fixtures[0];
+    assert.equal((enrichedFix as any).evidenceSource, 'Sportmonks-team-history');
+    assert.deepEqual(enrichedFix.homeTeam.form, ['W', 'W']);
+    assert.deepEqual(enrichedFix.awayTeam.form, ['D', 'W']);
+  } finally {
+    restoreEnvironment();
+  }
+});
+
+test('Advanced competition Category classification and team-history evidence fallback tests', async () => {
+  process.env.SPORTMONKS_API_KEY = 'test-sportmonks-key';
+  process.env.SPORTMONKS_BASE_URL = 'https://sportmonks.test/v3/football';
+
+  const makeMatch = (id: number, date: string, homeId: number, awayId: number, hg: number, ag: number) => ({
+    id,
+    starting_at: date,
+    state: { data: { short_name: 'FT' } },
+    participants: [
+      { id: homeId, name: homeId === 701 ? 'Test Women Home' : 'Other Team', meta: { location: 'home' } },
+      { id: awayId, name: awayId === 702 ? 'Test Women Away' : 'Other Team', meta: { location: 'away' } },
+    ],
+    scores: { data: [
+      { description: 'CURRENT', score: { participant: 'home', goals: hg } },
+      { description: 'CURRENT', score: { participant: 'away', goals: ag } },
+    ] },
+    statistics: { data: [] },
+  });
+
+  globalThis.fetch = (async (input: URL | RequestInfo) => {
+    const url = new URL(String(input));
+    if (url.pathname.includes('/fixtures/date/')) {
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    }
+    if (url.pathname.includes('/teams/search/')) {
+      const last = decodeURIComponent(url.pathname.split('/').pop() || '');
+      const id = last.includes('Home') ? 701 : 702;
+      return new Response(JSON.stringify({ data: [{ id, name: last }] }), { status: 200 });
+    }
+    if (url.pathname.includes('/fixtures/between/')) {
+      const isHome = url.pathname.endsWith('/701');
+      if (isHome) {
+        return new Response(JSON.stringify({ data: [
+          makeMatch(9001, '2026-10-01T15:00:00Z', 701, 999, 3, 0),
+        ] }), { status: 200 });
+      } else {
+        return new Response(JSON.stringify({ data: [
+          makeMatch(9101, '2026-10-02T15:00:00Z', 999, 702, 0, 1),
+        ] }), { status: 200 });
+      }
+    }
+    throw new Error('Unexpected fallback test request: ' + url.toString());
+  }) as typeof fetch;
+
+  const getBaseFixture = () => ({
+    kickoffTime: '2026-10-10T15:00:00Z',
+    venue: 'Test Stadium',
+    isHighStakes: false,
+    motivation: 'regular' as const,
+    homeTeam: { id: 'bk_home', name: 'Test Women Home', shortName: 'TWH', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    awayTeam: { id: 'bk_away', name: 'Test Women Away', shortName: 'TWA', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    h2h: null,
+  });
+
+  try {
+    // A: Women's league without standings can still receive team-history evidence
+    const womenFixture: MatchFixture = {
+      ...getBaseFixture(),
+      id: 'hollywoodbets_women_1',
+      league: 'Germany • Women Bundesliga',
+    };
+    const resA = await enrichFixturesWithFootballApis([womenFixture], ['2026-10-10'], { enableSportApiAi: false, enableSportmonks: true, enableApiFootball: false });
+    assert.equal((resA.fixtures[0] as any).evidenceSource, 'Sportmonks-team-history');
+    assert.ok(resA.fixtures[0].homeTeam.form.length > 0);
+    assert.ok(resA.fixtures[0].awayTeam.form.length > 0);
+
+    // B: Cup fixture without standings remains rejected
+    const cupFixture: MatchFixture = {
+      ...getBaseFixture(),
+      id: 'hollywoodbets_cup_1',
+      league: 'Scotland • Scottish FA Cup',
+    };
+    const resB = await enrichFixturesWithFootballApis([cupFixture], ['2026-10-10'], { enableSportApiAi: false, enableSportmonks: true, enableApiFootball: false });
+    assert.equal((resB.fixtures[0] as any).evidenceSource, undefined);
+    assert.deepEqual(resB.fixtures[0].homeTeam.form, []);
+
+    // C: SRL fixture remains neutral
+    const srlFixture: MatchFixture = {
+      ...getBaseFixture(),
+      id: 'hollywoodbets_srl_1',
+      league: 'Simulated Reality League • Friendly SRL',
+    };
+    const resC = await enrichFixturesWithFootballApis([srlFixture], ['2026-10-10'], { enableSportApiAi: false, enableSportmonks: true, enableApiFootball: false });
+    assert.equal((resC.fixtures[0] as any).evidenceSource, undefined);
+    assert.deepEqual(resC.fixtures[0].homeTeam.form, []);
+
+    // D: Unknown competition remains neutral
+    const unknownFixture: MatchFixture = {
+      ...getBaseFixture(),
+      id: 'hollywoodbets_unknown_1',
+      league: 'Some Completely Random Unknown Bracket',
+    };
+    const resD = await enrichFixturesWithFootballApis([unknownFixture], ['2026-10-10'], { enableSportApiAi: false, enableSportmonks: true, enableApiFootball: false });
+    assert.equal((resD.fixtures[0] as any).evidenceSource, undefined);
+    assert.deepEqual(resD.fixtures[0].homeTeam.form, []);
+
+  } finally {
+    restoreEnvironment();
+  }
+});
+

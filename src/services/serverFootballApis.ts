@@ -31,8 +31,8 @@ export function isSportmonksRateLimited(): boolean {
   return Date.now() < sportmonksRateLimitedUntil;
 }
 
-export function setSportmonksRateLimited(resetInSeconds = 3600): void {
-  sportmonksRateLimitedUntil = Date.now() + Math.max(60, resetInSeconds) * 1000;
+export function setSportmonksRateLimited(resetInSeconds = 60): void {
+  sportmonksRateLimitedUntil = Date.now() + Math.max(10, resetInSeconds) * 1000;
 }
 
 export function isApiFootballRateLimited(): boolean {
@@ -77,11 +77,22 @@ async function requestJson(url: URL, headers: Record<string, string>, provider: 
       : typeof body?.errors === 'object'
         ? JSON.stringify(body.errors).slice(0, 240)
         : `HTTP ${response.status}`;
+    const isIncludeOrFeatureRestriction = message.toLowerCase().includes('include') ||
+      message.toLowerCase().includes('not have access to') ||
+      message.toLowerCase().includes('access to') ||
+      message.toLowerCase().includes('forbidden') ||
+      message.toLowerCase().includes('feature') ||
+      message.toLowerCase().includes('subscription plan') ||
+      message.toLowerCase().includes('current subscription') ||
+      message.toLowerCase().includes('subscription');
+
     if (response.status === 403 || message.toLowerCase().includes('not subscribed')) {
       if (provider === 'API-Football') setApiFootballRateLimited(24 * 3600);
-      if (provider === 'Sportmonks') setSportmonksRateLimited(24 * 3600);
+      // For Sportmonks: subscription restrictions, unavailable features, or forbidden includes
+      // must never disable Sportmonks globally.
     } else if (response.status === 429 || message.toLowerCase().includes('rate limit')) {
-      if (provider === 'Sportmonks') setSportmonksRateLimited(3600);
+      const isSearchEndpoint = url.pathname.includes('/teams/search') || url.pathname.includes('/search');
+      if (provider === 'Sportmonks' && !isSearchEndpoint) setSportmonksRateLimited(60);
       if (provider === 'API-Football') setApiFootballRateLimited(3600);
     }
     throw new Error(`${provider} HTTP ${response.status}: ${message}`);
@@ -150,12 +161,74 @@ export async function sportmonksGet(path: string, params: Record<string, string 
   if (!key) throw new Error('SPORTMONKS_API_KEY is not configured');
 
   const base = getBaseUrl(process.env.SPORTMONKS_BASE_URL, SPORTMONKS_DEFAULT_BASE_URL);
-  const url = new URL(`${base}/${path.replace(/^\/+/, '')}`);
-  url.searchParams.set('api_token', key);
-  for (const [name, value] of Object.entries(params)) {
-    if (value !== undefined && value !== '') url.searchParams.set(name, String(value));
+
+  // Proactively filter out known unavailable/forbidden includes on current subscription (e.g. xGFixture)
+  const currentParams: Record<string, string | number | undefined> = { ...params };
+  if (typeof currentParams.include === 'string') {
+    const forbidden = ['xgfixture', 'trends', 'predictions', 'probabilities', 'sidelined'];
+    const parts = currentParams.include.split(';').map((p) => p.trim()).filter(Boolean);
+    const filtered = parts.filter((p) => !forbidden.includes(p.toLowerCase()));
+    if (filtered.length > 0) {
+      currentParams.include = filtered.join(';');
+    } else {
+      delete currentParams.include;
+    }
   }
-  return requestJson(url, {}, 'Sportmonks');
+
+  const makeUrl = (pParams: Record<string, string | number | undefined>) => {
+    const url = new URL(`${base}/${path.replace(/^\/+/, '')}`);
+    url.searchParams.set('api_token', key);
+    for (const [name, value] of Object.entries(pParams)) {
+      if (value !== undefined && value !== '') url.searchParams.set(name, String(value));
+    }
+    return url;
+  };
+
+  try {
+    return await requestJson(makeUrl(currentParams), {}, 'Sportmonks');
+  } catch (err: any) {
+    const errMsg = String(err?.message || err).toLowerCase();
+    const isForbiddenIncludeOrFeature =
+      errMsg.includes('include') ||
+      errMsg.includes('not have access') ||
+      errMsg.includes('access to') ||
+      errMsg.includes('forbidden') ||
+      errMsg.includes('subscription') ||
+      errMsg.includes('plan') ||
+      errMsg.includes('feature') ||
+      errMsg.includes('403');
+
+    // If request failed due to a forbidden include or subscription feature, retry without restricted includes
+    if (currentParams.include && isForbiddenIncludeOrFeature) {
+      const match = String(err?.message || err).match(/access to the '([^']+)' include/i);
+      let newInclude = String(currentParams.include);
+      if (match && match[1]) {
+        const restricted = match[1].toLowerCase().trim();
+        newInclude = newInclude
+          .split(';')
+          .filter((inc) => inc.trim().toLowerCase() !== restricted)
+          .join(';');
+      } else {
+        // Fallback to basic safe includes available on current subscription
+        newInclude = 'participants;scores;league;state;venue;round;season';
+      }
+
+      if (newInclude !== currentParams.include && newInclude.length > 0) {
+        try {
+          return await requestJson(makeUrl({ ...currentParams, include: newInclude }), {}, 'Sportmonks');
+        } catch {
+          const noIncludeParams = { ...currentParams };
+          delete noIncludeParams.include;
+          return await requestJson(makeUrl(noIncludeParams), {}, 'Sportmonks');
+        }
+      } else {
+        const noIncludeParams = { ...currentParams };
+        delete noIncludeParams.include;
+        return await requestJson(makeUrl(noIncludeParams), {}, 'Sportmonks');
+      }
+    }
+    throw err;
+  }
 }
 
 
@@ -167,8 +240,8 @@ export async function fetchSportmonksTeamsBySearch(name: string): Promise<any[]>
     const body = await sportmonksGet(`teams/search/${encodeURIComponent(query)}`, { per_page: 10 });
     return Array.isArray(body.data) ? body.data : [];
   } catch (err) {
-    const msg = String(err instanceof Error ? err.message : err);
-    if (msg.includes('404') || msg.includes('not exist')) {
+    const msg = String(err instanceof Error ? err.message : err).toLowerCase();
+    if (msg.includes('404') || msg.includes('not exist') || msg.includes('429') || msg.includes('rate limit')) {
       return [];
     }
     throw err;
@@ -214,7 +287,7 @@ export async function fetchSportmonksFixturesBetweenForTeam(
   startDate: string,
   endDate: string,
   teamId: number | string,
-  includes = 'participants;scores;league;state;venue;round;season;statistics.type;xGFixture'
+  includes = 'participants;scores;league;state;venue;round;season;statistics.type'
 ): Promise<any[]> {
   assertDate(startDate);
   assertDate(endDate);

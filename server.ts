@@ -434,9 +434,8 @@ async function getLeagueStandingsMap(leagueCode: string): Promise<Map<string, { 
   }
   const map = new Map<string, { rank: number; points: number | null }>();
   try {
-    const res = await fetch(`https://site.web.api.espn.com/apis/v2/sports/soccer/${leagueCode}/standings`, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      signal: AbortSignal.timeout(5000)
+    const res = await fetch(`https://site.api.espn.com/apis/v2/sports/soccer/${leagueCode}/standings`, {
+      signal: AbortSignal.timeout(2000)
     });
     if (res.ok) {
       const data = (await res.json()) as any;
@@ -453,9 +452,8 @@ async function getLeagueStandingsMap(leagueCode: string): Promise<Map<string, { 
         }
       }
     }
-  } catch {
-    // Non-league competitions (cups, reserves, regional tournaments) lack round-robin standings tables.
-    // Silently retain empty standings map to keep pipelines resilient without false-positive error alerts.
+  } catch (err) {
+    console.warn(`Failed to fetch standings for ${leagueCode}:`, err);
   }
   standingsMemoryCache.set(leagueCode, map);
   return map;
@@ -510,8 +508,7 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
         chunk.map(async (item) => {
           try {
             const [scoreboardRes, standingsMap] = await Promise.all([
-              fetch(`https://site.web.api.espn.com/apis/site/v2/sports/soccer/${item.code}/scoreboard?${dateParam}`, {
-                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+              fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${item.code}/scoreboard?${dateParam}`, {
                 signal: AbortSignal.timeout(8000)
               }),
               getLeagueStandingsMap(item.code),
@@ -597,9 +594,7 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
                 },
               };
 
-              if (Number.isFinite(fixture.homeTeam.avgPossession)) {
-                fixture.awayTeam.avgPossession = 100 - (fixture.homeTeam.avgPossession as number);
-              }
+              fixture.awayTeam.avgPossession = 100 - fixture.homeTeam.avgPossession;
               allFixtures.push(fixture);
             }
           } catch (leagueErr) {
@@ -794,11 +789,7 @@ function runPredictionFreezeJob(now: number = Date.now()) {
     summary.errors++;
     console.error('[prediction-log] freeze job failed:', e);
   }
-  if (summary.errors > 0) {
-    console.warn(`[prediction-log] freeze encountered ${summary.errors} error(s). Appended: ${summary.appended}.`);
-  } else if (summary.appended > 0) {
-    console.log(`[prediction-log] freeze: ${summary.appended} prediction(s) frozen (${summary.considered} evaluated in horizon).`);
-  }
+  if (summary.appended > 0 || summary.errors > 0) console.log('[prediction-log] freeze', JSON.stringify(summary));
   return summary;
 }
 
@@ -2177,26 +2168,9 @@ async function startServer() {
       ).length;
       if (neutralBeforeFallback > 0) {
         try {
-          const liveData = await getLiveScoreboardFixtures(false);
-          if (liveData && Array.isArray(liveData.fixtures) && liveData.fixtures.length > 0) {
-            const liveMap = new Map<string, any>();
-            for (const lf of liveData.fixtures) {
-              if (lf?.homeTeam?.name && lf?.awayTeam?.name) {
-                const k = `${normalizeTeamName(lf.homeTeam.name)}|${normalizeTeamName(lf.awayTeam.name)}|${(lf.kickoffTime || '').slice(0, 10)}`;
-                liveMap.set(k, lf);
-              }
-            }
-            const merged = diskData.map((df: any) => {
-              const k = `${normalizeTeamName(df.homeTeam?.name)}|${normalizeTeamName(df.awayTeam?.name)}|${(df.kickoffTime || '').slice(0, 10)}`;
-              const liveMatch = liveMap.get(k);
-              if (liveMatch && !hasVerifiedPredictionEvidence(df) && hasVerifiedPredictionEvidence(liveMatch)) {
-                return { ...df, ...liveMatch, id: df.id };
-              }
-              return df;
-            });
-            validation = verifyAndSanitizeFixtures(merged);
-            diskData = merged;
-          }
+          const liveData = await getLiveScoreboardFixtures(true);
+          validation = verifyAndSanitizeFixtures(liveData.fixtures);
+          diskData = liveData.fixtures;
         } catch (fallbackErr) {
           console.warn(
             '[daily-slate] ESPN evidence fallback failed safely:',
