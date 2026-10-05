@@ -485,18 +485,118 @@ export function verifyAndSanitizeFixtures(
       )
     : [];
 
-  // Deduplicate against ghost matches with matching teams and date
+  // Deduplicate and reconcile against ghost matches, duplicate fixture IDs, and rescheduled/inverted duplicates
   const seenPairings = new Set<string>();
+  const seenIds = new Map<string, typeof safeList[0]>();
+  const seenProviderIds = new Map<string, typeof safeList[0]>();
   const deduplicatedList: typeof safeList = [];
+
+  const getProviderKey = (f: any): string | null => {
+    if (f.sportApiAiFixtureId) return `sportapiai_${f.sportApiAiFixtureId}`;
+    if (f.pitchApiMatchId) return `pitchapi_${f.pitchApiMatchId}`;
+    if (f.theRundownEventId) return `therundown_${f.theRundownEventId}`;
+    if (f.sportmonksFixtureId) return `sportmonks_${f.sportmonksFixtureId}`;
+    return null;
+  };
+
+  const areSameTeams = (a: any, b: any): boolean => {
+    const hA = (a.homeTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const aA = (a.awayTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const hB = (b.homeTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const aB = (b.awayTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const direct = hA === hB && aA === aB;
+    const inverted = hA === aB && aA === hB;
+    return direct || inverted;
+  };
+
+  const mergeRecords = (existing: any, incoming: any) => {
+    const existingHasIds = Boolean(existing.sportApiAiHomeTeamId || existing.pitchApiMatchId || existing.theRundownEventId || existing.sportmonksFixtureId);
+    const incomingHasIds = Boolean(incoming.sportApiAiHomeTeamId || incoming.pitchApiMatchId || incoming.theRundownEventId || incoming.sportmonksFixtureId);
+
+    let canonical: any;
+    let older: any;
+    if (incomingHasIds && !existingHasIds) {
+      canonical = incoming;
+      older = existing;
+    } else if (!incomingHasIds && existingHasIds) {
+      canonical = existing;
+      older = incoming;
+    } else {
+      const inTime = new Date(incoming.kickoffTime || 0).getTime();
+      const exTime = new Date(existing.kickoffTime || 0).getTime();
+      if (inTime >= exTime) {
+        canonical = incoming;
+        older = existing;
+      } else {
+        canonical = existing;
+        older = incoming;
+      }
+    }
+
+    // Merge valid complementary fields without overwriting verified data
+    if (!canonical.pitchApiScore && older.pitchApiScore) {
+      canonical.pitchApiScore = older.pitchApiScore;
+    }
+    if ((!canonical.homeTeam?.form || canonical.homeTeam.form.length === 0) && older.homeTeam?.form?.length > 0) {
+      canonical.homeTeam.form = older.homeTeam.form;
+      canonical.homeTeam.formSource = older.homeTeam.formSource;
+    }
+    if ((!canonical.awayTeam?.form || canonical.awayTeam.form.length === 0) && older.awayTeam?.form?.length > 0) {
+      canonical.awayTeam.form = older.awayTeam.form;
+      canonical.awayTeam.formSource = older.awayTeam.formSource;
+    }
+
+    return { canonical, older };
+  };
+
   for (const f of safeList) {
     const homeKey = (f.homeTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const awayKey = (f.awayTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const dateKey = (f.kickoffTime || '').slice(0, 10);
     const pairingKey = `${homeKey}_vs_${awayKey}_${dateKey}`;
+
     if (seenPairings.has(pairingKey)) {
       continue;
     }
+
+    // Check if fixture ID was already seen
+    if (seenIds.has(f.id)) {
+      const existing = seenIds.get(f.id)!;
+      if (areSameTeams(f, existing)) {
+        const { canonical } = mergeRecords(existing, f);
+        const idx = deduplicatedList.indexOf(existing);
+        if (idx !== -1) {
+          deduplicatedList[idx] = canonical;
+        }
+        seenIds.set(f.id, canonical);
+        const provKey = getProviderKey(canonical);
+        if (provKey) seenProviderIds.set(provKey, canonical);
+        continue;
+      } else {
+        // Different teams colliding on same ID: disambiguate ID to protect both distinct fixtures
+        f.id = `${f.id}_${homeKey}_${awayKey}`;
+      }
+    }
+
+    // Check if provider ID in same namespace was already seen
+    const provKey = getProviderKey(f);
+    if (provKey && seenProviderIds.has(provKey)) {
+      const existing = seenProviderIds.get(provKey)!;
+      if (areSameTeams(f, existing)) {
+        const { canonical } = mergeRecords(existing, f);
+        const idx = deduplicatedList.indexOf(existing);
+        if (idx !== -1) {
+          deduplicatedList[idx] = canonical;
+        }
+        seenIds.set(canonical.id, canonical);
+        seenProviderIds.set(provKey, canonical);
+        continue;
+      }
+    }
+
     seenPairings.add(pairingKey);
+    seenIds.set(f.id, f);
+    if (provKey) seenProviderIds.set(provKey, f);
     deduplicatedList.push(f);
   }
 
