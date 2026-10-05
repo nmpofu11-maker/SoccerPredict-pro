@@ -617,14 +617,12 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
 
       const minCutoffDate = getDynamicCutoffIso();
       const mergedMap = new Map<string, any>();
-      const idToKeyMap = new Map<string, string>();
       // 1. First populate disk fixtures (filter out past ghost fixtures older than 48 hours)
       for (const df of diskFixtures) {
         if (!df || !df.id || !df.homeTeam || !df.awayTeam) continue;
         if (df.kickoffTime && df.kickoffTime.slice(0, 10) < minCutoffDate) continue;
         const key = normalizeKey(df);
         mergedMap.set(key, df);
-        if (df.id) idToKeyMap.set(df.id, key);
       }
 
       // 2. Overwrite / append freshly ingested authentic live fixtures, protecting bookmaker-protected fixtures
@@ -632,20 +630,12 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
         if (!lf || !lf.id || !lf.homeTeam || !lf.awayTeam) continue;
         if (lf.kickoffTime && lf.kickoffTime.slice(0, 10) < minCutoffDate) continue;
         const key = normalizeKey(lf);
-        // Clean up previous date entry if this fixture was rescheduled
-        if (lf.id && idToKeyMap.has(lf.id)) {
-          const oldKey = idToKeyMap.get(lf.id)!;
-          if (oldKey !== key) {
-            mergedMap.delete(oldKey);
-          }
-        }
         const existing = mergedMap.get(key);
         // If the match is bookmaker protected or from Hollywoodbets slate, never overwrite
         if (existing && (existing.isBookmakerProtected || (existing.id && existing.id.startsWith('hollywoodbets_')))) {
           continue;
         }
         mergedMap.set(key, lf);
-        idToKeyMap.set(lf.id, key);
       }
 
       const combinedFixtures = Array.from(mergedMap.values())
