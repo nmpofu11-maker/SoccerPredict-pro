@@ -1433,11 +1433,23 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     };
 
     const mergedMap = new Map<string, any>();
-    for (const df of diskFixtures) mergedMap.set(normalizeKey(df), df);
+    const idToKeyMap = new Map<string, string>();
+    for (const df of diskFixtures) {
+      const key = normalizeKey(df);
+      mergedMap.set(key, df);
+      if (df.id) idToKeyMap.set(df.id, key);
+    }
 
     let newCount = 0;
     for (const mf of mapped) {
       const key = normalizeKey(mf);
+      // Clean up previous date entry if this fixture was rescheduled
+      if (mf.id && idToKeyMap.has(mf.id)) {
+        const oldKey = idToKeyMap.get(mf.id)!;
+        if (oldKey !== key) {
+          mergedMap.delete(oldKey);
+        }
+      }
       const existing = mergedMap.get(key);
       if (existing && (existing.isBookmakerProtected || (existing.id && existing.id.startsWith('hollywoodbets_')))) {
         if (!existing.sportApiAiFixtureId && mf.sportApiAiFixtureId) existing.sportApiAiFixtureId = mf.sportApiAiFixtureId;
@@ -1446,9 +1458,10 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
       }
       if (!existing) newCount++;
       mergedMap.set(key, mf);
+      if (mf.id) idToKeyMap.set(mf.id, key);
     }
 
-    const combined = Array.from(mergedMap.values());
+    const { fixtures: combined } = verifyAndSanitizeFixtures(Array.from(mergedMap.values()));
     writeDiskManifest(combined);
     fixturesCache = null;
 
