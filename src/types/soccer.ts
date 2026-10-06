@@ -88,6 +88,7 @@ export interface MatchFixture {
     away: number;
     provider?: string;
   };
+automationSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'PITCHAPI';
   isBookmakerProtected?: boolean;
   isStandingsVerified?: boolean;
   impliedProbabilities?: {
