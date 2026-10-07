@@ -214,7 +214,7 @@ export async function fetchSportmonksFixturesBetweenForTeam(
   startDate: string,
   endDate: string,
   teamId: number | string,
-  includes = 'participants;scores;league;state;venue;round;season;statistics.type;xGFixture'
+  includes = 'participants;scores;league;state;venue;round;season'
 ): Promise<any[]> {
   assertDate(startDate);
   assertDate(endDate);
