@@ -1635,7 +1635,7 @@ export async function enrichFixturesWithFootballApis(
       }
     }
 
-    if ((!fixture.h2h?.source || fixture.h2h.source === 'API_FOOTBALL' || fixture.h2h.source === 'FOOTBALL_DATA_ORG') && sportmonksH2HBudget.used < providerLimit('SPORT_PROVIDER_MAX_H2H_LOOKUPS', DEFAULT_H2H_LOOKUP_LIMIT)) {
+    if (isValidPositiveInteger(homeId) && isValidPositiveInteger(awayId) && (!fixture.h2h?.source || fixture.h2h.source === 'API_FOOTBALL' || fixture.h2h.source === 'FOOTBALL_DATA_ORG') && sportmonksH2HBudget.used < providerLimit('SPORT_PROVIDER_MAX_H2H_LOOKUPS', DEFAULT_H2H_LOOKUP_LIMIT)) {
       sportmonksH2HBudget.used++;
       try {
         const raw = await getSportmonksH2H(String(homeId), String(awayId));
