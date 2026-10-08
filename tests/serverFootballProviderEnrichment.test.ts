@@ -575,3 +575,92 @@ test('Sportmonks historical form excludes cups, friendlies, simulated feeds and 
     delete process.env.SPORT_PROVIDER_MAX_H2H_LOOKUPS;
   }
 });
+
+
+test('completed same-day API-Football fixtures remain usable as enrichment candidates', async () => {
+  delete process.env.SPORTAPI_AI_KEY;
+  delete process.env.SPORTMONKS_API_KEY;
+  delete process.env.SPORTMONKS_API_TOKEN;
+  process.env.API_FOOTBALL_USE_RAPIDAPI = 'test-rapid-key';
+  process.env.API_FOOTBALL_BASE_URL = 'https://api-football.test/v3';
+
+  globalThis.fetch = (async (input: URL | RequestInfo) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith('/fixtures') && url.searchParams.has('date')) {
+      return new Response(JSON.stringify({ response: [{
+        fixture: {
+          id: 9911,
+          date: '2026-10-10T09:00:00Z',
+          status: { short: 'FT' },
+          venue: { name: 'Completed Ground' },
+        },
+        league: {
+          id: 288,
+          name: 'Premier Soccer League',
+          country: 'South Africa',
+          season: 2026,
+        },
+        teams: {
+          home: { id: 501, name: 'Completed Home FC' },
+          away: { id: 502, name: 'Completed Away FC' },
+        },
+      }] }), { status: 200 });
+    }
+    if (url.pathname.endsWith('/standings')) {
+      return new Response(JSON.stringify({ response: [] }), { status: 200 });
+    }
+    if (url.pathname.endsWith('/teams/statistics')) {
+      return new Response(JSON.stringify({ response: {} }), { status: 200 });
+    }
+    if (url.pathname.endsWith('/fixtures/headtohead')) {
+      return new Response(JSON.stringify({ response: [] }), { status: 200 });
+    }
+    throw new Error('Unexpected API-Football regression request: ' + url.toString());
+  }) as typeof fetch;
+
+  const fixture: MatchFixture = {
+    id: 'manual-completed-fixture',
+    kickoffTime: '2026-10-10T15:00:00Z',
+    league: 'Premier Soccer League',
+    competition: 'Premier Soccer League',
+    venue: 'Manual Ground',
+    isHighStakes: false,
+    motivation: 'regular',
+    homeTeam: {
+      id: 'home',
+      name: 'Completed Home FC',
+      shortName: 'CHF',
+      leagueRank: null,
+      points: null,
+      form: [],
+      avgPossession: null,
+      avgShotsOnTarget: null,
+    },
+    awayTeam: {
+      id: 'away',
+      name: 'Completed Away FC',
+      shortName: 'CAF',
+      leagueRank: null,
+      points: null,
+      form: [],
+      avgPossession: null,
+      avgShotsOnTarget: null,
+    },
+    h2h: null,
+  };
+
+  try {
+    const result = await enrichFixturesWithFootballApis(
+      [fixture],
+      ['2026-10-10'],
+      { enableSportmonks: false, enableSportApiAi: false }
+    );
+    const out = result.fixtures[0];
+    assert.equal(out.apiFootballFixtureId, '9911');
+    assert.equal(out.apiFootballHomeTeamId, 501);
+    assert.equal(out.apiFootballAwayTeamId, 502);
+    assert.equal(out.apiFootballLeagueId, 288);
+  } finally {
+    restoreEnvironment();
+  }
+});
