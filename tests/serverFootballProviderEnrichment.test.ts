@@ -438,7 +438,7 @@ test('SportAPI.ai historical form excludes cups, friendlies, simulated feeds and
     if (url.pathname.endsWith('/fixtures/date/2026-10-10')) {
       return new Response(JSON.stringify({ success: true, fixtures: [] }), { status: 200 });
     }
-    if (url.pathname.endsWith('/standings/77')) {
+    if (url.pathname.endsWith('/standings/177')) {
       return new Response(JSON.stringify({ success: true, data: { standings: [] } }), { status: 200 });
     }
     if (url.pathname.endsWith('/teams/1101')) {
@@ -477,7 +477,7 @@ test('SportAPI.ai historical form excludes cups, friendlies, simulated feeds and
     isHighStakes: false,
     motivation: 'regular',
     sportApiAiFixtureId: '8100',
-    sportApiAiLeagueId: 77,
+    sportApiAiLeagueId: 177,
     sportApiAiHomeTeamId: 1101,
     sportApiAiAwayTeamId: 1202,
     homeTeam: { id: 'home', name: 'Home FC', shortName: 'HOM', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
@@ -488,7 +488,7 @@ test('SportAPI.ai historical form excludes cups, friendlies, simulated feeds and
   try {
     const result = await enrichFixturesWithFootballApis([fixture], ['2026-10-10'], { enableApiFootball: false, enableSportmonks: false });
     const out = result.fixtures[0];
-    assert.deepEqual(out.homeTeam.form, ['W', 'D']);
+    assert.deepEqual(out.homeTeam.form, ['D', 'W']);
     assert.equal(out.homeTeam.formSource, 'SPORTAPI_AI');
   } finally {
     restoreEnvironment();
@@ -567,7 +567,7 @@ test('Sportmonks historical form excludes cups, friendlies, simulated feeds and 
   try {
     const result = await enrichFixturesWithFootballApis([fixture], ['2026-10-10'], { enableApiFootball: false, enableSportApiAi: false });
     const out = result.fixtures[0];
-    assert.deepEqual(out.homeTeam.form, ['W', 'D']);
+    assert.deepEqual(out.homeTeam.form, ['D', 'W']);
     assert.equal(out.homeTeam.formSource, 'SPORTMONKS');
   } finally {
     restoreEnvironment();
