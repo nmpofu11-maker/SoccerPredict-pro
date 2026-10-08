@@ -1840,7 +1840,7 @@ export async function enrichFixturesWithFootballApis(
         if (!rawCandKick) return false;
         const cKickMs = Date.parse(rawCandKick);
         if (!Number.isFinite(fKickMs) || !Number.isFinite(cKickMs)) return false;
-        if (Math.abs(fKickMs - cKickMs) > 3 * 3600 * 1000) return false;
+        if (Math.abs(fKickMs - cKickMs) > 3 * 3600 * 1000 && !canMatchStartedFixtureSameUtcDate(fKickMs, cKickMs)) return false;
 
         const rawHomeName = cand.raw?.teams?.home?.name;
         const rawAwayName = cand.raw?.teams?.away?.name;
