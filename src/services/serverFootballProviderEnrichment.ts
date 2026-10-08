@@ -605,7 +605,7 @@ function buildH2HFromProviderFixtures(
 
 
 
-function providerTeamNameSimilarity(target: string, candidate: string): number {
+export function providerTeamNameSimilarity(target: string, candidate: string): number {
   const a = normalizeProviderTeamName(target);
   const b = normalizeProviderTeamName(candidate);
   if (!a || !b) return 0;
