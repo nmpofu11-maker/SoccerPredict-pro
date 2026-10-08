@@ -5,6 +5,7 @@ import {
   areCompetitionsCompatible,
   canonicalizeProviderCompetitionName,
   findUniqueMatchingCandidate,
+  providerTeamNameSimilarity,
 } from '../src/services/serverFootballProviderEnrichment';
 
 const baseFixture = {
@@ -113,4 +114,12 @@ test('accepts supported provider competition aliases without weakening unrelated
   assert.equal(areCompetitionsCompatible('Stars League', undefined, 'Iraq Stars League'), true);
   assert.equal(areCompetitionsCompatible('LigaPro Primera B', undefined, 'LigaPro Primera A'), false);
   assert.equal(areCompetitionsCompatible('Romanian Liga I', undefined, 'Romanian Liga II'), false);
+});
+
+
+test('scores safe Sportmonks team-name variants without accepting weak matches', () => {
+  assert.ok(providerTeamNameSimilarity('Independiente Medellín', 'Independiente Medellin') >= 0.99);
+  assert.ok(providerTeamNameSimilarity('Independiente Santa Fe', 'Independiente Santa Fe') === 1);
+  assert.ok(providerTeamNameSimilarity('Rosario Central', 'Club Atlético Rosario Central') >= 0.75);
+  assert.ok(providerTeamNameSimilarity('Banfield', 'Barcelona') < 0.75);
 });
