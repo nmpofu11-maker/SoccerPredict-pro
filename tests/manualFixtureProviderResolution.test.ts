@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { parseHollywoodbetsRawText } from '../src/services/hollywoodbetsParser';
 import {
   areCompetitionsCompatible,
   canonicalizeProviderCompetitionName,
@@ -83,4 +84,15 @@ test('resolves a manual fixture only when team, kickoff and competition identity
     findUniqueMatchingCandidate(baseFixture, [{ raw: wrongCompetition, mapped: { ...mapped, competition: wrongCompetition.league.name } as any }]),
     null,
   );
+});
+
+test('manual bookmaker parsing does not invent venue, round or H2H history', () => {
+  const fixtures = parseHollywoodbetsRawText(
+    'South Africa\nKaizer Chiefs vs Orlando Pirates\nSouth Africa • Betway Premiership\n18:00'
+  );
+  assert.equal(fixtures.length, 1);
+  assert.equal(fixtures[0].venue, '');
+  assert.equal(fixtures[0].round, undefined);
+  assert.equal(fixtures[0].h2h?.totalLast5, null);
+  assert.deepEqual(fixtures[0].h2h?.scoresLast5, []);
 });
