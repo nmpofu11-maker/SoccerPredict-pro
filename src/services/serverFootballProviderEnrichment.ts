@@ -820,6 +820,18 @@ export function canonicalizeProviderCompetitionName(value: unknown): string {
     return 'south african carling knockout cup';
   }
 
+  // Provider/bookmaker naming variants for supported international competitions.
+  // These are identity mappings only; they never create evidence.
+  if (/^(ligapro|liga pro|ecuadorian ligapro|ecuadorian serie b|ecuador liga pro serie b|ligapro serie b|ligapro primera b)$/.test(compact)) {
+    return 'ecuador ligapro serie b';
+  }
+  if (/^(liga i|romanian liga i|romanian superliga|superliga romania|romania liga i)$/.test(compact)) {
+    return 'romanian liga i';
+  }
+  if (/^(stars league|iraq stars league|iraqi stars league|iraq premier league)$/.test(compact)) {
+    return 'iraq stars league';
+  }
+
   return normalized;
 }
 
