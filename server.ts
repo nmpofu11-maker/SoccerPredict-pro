@@ -2340,7 +2340,15 @@ async function startServer() {
       provider: 'Hollywoodbets Ingested Live Sheet (Disk Persisted)',
       auditReport,
     };
-    return { validatedFixtures, auditReport };
+    return {
+      validatedFixtures,
+      auditReport,
+      enrichment: {
+        incomingCount: enrichedIncoming.length,
+        primaryEvidenceCount: enrichedIncoming.filter(hasPrimaryPredictionEvidence).length,
+        verifiedEvidenceCount: enrichedIncoming.filter(hasVerifiedPredictionEvidence).length,
+      },
+    };
   };
 
   // 2. POST /api/fixtures/ingest-slate (and alias /api/fixtures/ingest-hollywoodbets):
@@ -2363,7 +2371,7 @@ async function startServer() {
         });
       }
 
-      const { validatedFixtures, auditReport } = await ingestFixturesIntoManifest(incomingFixtures, Boolean(rawText && typeof rawText === 'string'));
+      const { validatedFixtures, auditReport, enrichment } = await ingestFixturesIntoManifest(incomingFixtures, Boolean(rawText && typeof rawText === 'string'));
 
       return res.json({
         status: 'success',
@@ -2372,6 +2380,7 @@ async function startServer() {
         totalCount: validatedFixtures.length,
         fixtures: validatedFixtures,
         auditReport,
+        enrichment,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Ingestion failed';
