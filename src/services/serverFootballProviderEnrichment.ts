@@ -136,14 +136,12 @@ function isCompletedOrCancelledStatus(status: unknown): boolean {
 
 function mapApiFootballFixture(raw: any): MatchFixture | null {
   const fixture = raw?.fixture;
-  if (isCompletedOrCancelledStatus(fixture?.status?.short)) return null;
   const home = raw?.teams?.home;
   const away = raw?.teams?.away;
   const league = raw?.league;
   const kickoffTime = typeof fixture?.date === 'string' && /[T ]\d{2}:\d{2}/.test(fixture.date) ? new Date(fixture.date) : null;
   if (!fixture?.id || !home?.id || !away?.id || !home?.name || !away?.name ||
-      !kickoffTime || !Number.isFinite(kickoffTime.getTime()) || !league?.name ||
-      kickoffTime.getTime() < Date.now() - 3 * 60 * 60 * 1000) return null;
+      !kickoffTime || !Number.isFinite(kickoffTime.getTime()) || !league?.name ||) return null;
   const name = league.country ? `${league.country} • ${league.name}` : league.name;
   const makeTeam = (team: any, side: 'home' | 'away'): TeamStats => ({
     id: `api_football_team_${team.id}`,
@@ -180,7 +178,6 @@ function mapApiFootballFixture(raw: any): MatchFixture | null {
 function mapSportmonksFixture(raw: any): MatchFixture | null {
   const fixtureId = raw?.id;
   const state = raw?.state?.data || raw?.state;
-  if (isCompletedOrCancelledStatus(state?.short_name || state?.name)) return null;
   const home = extractSportmonksParticipant(raw, 'home');
   const away = extractSportmonksParticipant(raw, 'away');
   const kickoffTime = typeof raw?.starting_at === 'string' && /[T ]\d{2}:\d{2}/.test(raw.starting_at) ? new Date(raw.starting_at) : null;
@@ -1282,7 +1279,7 @@ export async function enrichFixturesWithFootballApis(
       if (!rawCandKick) return false;
       const cKickMs = Date.parse(rawCandKick);
       if (!Number.isFinite(fKickMs) || !Number.isFinite(cKickMs)) return false;
-      if (Math.abs(fKickMs - cKickMs) > 3 * 3600 * 1000 && !canMatchStartedFixtureSameUtcDate(fKickMs, cKickMs)) return false;
+      if (Math.abs(fKickMs - cKickMs) > 3 * 3600 * 1000 && !canMatchStartedFixtureSameUtcDate(fKickMs, cKickMs) && !canMatchStartedFixtureSameUtcDate(fKickMs, cKickMs)) return false;
 
       const rawHomeName = cand.raw?.teams?.home?.name;
       const rawAwayName = cand.raw?.teams?.away?.name;
@@ -1373,7 +1370,7 @@ export async function enrichFixturesWithFootballApis(
       if (!rawCandKick) return false;
       const cKickMs = Date.parse(rawCandKick);
       if (!Number.isFinite(fKickMs) || !Number.isFinite(cKickMs)) return false;
-      if (Math.abs(fKickMs - cKickMs) > 3 * 3600 * 1000) return false;
+      if (Math.abs(fKickMs - cKickMs) > 3 * 3600 * 1000 && !canMatchStartedFixtureSameUtcDate(fKickMs, cKickMs)) return false;
 
       const rawHomeParticipant = extractSportmonksParticipant(cand.raw, 'home');
       const rawAwayParticipant = extractSportmonksParticipant(cand.raw, 'away');
@@ -1468,7 +1465,7 @@ export async function enrichFixturesWithFootballApis(
       if (!rawCandKick) return false;
       const cKickMs = Date.parse(rawCandKick);
       if (!Number.isFinite(fKickMs) || !Number.isFinite(cKickMs)) return false;
-      if (Math.abs(fKickMs - cKickMs) > 3 * 3600 * 1000) return false;
+      if (Math.abs(fKickMs - cKickMs) > 3 * 3600 * 1000 && !canMatchStartedFixtureSameUtcDate(fKickMs, cKickMs)) return false;
 
       const rawLeagueName = cand.raw?.league?.name || cand.raw?.league_name || '';
       if (!areCompetitionsCompatible(fixture.league, fixture.competition, rawLeagueName)) {
@@ -1840,7 +1837,7 @@ export async function enrichFixturesWithFootballApis(
         if (!rawCandKick) return false;
         const cKickMs = Date.parse(rawCandKick);
         if (!Number.isFinite(fKickMs) || !Number.isFinite(cKickMs)) return false;
-        if (Math.abs(fKickMs - cKickMs) > 3 * 3600 * 1000 && !canMatchStartedFixtureSameUtcDate(fKickMs, cKickMs)) return false;
+        if (Math.abs(fKickMs - cKickMs) > 3 * 3600 * 1000 && !canMatchStartedFixtureSameUtcDate(fKickMs, cKickMs) && !canMatchStartedFixtureSameUtcDate(fKickMs, cKickMs)) return false;
 
         const rawHomeName = cand.raw?.teams?.home?.name;
         const rawAwayName = cand.raw?.teams?.away?.name;
