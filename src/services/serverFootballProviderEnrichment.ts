@@ -605,16 +605,60 @@ function buildH2HFromProviderFixtures(
 
 
 
+function providerTeamNameSimilarity(target: string, candidate: string): number {
+  const a = normalizeProviderTeamName(target);
+  const b = normalizeProviderTeamName(candidate);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) {
+    const shorter = Math.min(a.length, b.length);
+    const longer = Math.max(a.length, b.length);
+    return shorter / longer;
+  }
+
+  const tokens = (value: string) => value
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .split(/[^a-z0-9]+/i)
+    .map((v) => v.toLowerCase())
+    .filter((v) => v.length >= 4);
+  const targetTokens = new Set(tokens(target));
+  const candidateTokens = new Set(tokens(candidate));
+  if (!targetTokens.size || !candidateTokens.size) return 0;
+  let overlap = 0;
+  for (const token of targetTokens) if (candidateTokens.has(token)) overlap++;
+  return overlap / Math.max(targetTokens.size, candidateTokens.size);
+}
+
 async function searchSportmonksExactTeam(name: string): Promise<any | null> {
   if (!sportmonksConfigured()) return null;
   const normalized = normalizeProviderTeamName(name);
   if (!normalized) return null;
   const cached = sportmonksTeamSearchCache.get(normalized);
   if (cached && cached.expiresAt > Date.now()) return cached.value[0] ?? null;
+
   const rows = await fetchSportmonksTeamsBySearch(name);
   const exact = rows.find((row: any) => normalizeProviderTeamName(row?.name) === normalized) ?? null;
-  sportmonksTeamSearchCache.set(normalized, { expiresAt: Date.now() + PROVIDER_CACHE_TTL_MS, value: exact ? [exact] : [] });
-  return exact;
+  if (exact) {
+    sportmonksTeamSearchCache.set(normalized, { expiresAt: Date.now() + PROVIDER_CACHE_TTL_MS, value: [exact] });
+    return exact;
+  }
+
+  // Manual/third-party slates often use a presentation name that differs from
+  // Sportmonks' canonical team name. Accept a fuzzy identity only when one
+  // candidate is clearly stronger; never guess between multiple plausible teams.
+  const scored = rows
+    .map((row: any) => ({ row, score: providerTeamNameSimilarity(name, String(row?.name || '')) }))
+    .filter((entry: any) => entry.score >= 0.75)
+    .sort((a: any, b: any) => b.score - a.score);
+
+  const best = scored[0];
+  const second = scored[1];
+  const resolved = best && (!second || best.score - second.score >= 0.15) ? best.row : null;
+  sportmonksTeamSearchCache.set(normalized, {
+    expiresAt: Date.now() + PROVIDER_CACHE_TTL_MS,
+    value: resolved ? [resolved] : [],
+  });
+  return resolved;
 }
 
 async function getSportmonksTeamFixtures(teamId: string, kickoffIso: string): Promise<any[]> {
