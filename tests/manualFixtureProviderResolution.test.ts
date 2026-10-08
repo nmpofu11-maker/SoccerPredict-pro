@@ -123,3 +123,38 @@ test('scores safe Sportmonks team-name variants without accepting weak matches',
   assert.ok(providerTeamNameSimilarity('Rosario Central', 'Club Atlético Rosario Central') >= 0.75);
   assert.ok(providerTeamNameSimilarity('Banfield', 'Barcelona') < 0.75);
 });
+
+
+test('matches an already-started slate fixture to same-day completed provider evidence', () => {
+  const fixture = {
+    ...baseFixture,
+    kickoffTime: '2026-10-06T20:00:00Z',
+  } as any;
+  const raw = {
+    id: 9101,
+    starting_at: '2026-10-06T20:02:00Z',
+    league: { id: 123, name: 'Premier Soccer League', country: 'South Africa' },
+    participants: [
+      { id: 11, name: 'Kaizer Chiefs', meta: { location: 'home' } },
+      { id: 22, name: 'Orlando Pirates', meta: { location: 'away' } },
+    ],
+    state: { short_name: 'FT', name: 'Finished' },
+    season_id: 2026,
+  };
+  const mapped = {
+    id: 'sportmonks_9101',
+    kickoffTime: raw.starting_at,
+    league: raw.league.name,
+    competition: raw.league.name,
+    homeTeam: { id: 'sportmonks_team_11', name: 'Kaizer Chiefs' },
+    awayTeam: { id: 'sportmonks_team_22', name: 'Orlando Pirates' },
+    sportmonksFixtureId: '9101',
+    sportmonksHomeTeamId: 11,
+    sportmonksAwayTeamId: 22,
+    automationSource: 'SPORTMONKS',
+  } as any;
+
+  const resolved = findUniqueMatchingCandidate(fixture, [{ raw, mapped }]);
+  assert.ok(resolved);
+  assert.equal(resolved?.raw.id, 9101);
+});
