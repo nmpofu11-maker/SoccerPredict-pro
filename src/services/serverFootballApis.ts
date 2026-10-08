@@ -17,7 +17,9 @@ function isRapidApiMode(): boolean {
 }
 
 function getSportmonksKey(): string {
-  return process.env.SPORTMONKS_API_KEY?.trim() || process.env.SPORTMONKS_API_TOKEN?.trim() || '';
+  const raw = process.env.SPORTMONKS_API_KEY?.trim() || process.env.SPORTMONKS_API_TOKEN?.trim() || '';
+  if (!raw || raw === 'undefined' || raw === 'null' || raw === 'your_key_here' || raw === 'placeholder') return '';
+  return raw;
 }
 
 function getBaseUrl(value: string | undefined, fallback: string): string {
@@ -77,9 +79,17 @@ async function requestJson(url: URL, headers: Record<string, string>, provider: 
       : typeof body?.errors === 'object'
         ? JSON.stringify(body.errors).slice(0, 240)
         : `HTTP ${response.status}`;
-    if (response.status === 403 || message.toLowerCase().includes('not subscribed')) {
+    if (
+      response.status === 401 ||
+      response.status === 403 ||
+      message.toLowerCase().includes('not subscribed') ||
+      message.toLowerCase().includes('invalid token') ||
+      message.toLowerCase().includes('unauthenticated') ||
+      message.toLowerCase().includes('unauthorized')
+    ) {
       if (provider === 'API-Football') setApiFootballRateLimited(24 * 3600);
       if (provider === 'Sportmonks') setSportmonksRateLimited(24 * 3600);
+      console.log(`[${provider}] Disabled due to auth/subscription response (${response.status}: ${message}); pausing requests for 24h.`);
     } else if (response.status === 429 || message.toLowerCase().includes('rate limit')) {
       if (provider === 'Sportmonks') setSportmonksRateLimited(3600);
       if (provider === 'API-Football') setApiFootballRateLimited(3600);
@@ -94,6 +104,7 @@ async function requestJson(url: URL, headers: Record<string, string>, provider: 
 
 /** Call an API-Football v3 endpoint using the RapidAPI credential. */
 export async function apiFootballGet(path: string, params: Record<string, string | number | undefined> = {}): Promise<any> {
+  if (isApiFootballRateLimited()) throw new Error('API-Football is rate-limited or disabled');
   const key = getApiFootballKey();
   if (!key) throw new Error('API_FOOTBALL_USE_RAPIDAPI is not configured');
 
@@ -121,6 +132,11 @@ export async function fetchApiFootballFixturesByDate(date: string): Promise<any[
     return body.response;
   } catch (err) {
     if (isApiFootballRateLimited()) return [];
+    const msg = String(err instanceof Error ? err.message : err);
+    if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
+      setApiFootballRateLimited(24 * 3600);
+      return [];
+    }
     throw err;
   }
 }
@@ -146,6 +162,7 @@ export async function fetchApiFootballFixtureStatistics(fixtureId: number | stri
 
 /** Call a Sportmonks v3 Football endpoint; api_token is added as a query parameter. */
 export async function sportmonksGet(path: string, params: Record<string, string | number | undefined> = {}): Promise<any> {
+  if (isSportmonksRateLimited()) throw new Error('Sportmonks is rate-limited or disabled');
   const key = getSportmonksKey();
   if (!key) throw new Error('SPORTMONKS_API_KEY is not configured');
 
@@ -158,17 +175,20 @@ export async function sportmonksGet(path: string, params: Record<string, string 
   return requestJson(url, {}, 'Sportmonks');
 }
 
-
-
 export async function fetchSportmonksTeamsBySearch(name: string): Promise<any[]> {
   const query = String(name || '').trim();
-  if (!query) return [];
+  if (!query || isSportmonksRateLimited()) return [];
   try {
     const body = await sportmonksGet(`teams/search/${encodeURIComponent(query)}`, { per_page: 10 });
     return Array.isArray(body.data) ? body.data : [];
   } catch (err) {
+    if (isSportmonksRateLimited()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('404') || msg.includes('not exist')) {
+      return [];
+    }
+    if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
+      setSportmonksRateLimited(24 * 3600);
       return [];
     }
     throw err;
@@ -184,14 +204,30 @@ export async function fetchSportmonksFixturesByDate(date: string, includes = 'pa
     return body.data;
   } catch (err) {
     if (isSportmonksRateLimited()) return [];
+    const msg = String(err instanceof Error ? err.message : err);
+    if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
+      setSportmonksRateLimited(24 * 3600);
+      return [];
+    }
     throw err;
   }
 }
 
 export async function fetchSportmonksFixtureStatistics(fixtureId: number | string): Promise<any[]> {
-  const body = await sportmonksGet(`fixtures/${fixtureId}`, { include: 'statistics.type;participants' });
-  const stats = body.data?.statistics?.data ?? body.data?.statistics;
-  return Array.isArray(stats) ? stats : [];
+  if (isSportmonksRateLimited()) return [];
+  try {
+    const body = await sportmonksGet(`fixtures/${fixtureId}`, { include: 'statistics.type;participants' });
+    const stats = body.data?.statistics?.data ?? body.data?.statistics;
+    return Array.isArray(stats) ? stats : [];
+  } catch (err) {
+    if (isSportmonksRateLimited()) return [];
+    const msg = String(err instanceof Error ? err.message : err);
+    if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
+      setSportmonksRateLimited(24 * 3600);
+      return [];
+    }
+    throw err;
+  }
 }
 
 export async function fetchSportmonksFixturesBetween(
@@ -202,12 +238,23 @@ export async function fetchSportmonksFixturesBetween(
   assertDate(startDate);
   assertDate(endDate);
   if (startDate > endDate) throw new Error('Start date must be on or before end date');
-  const body = await sportmonksGet(`fixtures/between/${startDate}/${endDate}`, {
-    include: includes,
-    per_page: 100,
-  });
-  if (!Array.isArray(body.data)) throw new Error('Sportmonks fixture range response.data is not an array');
-  return body.data;
+  if (isSportmonksRateLimited()) return [];
+  try {
+    const body = await sportmonksGet(`fixtures/between/${startDate}/${endDate}`, {
+      include: includes,
+      per_page: 100,
+    });
+    if (!Array.isArray(body.data)) throw new Error('Sportmonks fixture range response.data is not an array');
+    return body.data;
+  } catch (err) {
+    if (isSportmonksRateLimited()) return [];
+    const msg = String(err instanceof Error ? err.message : err);
+    if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
+      setSportmonksRateLimited(24 * 3600);
+      return [];
+    }
+    throw err;
+  }
 }
 
 export async function fetchSportmonksFixturesBetweenForTeam(
@@ -220,18 +267,40 @@ export async function fetchSportmonksFixturesBetweenForTeam(
   assertDate(endDate);
   if (startDate > endDate) throw new Error('Start date must be on or before end date');
   if (!String(teamId).trim()) throw new Error('Sportmonks team id is required');
-  const body = await sportmonksGet(`fixtures/between/${startDate}/${endDate}/${encodeURIComponent(String(teamId))}`, {
-    include: includes,
-    per_page: 25,
-  });
-  if (!Array.isArray(body.data)) throw new Error('Sportmonks team fixture response.data is not an array');
-  return body.data;
+  if (isSportmonksRateLimited()) return [];
+  try {
+    const body = await sportmonksGet(`fixtures/between/${startDate}/${endDate}/${encodeURIComponent(String(teamId))}`, {
+      include: includes,
+      per_page: 25,
+    });
+    if (!Array.isArray(body.data)) throw new Error('Sportmonks team fixture response.data is not an array');
+    return body.data;
+  } catch (err) {
+    if (isSportmonksRateLimited()) return [];
+    const msg = String(err instanceof Error ? err.message : err);
+    if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
+      setSportmonksRateLimited(24 * 3600);
+      return [];
+    }
+    throw err;
+  }
 }
 
 export async function fetchSportmonksStandingsBySeason(seasonId: number | string): Promise<any[]> {
   if (!String(seasonId).trim()) throw new Error('Sportmonks season id is required');
-  const body = await sportmonksGet(`standings/seasons/${encodeURIComponent(String(seasonId))}`, {});
-  return Array.isArray(body.data) ? body.data : [];
+  if (isSportmonksRateLimited()) return [];
+  try {
+    const body = await sportmonksGet(`standings/seasons/${encodeURIComponent(String(seasonId))}`, {});
+    return Array.isArray(body.data) ? body.data : [];
+  } catch (err) {
+    if (isSportmonksRateLimited()) return [];
+    const msg = String(err instanceof Error ? err.message : err);
+    if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
+      setSportmonksRateLimited(24 * 3600);
+      return [];
+    }
+    throw err;
+  }
 }
 
 export async function fetchSportmonksHeadToHead(
@@ -239,9 +308,20 @@ export async function fetchSportmonksHeadToHead(
   team2Id: number | string
 ): Promise<any[]> {
   if (!String(team1Id).trim() || !String(team2Id).trim()) throw new Error('Sportmonks team ids are required');
-  const body = await sportmonksGet(
-    `fixtures/head-to-head/${encodeURIComponent(String(team1Id))}/${encodeURIComponent(String(team2Id))}`,
-    { include: 'participants;scores;league;state;season' }
-  );
-  return Array.isArray(body.data) ? body.data : [];
+  if (isSportmonksRateLimited()) return [];
+  try {
+    const body = await sportmonksGet(
+      `fixtures/head-to-head/${encodeURIComponent(String(team1Id))}/${encodeURIComponent(String(team2Id))}`,
+      { include: 'participants;scores;league;state;season' }
+    );
+    return Array.isArray(body.data) ? body.data : [];
+  } catch (err) {
+    if (isSportmonksRateLimited()) return [];
+    const msg = String(err instanceof Error ? err.message : err);
+    if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
+      setSportmonksRateLimited(24 * 3600);
+      return [];
+    }
+    throw err;
+  }
 }
