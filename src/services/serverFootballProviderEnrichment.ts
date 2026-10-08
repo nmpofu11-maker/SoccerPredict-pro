@@ -918,6 +918,12 @@ export function areCompetitionsCompatible(
   return false;
 }
 
+function canMatchStartedFixtureSameUtcDate(fixtureKickoffMs: number, candidateKickoffMs: number): boolean {
+  if (!Number.isFinite(fixtureKickoffMs) || !Number.isFinite(candidateKickoffMs)) return false;
+  if (fixtureKickoffMs > Date.now()) return false;
+  return new Date(fixtureKickoffMs).toISOString().slice(0, 10) === new Date(candidateKickoffMs).toISOString().slice(0, 10);
+}
+
 export function findUniqueMatchingCandidate(
   fixture: MatchFixture,
   candidates: Array<{ raw: any; mapped: MatchFixture }> | undefined
