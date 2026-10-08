@@ -784,14 +784,53 @@ function normalizeCompetitionName(value: unknown): string {
   return typeof value === 'string' ? value.toLowerCase().replace(/[.•]/g, ' ').replace(/\s+/g, ' ').trim() : '';
 }
 
+/**
+ * Bookmaker feeds frequently prefix the actual competition with a country label
+ * (for example, "South Africa • Betway Premiership") or a sponsor label
+ * ("DSTV Premiership"). Those labels are presentation metadata, not a different
+ * competition. Canonicalize only known South African bookmaker aliases here so
+ * strict provider identity checks remain intact for every other competition.
+ */
+export function canonicalizeProviderCompetitionName(value: unknown): string {
+  const normalized = normalizeCompetitionName(value);
+  if (!normalized) return '';
+
+  const withoutPrefix = normalized
+    .replace(/^(south africa|rsa|south african)\s+(?:[•·|:/-]\s*)?/, '')
+    .replace(/^(south africa|rsa|south african)\s+/, '');
+
+  const compact = withoutPrefix
+    .replace(/\b(hollywoodbets|betway|dstv)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (/^(psl|premier soccer league|south african premiership|premiership)$/.test(compact)) {
+    return 'south african premiership';
+  }
+  if (/^(nfd|national first division|south african first division|first division)$/.test(compact)) {
+    return 'south african first division';
+  }
+  if (/^(mtn 8|south african mtn 8 cup|mtn8)$/.test(compact)) {
+    return 'south african mtn 8 cup';
+  }
+  if (/^(nedbank cup|south african nedbank cup)$/.test(compact)) {
+    return 'south african nedbank cup';
+  }
+  if (/^(carling knockout|carling knockout cup|south african carling knockout cup)$/.test(compact)) {
+    return 'south african carling knockout cup';
+  }
+
+  return normalized;
+}
+
 export function areCompetitionsCompatible(
   slateLeague: string | undefined,
   slateCompetition: string | undefined,
   providerLeagueName: string | undefined,
   providerCountry?: string
 ): boolean {
-  const normSlate = normalizeCompetitionName(slateCompetition || slateLeague);
-  const normProvider = normalizeCompetitionName(providerLeagueName);
+  const normSlate = canonicalizeProviderCompetitionName(slateCompetition || slateLeague);
+  const normProvider = canonicalizeProviderCompetitionName(providerLeagueName);
   if (!normSlate || !normProvider) return false;
   if (normSlate === normProvider) return true;
 
@@ -802,7 +841,7 @@ export function areCompetitionsCompatible(
 
   // Cross-reference against ALL_LEAGUES_DIRECTORY
   for (const info of Object.values(ALL_LEAGUES_DIRECTORY)) {
-    const normEntry = normalizeCompetitionName(info.name);
+    const normEntry = canonicalizeProviderCompetitionName(info.name);
     const slateMatches = normSlate === normEntry || normSlate.includes(normEntry) || normEntry.includes(normSlate);
     const providerMatches = normProvider === normEntry || normProvider.includes(normEntry) || normEntry.includes(normProvider);
     if (slateMatches && providerMatches) return true;
