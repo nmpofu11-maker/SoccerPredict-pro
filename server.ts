@@ -2271,6 +2271,40 @@ async function startServer() {
   const ingestFixturesIntoManifest = async (incomingFixtures: any[], sourceIsVerifiedBookmaker = false) => {
     const diskFixtures = readDiskManifest();
 
+    // Enrich manual bookmaker fixtures immediately through the same primary
+    // provider pipeline used by the daily slate. Persisting first and waiting
+    // for a later refresh made newly added fixtures appear as NO DATA.
+    let enrichedIncoming = incomingFixtures.map((fixture: any) => ({
+      ...fixture,
+      isBookmakerProtected: sourceIsVerifiedBookmaker,
+    }));
+
+    const requestedDates = Array.from(new Set(
+      enrichedIncoming
+        .map((fixture: any) => String(fixture?.kickoffTime || '').slice(0, 10))
+        .filter(Boolean)
+    ));
+
+    if (enrichedIncoming.length > 0 && requestedDates.length > 0) {
+      try {
+        const providerResult = await enrichFixturesWithFootballApis(
+          enrichedIncoming as any,
+          requestedDates,
+          { enableApiFootball: true, enableSportmonks: true, enableSportApiAi: true }
+        );
+        enrichedIncoming = providerResult.fixtures as any[];
+
+        if (footballDataConfigured() && enrichedIncoming.length > 0) {
+          const fallback = await enrichFixturesWithFootballData(enrichedIncoming as any);
+          enrichedIncoming = fallback.fixtures as any[];
+        }
+
+        console.log('[manual-ingest] provider enrichment completed: fixtures=' + enrichedIncoming.length + ', primaryEvidence=' + enrichedIncoming.filter(hasPrimaryPredictionEvidence).length + ', verifiedEvidence=' + enrichedIncoming.filter(hasVerifiedPredictionEvidence).length + ', errors=' + providerResult.errors.length);
+      } catch (err) {
+        console.warn('[manual-ingest] provider enrichment failed safely: ' + (err instanceof Error ? err.message : String(err)));
+      }
+    }
+
     const normalizeKey = (f: any) => {
       const home = (f.homeTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
       const away = (f.awayTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -2283,7 +2317,7 @@ async function startServer() {
       if (!df || !df.id || !df.homeTeam || !df.awayTeam) continue;
       mergedMap.set(normalizeKey(df), df);
     }
-    for (const hf of incomingFixtures) {
+    for (const hf of enrichedIncoming) {
       if (!hf || !hf.id || !hf.homeTeam || !hf.awayTeam) continue;
       const protectedFixture = { ...hf, isBookmakerProtected: sourceIsVerifiedBookmaker };
       mergedMap.set(normalizeKey(hf), protectedFixture);
