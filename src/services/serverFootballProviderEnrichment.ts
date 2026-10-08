@@ -354,14 +354,60 @@ function completedProviderMatch(raw: any, kickoffIso: string): boolean {
   return extractScorePair(raw) !== null;
 }
 
+function historicalCompetitionName(raw: any): string {
+  return normalizeCompetitionName(
+    raw?.league?.data?.name || raw?.league?.name || raw?.league_name ||
+    raw?.competition?.name || raw?.competition ||
+    raw?.league
+  );
+}
+
+function isEligibleHistoricalCompetition(
+  targetLeague: string | undefined,
+  targetCompetition: string | undefined,
+  raw: any
+): boolean {
+  const target = normalizeCompetitionName(targetCompetition || targetLeague);
+  const historical = historicalCompetitionName(raw);
+  if (!target || !historical) return false;
+
+  // Historical evidence must stay within the target competition family.
+  // Exclude cups, friendlies, simulated/SRL feeds and unknown competitions.
+  if (
+    /(^|\s)(cup|cups|friendly|friendlies|srl|simulated|simulation|esoccer|e-soccer|virtual)(\s|$)/i.test(historical) ||
+    /\b(super cup|community shield|trophy)\b/i.test(historical)
+  ) {
+    return false;
+  }
+
+  return areCompetitionsCompatible(targetLeague, targetCompetition, historical);
+}
+
+function eligibleHistoricalMatches(
+  matches: any[],
+  fixture: { league?: string; competition?: string },
+  kickoffIso: string
+): any[] {
+  return matches.filter((m) =>
+    completedProviderMatch(m, kickoffIso) &&
+    isEligibleHistoricalCompetition(fixture.league, fixture.competition, m)
+  );
+}
+
 function summarizeFormFromMatches(
   teamName: string,
   teamId: string,
   matches: any[],
   kickoffIso: string,
-  source: 'SPORTMONKS' | 'SPORTAPI_AI'
+  source: 'SPORTMONKS' | 'SPORTAPI_AI',
+  targetLeague?: string,
+  targetCompetition?: string
 ): Partial<TeamStats> {
-  const relevant = matches.filter((m) => completedProviderMatch(m, kickoffIso) && isTargetTeamInFixture(m, teamId, teamName));
+  const relevant = eligibleHistoricalMatches(
+    matches,
+    { league: targetLeague, competition: targetCompetition },
+    kickoffIso
+  ).filter((m) => isTargetTeamInFixture(m, teamId, teamName));
   relevant.sort((a, b) => Date.parse(String(a.datetime || a.utc_date || a.starting_at || a.date || '')) -
     Date.parse(String(b.datetime || b.utc_date || b.starting_at || b.date || '')));
   const recent = relevant.slice(-5);
@@ -1427,7 +1473,7 @@ export async function enrichFixturesWithFootballApis(
       try {
         const body = await getSportApiTeam(String(id));
         const matches = extractSportApiTeamMatches(body);
-        const formPatch = summarizeFormFromMatches(team.name, String(id), matches, fixture.kickoffTime, 'SPORTAPI_AI');
+        const formPatch = summarizeFormFromMatches(team.name, String(id), matches, fixture.kickoffTime, 'SPORTAPI_AI', fixture.league, fixture.competition);
         if (formPatch.form?.length && !isPrimarySource(team.formSource)) Object.assign(team, formPatch);
         team.scheduleSource = 'SPORTAPI_AI';
 
@@ -1448,8 +1494,7 @@ export async function enrichFixturesWithFootballApis(
           }
         }
 
-        const recent = matches
-          .filter((m) => completedProviderMatch(m, fixture.kickoffTime))
+        const recent = eligibleHistoricalMatches(matches, fixture, fixture.kickoffTime)
           .sort((a, b) => Date.parse(String(a.datetime || a.utc_date || a.starting_at || a.date || '')) -
             Date.parse(String(b.datetime || b.utc_date || b.starting_at || b.date || '')))
           .slice(-5);
@@ -1547,7 +1592,7 @@ export async function enrichFixturesWithFootballApis(
       sportmonksTeamBudget.used++;
       try {
         const matches = await getSportmonksTeamFixtures(String(id), fixture.kickoffTime);
-        const formPatch = summarizeFormFromMatches(team.name, String(id), matches, fixture.kickoffTime, 'SPORTMONKS');
+        const formPatch = summarizeFormFromMatches(team.name, String(id), matches, fixture.kickoffTime, 'SPORTMONKS', fixture.league, fixture.competition);
         if (!(team.formSource && team.form.length) && formPatch.form?.length) Object.assign(team, formPatch);
         team.scheduleSource = 'SPORTMONKS';
 
@@ -1583,8 +1628,8 @@ export async function enrichFixturesWithFootballApis(
         }
 
         if (!team.homeAwayFormSource) {
-          const homeMatches = matches.filter((m) => completedProviderMatch(m, fixture.kickoffTime) && teamSideForFixture(m, String(id), team.name) === 'home').slice(-5);
-          const awayMatches = matches.filter((m) => completedProviderMatch(m, fixture.kickoffTime) && teamSideForFixture(m, String(id), team.name) === 'away').slice(-5);
+          const homeMatches = eligibleHistoricalMatches(matches, fixture, fixture.kickoffTime).filter((m) => teamSideForFixture(m, String(id), team.name) === 'home').slice(-5);
+          const awayMatches = eligibleHistoricalMatches(matches, fixture, fixture.kickoffTime).filter((m) => teamSideForFixture(m, String(id), team.name) === 'away').slice(-5);
           if (homeMatches.length >= 3) {
             const homeForm = summarizeFormFromMatches(team.name, String(id), homeMatches, fixture.kickoffTime, 'SPORTMONKS').form || [];
             const ppg = homeForm.length ? homeForm.reduce((sum, r) => sum + (r === 'W' ? 3 : r === 'D' ? 1 : 0), 0) / homeForm.length : 0;

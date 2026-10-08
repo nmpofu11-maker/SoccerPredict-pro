@@ -151,9 +151,9 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
       return new Response(JSON.stringify({
         team: { id: 101, name: 'Home FC' },
         matches: [
-          { id: 1001, datetime: '2026-10-02T15:00:00Z', status: 'FT', home_team: { id: 101, name: 'Home FC' }, away_team: { id: 301, name: 'Rivals A' }, home_score: 2, away_score: 0 },
-          { id: 1002, datetime: '2026-09-26T15:00:00Z', status: 'FT', home_team: { id: 302, name: 'Rivals B' }, away_team: { id: 101, name: 'Home FC' }, home_score: 1, away_score: 1 },
-          { id: 1003, datetime: '2026-09-19T15:00:00Z', status: 'FT', home_team: { id: 101, name: 'Home FC' }, away_team: { id: 303, name: 'Rivals C' }, home_score: 3, away_score: 1 },
+          { id: 1001, datetime: '2026-10-02T15:00:00Z', status: 'FT', league_name: 'Premier League', home_team: { id: 101, name: 'Home FC' }, away_team: { id: 301, name: 'Rivals A' }, home_score: 2, away_score: 0 },
+          { id: 1002, datetime: '2026-09-26T15:00:00Z', status: 'FT', league_name: 'Premier League', home_team: { id: 302, name: 'Rivals B' }, away_team: { id: 101, name: 'Home FC' }, home_score: 1, away_score: 1 },
+          { id: 1003, datetime: '2026-09-19T15:00:00Z', status: 'FT', league_name: 'Premier League', home_team: { id: 101, name: 'Home FC' }, away_team: { id: 303, name: 'Rivals C' }, home_score: 3, away_score: 1 },
         ],
       }), { status: 200 });
     }
@@ -161,9 +161,9 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
       return new Response(JSON.stringify({
         team: { id: 202, name: 'Away FC' },
         matches: [
-          { id: 2001, datetime: '2026-10-01T15:00:00Z', status: 'FT', home_team: { id: 401, name: 'Rivals D' }, away_team: { id: 202, name: 'Away FC' }, home_score: 1, away_score: 2 },
-          { id: 2002, datetime: '2026-09-24T15:00:00Z', status: 'FT', home_team: { id: 202, name: 'Away FC' }, away_team: { id: 402, name: 'Rivals E' }, home_score: 0, away_score: 2 },
-          { id: 2003, datetime: '2026-09-17T15:00:00Z', status: 'FT', home_team: { id: 403, name: 'Rivals F' }, away_team: { id: 202, name: 'Away FC' }, home_score: 0, away_score: 0 },
+          { id: 2001, datetime: '2026-10-01T15:00:00Z', status: 'FT', league_name: 'Premier League', home_team: { id: 401, name: 'Rivals D' }, away_team: { id: 202, name: 'Away FC' }, home_score: 1, away_score: 2 },
+          { id: 2002, datetime: '2026-09-24T15:00:00Z', status: 'FT', league_name: 'Premier League', home_team: { id: 202, name: 'Away FC' }, away_team: { id: 402, name: 'Rivals E' }, home_score: 0, away_score: 2 },
+          { id: 2003, datetime: '2026-09-17T15:00:00Z', status: 'FT', league_name: 'Premier League', home_team: { id: 403, name: 'Rivals F' }, away_team: { id: 202, name: 'Away FC' }, home_score: 0, away_score: 0 },
         ],
       }), { status: 200 });
     }
@@ -418,5 +418,158 @@ test('Sportmonks team-search fallback enriches historical evidence when current-
     restoreEnvironment();
     delete process.env.SPORT_PROVIDER_MAX_TEAM_SEARCH_LOOKUPS;
     delete process.env.SPORT_PROVIDER_MAX_TEAM_LOOKUPS;
+  }
+});
+
+test('SportAPI.ai historical form excludes cups, friendlies, simulated feeds and unknown competitions', async () => {
+  delete process.env.API_FOOTBALL_USE_RAPIDAPI;
+  delete process.env.API_FOOTBALL_KEY;
+  delete process.env.SPORTMONKS_API_KEY;
+  delete process.env.SPORTMONKS_API_TOKEN;
+  process.env.SPORTAPI_AI_KEY = 'test-sportapi-key';
+  process.env.SPORT_PROVIDER_MAX_TEAM_LOOKUPS = '4';
+  process.env.SPORT_PROVIDER_MAX_MATCH_STAT_LOOKUPS = '4';
+  process.env.SPORT_PROVIDER_MAX_H2H_LOOKUPS = '1';
+
+  globalThis.fetch = (async (input: URL | RequestInfo) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith('/fixtures/date/2026-10-10')) {
+      return new Response(JSON.stringify({ success: true, fixtures: [] }), { status: 200 });
+    }
+    if (url.pathname.endsWith('/standings/77')) {
+      return new Response(JSON.stringify({ success: true, data: { standings: [] } }), { status: 200 });
+    }
+    if (url.pathname.endsWith('/teams/101')) {
+      return new Response(JSON.stringify({
+        team: { id: 101, name: 'Home FC' },
+        matches: [
+          { id: 8101, datetime: '2026-10-02T15:00:00Z', status: 'FT', league_name: 'Premier League', home_team: { id: 101, name: 'Home FC' }, away_team: { id: 301, name: 'Opponent A' }, home_score: 2, away_score: 0 },
+          { id: 8102, datetime: '2026-09-25T15:00:00Z', status: 'FT', league_name: 'FA Cup', home_team: { id: 101, name: 'Home FC' }, away_team: { id: 302, name: 'Opponent B' }, home_score: 0, away_score: 1 },
+          { id: 8103, datetime: '2026-09-18T15:00:00Z', status: 'FT', league_name: 'International Friendly', home_team: { id: 101, name: 'Home FC' }, away_team: { id: 303, name: 'Opponent C' }, home_score: 1, away_score: 1 },
+          { id: 8104, datetime: '2026-09-11T15:00:00Z', status: 'FT', league_name: 'Simulated Football', home_team: { id: 101, name: 'Home FC' }, away_team: { id: 304, name: 'Opponent D' }, home_score: 3, away_score: 0 },
+          { id: 8105, datetime: '2026-09-04T15:00:00Z', status: 'FT', league_name: 'English Premier League', home_team: { id: 305, name: 'Opponent E' }, away_team: { id: 101, name: 'Home FC' }, home_score: 1, away_score: 1 },
+          { id: 8106, datetime: '2026-08-28T15:00:00Z', status: 'FT', home_team: { id: 101, name: 'Home FC' }, away_team: { id: 306, name: 'Opponent F' }, home_score: 4, away_score: 0 },
+        ],
+      }), { status: 200 });
+    }
+    if (url.pathname.endsWith('/teams/202')) {
+      return new Response(JSON.stringify({ team: { id: 202, name: 'Away FC' }, matches: [] }), { status: 200 });
+    }
+    if (url.pathname.endsWith('/fixtures/8101/stats')) {
+      return new Response(JSON.stringify({ data: { home: { possession: 55, shots_on_target: 5 }, away: { possession: 45, shots_on_target: 2 } } }), { status: 200 });
+    }
+    if (url.pathname.endsWith('/fixtures/8105/stats')) {
+      return new Response(JSON.stringify({ data: { home: { possession: 48, shots_on_target: 4 }, away: { possession: 52, shots_on_target: 4 } } }), { status: 200 });
+    }
+    if (url.pathname.endsWith('/fixtures/h2h/101/202')) {
+      return new Response(JSON.stringify({ fixtures: [] }), { status: 200 });
+    }
+    throw new Error('Unexpected SportAPI.ai regression request: ' + url.toString());
+  }) as typeof fetch;
+
+  const fixture: MatchFixture = {
+    id: 'sportapi_competition_filter_fixture',
+    kickoffTime: '2026-10-10T15:00:00Z',
+    league: 'Premier League',
+    venue: 'Test Ground',
+    isHighStakes: false,
+    motivation: 'regular',
+    sportApiAiFixtureId: '8100',
+    sportApiAiLeagueId: 77,
+    sportApiAiHomeTeamId: 101,
+    sportApiAiAwayTeamId: 202,
+    homeTeam: { id: 'home', name: 'Home FC', shortName: 'HOM', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    awayTeam: { id: 'away', name: 'Away FC', shortName: 'AWA', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    h2h: null,
+  };
+
+  try {
+    const result = await enrichFixturesWithFootballApis([fixture], ['2026-10-10'], { enableApiFootball: false, enableSportmonks: false });
+    const out = result.fixtures[0];
+    assert.deepEqual(out.homeTeam.form, ['W', 'D']);
+    assert.equal(out.homeTeam.formSource, 'SPORTAPI_AI');
+  } finally {
+    restoreEnvironment();
+    delete process.env.SPORT_PROVIDER_MAX_TEAM_LOOKUPS;
+    delete process.env.SPORT_PROVIDER_MAX_MATCH_STAT_LOOKUPS;
+    delete process.env.SPORT_PROVIDER_MAX_H2H_LOOKUPS;
+  }
+});
+
+test('Sportmonks historical form excludes cups, friendlies, simulated feeds and unknown competitions', async () => {
+  delete process.env.API_FOOTBALL_USE_RAPIDAPI;
+  delete process.env.API_FOOTBALL_KEY;
+  delete process.env.SPORTAPI_AI_KEY;
+  delete process.env.SPORTMONKS_API_TOKEN;
+  process.env.SPORTMONKS_API_KEY = 'test-sportmonks-key';
+  process.env.SPORT_PROVIDER_MAX_TEAM_LOOKUPS = '4';
+  process.env.SPORT_PROVIDER_MAX_H2H_LOOKUPS = '1';
+
+  const makeRegressionMatch = (id: number, date: string, homeId: number, awayId: number, hg: number, ag: number, leagueName?: string) => ({
+    id,
+    starting_at: date,
+    state: { short_name: 'FT' },
+    ...(leagueName ? { league: { name: leagueName } } : {}),
+    participants: [
+      { id: homeId, name: homeId === 101 ? 'Home FC' : 'Opponent ' + homeId, meta: { location: 'home' } },
+      { id: awayId, name: awayId === 202 ? 'Away FC' : 'Opponent ' + awayId, meta: { location: 'away' } },
+    ],
+    scores: { data: [
+      { description: 'CURRENT', score: { participant: 'home', goals: hg } },
+      { description: 'CURRENT', score: { participant: 'away', goals: ag } },
+    ] },
+  });
+
+  globalThis.fetch = (async (input: URL | RequestInfo) => {
+    const url = new URL(String(input));
+    if (url.pathname.includes('/fixtures/date/')) return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    if (url.pathname.endsWith('/fixtures/between/2026-06-12/2026-10-09/101')) {
+      return new Response(JSON.stringify({ data: [
+        makeRegressionMatch(8201, '2026-10-02T15:00:00Z', 101, 301, 2, 0, 'South African Premiership'),
+        makeRegressionMatch(8202, '2026-09-25T15:00:00Z', 101, 302, 0, 1, 'Nedbank Cup'),
+        makeRegressionMatch(8203, '2026-09-18T15:00:00Z', 101, 303, 1, 1, 'International Friendly'),
+        makeRegressionMatch(8204, '2026-09-11T15:00:00Z', 101, 304, 3, 0, 'Simulated Football'),
+        makeRegressionMatch(8205, '2026-09-04T15:00:00Z', 305, 101, 1, 1, 'South African Premiership'),
+        makeRegressionMatch(8206, '2026-08-28T15:00:00Z', 101, 306, 4, 0),
+      ] }), { status: 200 });
+    }
+    if (url.pathname.endsWith('/fixtures/between/2026-06-12/2026-10-09/202')) {
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    }
+    if (url.pathname.endsWith('/standings/seasons/900')) {
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    }
+    if (url.pathname.endsWith('/fixtures/head-to-head/101/202')) {
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    }
+    throw new Error('Unexpected Sportmonks regression request: ' + url.toString());
+  }) as typeof fetch;
+
+  const fixture: MatchFixture = {
+    id: 'sportmonks_competition_filter_fixture',
+    kickoffTime: '2026-10-10T15:00:00Z',
+    league: 'South African Premiership',
+    venue: 'Test Ground',
+    isHighStakes: false,
+    motivation: 'regular',
+    sportMonksSeasonId: 900,
+    sportmonksFixtureId: '8200',
+    sportmonksLeagueId: 88,
+    sportmonksHomeTeamId: 101,
+    sportmonksAwayTeamId: 202,
+    homeTeam: { id: 'home', name: 'Home FC', shortName: 'HOM', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    awayTeam: { id: 'away', name: 'Away FC', shortName: 'AWA', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    h2h: null,
+  };
+
+  try {
+    const result = await enrichFixturesWithFootballApis([fixture], ['2026-10-10'], { enableApiFootball: false, enableSportApiAi: false });
+    const out = result.fixtures[0];
+    assert.deepEqual(out.homeTeam.form, ['W', 'D']);
+    assert.equal(out.homeTeam.formSource, 'SPORTMONKS');
+  } finally {
+    restoreEnvironment();
+    delete process.env.SPORT_PROVIDER_MAX_TEAM_LOOKUPS;
+    delete process.env.SPORT_PROVIDER_MAX_H2H_LOOKUPS;
   }
 });
