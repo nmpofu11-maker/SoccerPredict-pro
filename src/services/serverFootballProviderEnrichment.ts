@@ -1523,6 +1523,15 @@ export async function enrichFixturesWithFootballApis(
   const sportmonksH2HBudget = { used: 0 };
   const sportmonksTeamSearchBudget = { used: 0 };
 
+  type ProviderEnrichmentDiagnostic = { fixture: string; providerCandidates: number; teamIdsResolved: number; historyMatches: number; eligibleHistoryMatches: number; standingsFound: number; h2hFound: number; evidenceAfterMerge: boolean; };
+  const diagnostics = new Map<string, ProviderEnrichmentDiagnostic>();
+  const diagnosticFor = (fixture: MatchFixture): ProviderEnrichmentDiagnostic => {
+    const key = String(fixture.id); const existing = diagnostics.get(key); if (existing) return existing;
+    const created = { fixture: fixture.homeTeam.name + ' vs ' + fixture.awayTeam.name, providerCandidates: 0, teamIdsResolved: 0, historyMatches: 0, eligibleHistoryMatches: 0, standingsFound: 0, h2hFound: 0, evidenceAfterMerge: false };
+    diagnostics.set(key, created); return created;
+  };
+
+
   async function enrichFromSportApi(fixture: MatchFixture): Promise<void> {
     if (!sportApiAiEnabled || !sportApiAiConfigured()) return;
     const rawHomeId = (fixture as any).sportApiAiHomeTeamId;
@@ -1531,6 +1540,7 @@ export async function enrichFixturesWithFootballApis(
 
     if (!isValidPositiveInteger(rawHomeId) || !isValidPositiveInteger(rawAwayId)) return;
 
+    const diagnostic = diagnosticFor(fixture); diagnostic.teamIdsResolved += 2;
     const homeId = Number(rawHomeId);
     const awayId = Number(rawAwayId);
 
@@ -1542,7 +1552,7 @@ export async function enrichFixturesWithFootballApis(
           const team = entry[0];
           const id = entry[1];
           const standing = findProviderStanding(standings, String(id), team.name);
-          if (standing) {
+          if (standing) { diagnostic.standingsFound++;
             // SportAPI.ai is the highest-priority primary evidence source.
             // Replace stale/secondary provenance, but never replace an existing
             // SportAPI.ai value with weaker data later in the pipeline.
@@ -1577,6 +1587,8 @@ export async function enrichFixturesWithFootballApis(
       try {
         const body = await getSportApiTeam(String(id));
         const matches = extractSportApiTeamMatches(body);
+        diagnostic.historyMatches += matches.length;
+        diagnostic.eligibleHistoryMatches += eligibleHistoricalMatches(matches, fixture, fixture.kickoffTime).length;
         const formPatch = summarizeFormFromMatches(team.name, String(id), matches, fixture.kickoffTime, 'SPORTAPI_AI', fixture.league, fixture.competition);
         if (formPatch.form?.length && !isPrimarySource(team.formSource)) Object.assign(team, formPatch);
         team.scheduleSource = 'SPORTAPI_AI';
@@ -1646,7 +1658,7 @@ export async function enrichFixturesWithFootballApis(
           String(homeId), String(awayId), fixture.homeTeam.name, fixture.awayTeam.name,
           extractProviderH2HFixtures(body), fixture.kickoffTime, 'SPORTAPI_AI'
         );
-        if (h2h) fixture.h2h = h2h;
+        if (h2h) { fixture.h2h = h2h; diagnostic.h2hFound++; }
       } catch (err) {
         errors.push('SportAPI.ai H2H ' + fixture.homeTeam.name + ' / ' + fixture.awayTeam.name + ': ' + (err instanceof Error ? err.message : String(err)));
       }
@@ -1689,6 +1701,7 @@ export async function enrichFixturesWithFootballApis(
     if (Number.isInteger(awayId)) resolvedEntries.push([fixture.awayTeam, awayId]);
     if (resolvedEntries.length === 0) return;
 
+    const diagnostic = diagnosticFor(fixture); diagnostic.teamIdsResolved += resolvedEntries.length;
     for (const entry of resolvedEntries) {
       const team = entry[0];
       const id = entry[1];
@@ -1696,6 +1709,8 @@ export async function enrichFixturesWithFootballApis(
       sportmonksTeamBudget.used++;
       try {
         const matches = await getSportmonksTeamFixtures(String(id), fixture.kickoffTime);
+        diagnostic.historyMatches += matches.length;
+        diagnostic.eligibleHistoryMatches += eligibleHistoricalMatches(matches, fixture, fixture.kickoffTime).length;
         const formPatch = summarizeFormFromMatches(team.name, String(id), matches, fixture.kickoffTime, 'SPORTMONKS', fixture.league, fixture.competition);
         if (!(team.formSource && team.form.length) && formPatch.form?.length) Object.assign(team, formPatch);
         team.scheduleSource = 'SPORTMONKS';
@@ -1765,7 +1780,7 @@ export async function enrichFixturesWithFootballApis(
           const team = entry[0];
           const id = entry[1];
           const standing = findProviderStanding(standings, String(id), team.name);
-          if (standing) {
+          if (standing) { diagnostic.standingsFound++;
             // Sportmonks is a co-primary source. It may fill a missing field,
             // but SportAPI.ai remains authoritative when it already supplied it.
             if (!isPrimarySource(team.standingsSource)) {
@@ -1792,7 +1807,7 @@ export async function enrichFixturesWithFootballApis(
           String(homeId), String(awayId), fixture.homeTeam.name, fixture.awayTeam.name,
           raw, fixture.kickoffTime, 'SPORTMONKS'
         );
-        if (h2h) fixture.h2h = h2h;
+        if (h2h) { fixture.h2h = h2h; diagnostic.h2hFound++; }
       } catch (err) {
         errors.push('Sportmonks H2H ' + fixture.homeTeam.name + ' / ' + fixture.awayTeam.name + ': ' + (err instanceof Error ? err.message : String(err)));
       }
@@ -1900,6 +1915,18 @@ export async function enrichFixturesWithFootballApis(
         errors.push('API-Football H2H ' + fixture.homeTeam.name + ' / ' + fixture.awayTeam.name + ': ' + (err instanceof Error ? err.message : String(err)));
       }
     }
+  }
+
+  for (const fixture of enriched) {
+    const diagnostic = diagnosticFor(fixture);
+    const key = normalizeProviderTeamName(fixture.homeTeam.name) + '|' + normalizeProviderTeamName(fixture.awayTeam.name) + '|' + fixture.kickoffTime.slice(0, 10);
+    diagnostic.providerCandidates += (sportApiFixtureIdsByKey.get(key)?.length || 0);
+    diagnostic.providerCandidates += sportmonksCandidates.filter((cand) => {
+      const home = extractSportmonksParticipant(cand.raw, 'home'); const away = extractSportmonksParticipant(cand.raw, 'away');
+      return normalizeProviderTeamName(home?.name) === normalizeProviderTeamName(fixture.homeTeam.name) && normalizeProviderTeamName(away?.name) === normalizeProviderTeamName(fixture.awayTeam.name) && String(cand.mapped.kickoffTime).slice(0, 10) === fixture.kickoffTime.slice(0, 10);
+    }).length;
+    diagnostic.evidenceAfterMerge = Boolean((fixture.homeTeam.form?.length || fixture.awayTeam.form?.length) || Number.isFinite(fixture.homeTeam.leagueRank) || Number.isFinite(fixture.awayTeam.leagueRank) || fixture.h2h?.source || fixture.homeTeam.matchStatsSource || fixture.awayTeam.matchStatsSource || fixture.homeTeam.advancedStatsSource || fixture.awayTeam.advancedStatsSource);
+    if (Date.parse(fixture.kickoffTime) <= Date.now() && !diagnostic.evidenceAfterMerge) console.info('[provider-diagnostic]', JSON.stringify(diagnostic));
   }
 
   const enrichedTeams = enriched.filter((f) =>
