@@ -46,6 +46,7 @@ import {
   setApiFootballRateLimited,
 } from './src/services/serverFootballApis';
 import { enrichFixturesWithFootballApis } from './src/services/serverFootballProviderEnrichment';
+import { mergeEvidenceFallbackFixtures } from './src/services/predictionEvidenceMerge';
 import { extractTextFromPDF, scrapeUrl } from './src/services/manualDataService';
 import { evaluateFixturePrediction, sanitizeEngineWeights, fixtureHasEvidence } from './src/engine/rulesEngine';
 import {
@@ -2224,8 +2225,13 @@ async function startServer() {
       if (neutralBeforeFallback > 0) {
         try {
           const liveData = await getLiveScoreboardFixtures(true);
-          validation = verifyAndSanitizeFixtures(liveData.fixtures);
-          diskData = liveData.fixtures;
+          const mergedFallback = mergeEvidenceFallbackFixtures(
+            validation.fixtures as any[],
+            liveData.fixtures as any[],
+            hasVerifiedPredictionEvidence,
+          );
+          validation = verifyAndSanitizeFixtures(mergedFallback);
+          diskData = validation.fixtures;
         } catch (fallbackErr) {
           console.warn(
             '[daily-slate] ESPN evidence fallback failed safely:',
