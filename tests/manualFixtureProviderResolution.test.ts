@@ -96,3 +96,21 @@ test('manual bookmaker parsing does not invent venue, round or H2H history', () 
   assert.equal(fixtures[0].h2h?.totalLast5, null);
   assert.deepEqual(fixtures[0].h2h?.scoresLast5, []);
 });
+
+
+test('canonicalizes common international provider competition naming variants', () => {
+  assert.equal(canonicalizeProviderCompetitionName('LigaPro Primera B'), 'ecuador ligapro serie b');
+  assert.equal(canonicalizeProviderCompetitionName('LigaPro Serie B'), 'ecuador ligapro serie b');
+  assert.equal(canonicalizeProviderCompetitionName('Romanian Liga I'), 'romanian liga i');
+  assert.equal(canonicalizeProviderCompetitionName('Liga I'), 'romanian liga i');
+  assert.equal(canonicalizeProviderCompetitionName('Iraq Stars League'), 'iraq stars league');
+  assert.equal(canonicalizeProviderCompetitionName('Stars League'), 'iraq stars league');
+});
+
+test('accepts supported provider competition aliases without weakening unrelated competition identity', () => {
+  assert.equal(areCompetitionsCompatible('LigaPro Primera B', undefined, 'LigaPro Serie B'), true);
+  assert.equal(areCompetitionsCompatible('Romanian Liga I', undefined, 'Liga I'), true);
+  assert.equal(areCompetitionsCompatible('Stars League', undefined, 'Iraq Stars League'), true);
+  assert.equal(areCompetitionsCompatible('LigaPro Primera B', undefined, 'LigaPro Primera A'), false);
+  assert.equal(areCompetitionsCompatible('Romanian Liga I', undefined, 'Romanian Liga II'), false);
+});
