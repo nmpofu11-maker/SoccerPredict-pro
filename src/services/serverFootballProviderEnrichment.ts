@@ -1481,13 +1481,13 @@ export async function enrichFixturesWithFootballApis(
           const homeMatches = matches.filter((m) => completedProviderMatch(m, fixture.kickoffTime) && teamSideForFixture(m, String(id), team.name) === 'home');
           const awayMatches = matches.filter((m) => completedProviderMatch(m, fixture.kickoffTime) && teamSideForFixture(m, String(id), team.name) === 'away');
           if (homeMatches.length >= 3) {
-            const homeForm = summarizeFormFromMatches(team.name, String(id), homeMatches.slice(-5), fixture.kickoffTime, 'SPORTAPI_AI').form || [];
+            const homeForm = summarizeFormFromMatches(team.name, String(id), homeMatches.slice(-5), fixture.kickoffTime, 'SPORTAPI_AI', fixture.league, fixture.competition).form || [];
             const ppg = homeForm.length ? homeForm.reduce((sum, r) => sum + (r === 'W' ? 3 : r === 'D' ? 1 : 0), 0) / homeForm.length : 0;
             team.isHomeDominant = ppg >= 2.0;
             team.homeAwayFormSource = 'SPORTAPI_AI';
           }
           if (awayMatches.length >= 3) {
-            const awayForm = summarizeFormFromMatches(team.name, String(id), awayMatches.slice(-5), fixture.kickoffTime, 'SPORTAPI_AI').form || [];
+            const awayForm = summarizeFormFromMatches(team.name, String(id), awayMatches.slice(-5), fixture.kickoffTime, 'SPORTAPI_AI', fixture.league, fixture.competition).form || [];
             const ppg = awayForm.length ? awayForm.reduce((sum, r) => sum + (r === 'W' ? 3 : r === 'D' ? 1 : 0), 0) / awayForm.length : 0;
             team.hasTopTierAwayForm = ppg >= 2.0;
             team.homeAwayFormSource = 'SPORTAPI_AI';
@@ -1631,13 +1631,13 @@ export async function enrichFixturesWithFootballApis(
           const homeMatches = eligibleHistoricalMatches(matches, fixture, fixture.kickoffTime).filter((m) => teamSideForFixture(m, String(id), team.name) === 'home').slice(-5);
           const awayMatches = eligibleHistoricalMatches(matches, fixture, fixture.kickoffTime).filter((m) => teamSideForFixture(m, String(id), team.name) === 'away').slice(-5);
           if (homeMatches.length >= 3) {
-            const homeForm = summarizeFormFromMatches(team.name, String(id), homeMatches, fixture.kickoffTime, 'SPORTMONKS').form || [];
+            const homeForm = summarizeFormFromMatches(team.name, String(id), homeMatches, fixture.kickoffTime, 'SPORTMONKS', fixture.league, fixture.competition).form || [];
             const ppg = homeForm.length ? homeForm.reduce((sum, r) => sum + (r === 'W' ? 3 : r === 'D' ? 1 : 0), 0) / homeForm.length : 0;
             team.isHomeDominant = ppg >= 2.0;
             team.homeAwayFormSource = 'SPORTMONKS';
           }
           if (awayMatches.length >= 3) {
-            const awayForm = summarizeFormFromMatches(team.name, String(id), awayMatches, fixture.kickoffTime, 'SPORTMONKS').form || [];
+            const awayForm = summarizeFormFromMatches(team.name, String(id), awayMatches, fixture.kickoffTime, 'SPORTMONKS', fixture.league, fixture.competition).form || [];
             const ppg = awayForm.length ? awayForm.reduce((sum, r) => sum + (r === 'W' ? 3 : r === 'D' ? 1 : 0), 0) / awayForm.length : 0;
             team.hasTopTierAwayForm = ppg >= 2.0;
             team.homeAwayFormSource = 'SPORTMONKS';
