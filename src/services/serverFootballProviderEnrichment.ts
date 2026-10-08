@@ -617,9 +617,12 @@ function providerTeamNameSimilarity(target: string, candidate: string): number {
   }
 
   const tokens = (value: string) => value
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .split(/[^a-z0-9]+/i)
-    .map((v) => v.toLowerCase())
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\b(fc|cf|sc|afc|club)\b/g, ' ')
+    .split(/[^a-z0-9]+/)
+    .map((v) => v.trim())
     .filter((v) => v.length >= 4);
   const targetTokens = new Set(tokens(target));
   const candidateTokens = new Set(tokens(candidate));
