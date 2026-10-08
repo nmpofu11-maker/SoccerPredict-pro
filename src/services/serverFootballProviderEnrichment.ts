@@ -1239,6 +1239,9 @@ export async function enrichFixturesWithFootballApis(
 
   // Add new API-Football fixtures to the slate if they are completely unrepresented
   for (const cand of apiFootballCandidates) {
+    // Historical/completed provider fixtures are enrichment evidence only;
+    // never add them as new slate fixtures.
+    if (Date.parse(cand.mapped.kickoffTime) < Date.now() - 3 * 60 * 60 * 1000) continue;
     const existingMatches = findMatchingSlateFixtures(cand.mapped, enriched);
     if (existingMatches.length === 0) {
       const duplicatedCandidates = apiFootballCandidates.filter(c => {
@@ -1327,6 +1330,9 @@ export async function enrichFixturesWithFootballApis(
 
   // Add new Sportmonks fixtures to slate if completely unrepresented
   for (const cand of sportmonksCandidates) {
+    // Historical/completed provider fixtures are enrichment evidence only;
+    // never add them as new slate fixtures.
+    if (Date.parse(cand.mapped.kickoffTime) < Date.now() - 3 * 60 * 60 * 1000) continue;
     const existingMatches = findMatchingSlateFixtures(cand.mapped, enriched);
     if (existingMatches.length === 0) {
       const duplicatedCandidates = sportmonksCandidates.filter(c => {
