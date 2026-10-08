@@ -941,7 +941,7 @@ export function findUniqueMatchingCandidate(
     // 1. Kickoff timestamp compatibility: within 3 hours
     const mappedKickoffMs = Date.parse(mapped.kickoffTime);
     if (!Number.isFinite(mappedKickoffMs)) return false;
-    if (Math.abs(kickoffMs - mappedKickoffMs) > 3 * 3600 * 1000) return false;
+    if (Math.abs(kickoffMs - mappedKickoffMs) > 3 * 3600 * 1000 && !canMatchStartedFixtureSameUtcDate(kickoffMs, mappedKickoffMs)) return false;
 
     const isSportmonks = Boolean(raw?.starting_at || raw?.participants || mapped.id?.startsWith('sportmonks_'));
 
@@ -1282,7 +1282,7 @@ export async function enrichFixturesWithFootballApis(
       if (!rawCandKick) return false;
       const cKickMs = Date.parse(rawCandKick);
       if (!Number.isFinite(fKickMs) || !Number.isFinite(cKickMs)) return false;
-      if (Math.abs(fKickMs - cKickMs) > 3 * 3600 * 1000) return false;
+      if (Math.abs(fKickMs - cKickMs) > 3 * 3600 * 1000 && !canMatchStartedFixtureSameUtcDate(fKickMs, cKickMs)) return false;
 
       const rawHomeName = cand.raw?.teams?.home?.name;
       const rawAwayName = cand.raw?.teams?.away?.name;
