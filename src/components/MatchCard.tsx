@@ -798,6 +798,32 @@ export const MatchCard: React.FC<MatchCardProps> = ({
         </div>
       </div>
 
+      {/* VERIFIED EVIDENCE SNAPSHOT */}
+      <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-[9.5px] font-mono">
+        <div className="rounded border border-slate-800 bg-slate-950/70 px-2 py-1.5">
+          <span className="text-slate-500">FORM </span>
+          <span className="text-slate-200">{fixture.homeTeam.form?.length ? fixture.homeTeam.form.join(' ') : '—'}</span>
+          <span className="text-slate-600"> / </span>
+          <span className="text-slate-200">{fixture.awayTeam.form?.length ? fixture.awayTeam.form.join(' ') : '—'}</span>
+        </div>
+        <div className="rounded border border-slate-800 bg-slate-950/70 px-2 py-1.5">
+          <span className="text-slate-500">TABLE </span>
+          <span className="text-slate-200">#{fixture.homeTeam.leagueRank ?? '—'} / #{fixture.awayTeam.leagueRank ?? '—'}</span>
+          <span className="text-slate-600"> • </span>
+          <span className="text-slate-300">{fixture.homeTeam.points ?? '—'} / {fixture.awayTeam.points ?? '—'} pts</span>
+        </div>
+        <div className="rounded border border-slate-800 bg-slate-950/70 px-2 py-1.5">
+          <span className="text-slate-500">H2H </span>
+          <span className="text-slate-200">
+            {fixture.h2h?.source && Number.isFinite(fixture.h2h.homeWins) && Number.isFinite(fixture.h2h.draws) && Number.isFinite(fixture.h2h.awayWins)
+              ? `${fixture.h2h.homeWins}-${fixture.h2h.draws}-${fixture.h2h.awayWins}`
+              : '—'}
+          </span>
+          <span className="text-slate-600"> • </span>
+          <span className="text-sky-300">{fixture.h2h?.source || 'No verified H2H'}</span>
+        </div>
+      </div>
+
       {/* 5. EXPANDED SECONDARY DETAILS (Possession, SOT, Rules, SofaScore & Manual Overrides) */}
       {isExpanded && (
         <div className="mt-2.5 pt-2.5 border-t border-slate-800/80 space-y-2.5">
