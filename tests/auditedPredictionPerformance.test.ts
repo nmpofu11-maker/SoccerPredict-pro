@@ -79,6 +79,7 @@ test('evaluateAuditedPredictionPerformance excludes predictions created after ki
       awayScore: 0,
       actualOutcome: 'home',
       date: '2026-10-10',
+      notes: 'Settled via SportAPI.ai',
     },
   ];
 
@@ -118,6 +119,7 @@ test('evaluateAuditedPredictionPerformance excludes missing immutable prediction
       awayScore: 0,
       actualOutcome: 'home',
       date: '2026-10-10',
+      notes: 'Settled via SportAPI.ai',
     },
   ];
 
@@ -169,6 +171,7 @@ test('evaluateAuditedPredictionPerformance counts valid pre-kickoff predictions 
       awayScore: 1,
       actualOutcome: 'home',
       date: '2026-10-10',
+      notes: 'Settled via SportAPI.ai',
     },
   ];
 
@@ -208,6 +211,7 @@ test('evaluateAuditedPredictionPerformance rejects invalid probability vectors',
       awayScore: 0,
       actualOutcome: 'home',
       date: '2026-10-10',
+      notes: 'Settled via SportAPI.ai',
     },
   ];
 
@@ -246,6 +250,7 @@ test('evaluateAuditedPredictionPerformance rejects zero input coverage and enfor
       awayScore: 0,
       actualOutcome: 'home',
       date: '2026-10-10',
+      notes: 'Settled via SportAPI.ai',
     },
   ];
 
@@ -284,6 +289,7 @@ test('evaluateAuditedPredictionPerformance calculates Wilson confidence interval
       awayScore: 1,
       actualOutcome: 'home',
       date: '2026-10-10',
+      notes: 'Settled via SportAPI.ai',
     },
   ];
 
@@ -303,3 +309,52 @@ test('evaluateAuditedPredictionPerformance calculates Wilson confidence interval
   assert.ok(Math.abs(report.meanLogLoss! - (-Math.log(0.6))) < 1e-9);
 });
 
+
+
+test('audited performance excludes predictions with missing or invalid input coverage', () => {
+  const prediction = (fixtureId: string, inputCoverage: number | undefined): PredictionRecord => ({
+    type: 'prediction', fixtureId, kickoffTime: '2026-10-10T15:00:00.000Z',
+    league: 'Test League', homeTeam: 'Team A', awayTeam: 'Team B',
+    frozenAt: '2026-10-10T14:00:00.000Z', probabilities: { home: 60, draw: 25, away: 15 },
+    predicted: 'home', modelVersion: 'v1', ...(inputCoverage === undefined ? {} : { inputCoverage }),
+  });
+  const result = (id: string): HistoricalMatchResult => ({
+    id, fixture: {} as any, homeScore: 2, awayScore: 0, actualOutcome: 'home',
+    date: '2026-10-10', notes: 'Settled via SportAPI.ai',
+  });
+  const report = evaluateAuditedPredictionPerformance(
+    [prediction('missing_coverage', undefined), prediction('bad_coverage', 1.5)],
+    [result('missing_coverage'), result('bad_coverage')],
+  );
+  assert.equal(report.evaluatedCount, 0);
+  assert.equal(report.excludedCount, 2);
+  assert.match(report.evaluations[0].exclusionReason || '', /inputCoverage/);
+  assert.match(report.evaluations[1].exclusionReason || '', /inputCoverage/);
+});
+
+test('audited performance excludes settled results with untrusted provenance, score mismatch, or duplicate IDs', () => {
+  const prediction = (fixtureId: string): PredictionRecord => ({
+    type: 'prediction', fixtureId, kickoffTime: '2026-10-10T15:00:00.000Z',
+    league: 'Test League', homeTeam: 'Team A', awayTeam: 'Team B',
+    frozenAt: '2026-10-10T14:00:00.000Z', probabilities: { home: 60, draw: 25, away: 15 },
+    predicted: 'home', modelVersion: 'v1', inputCoverage: 0.5,
+  });
+  const result = (id: string, actualOutcome: 'home' | 'draw' | 'away', notes?: string): HistoricalMatchResult => ({
+    id, fixture: {} as any, homeScore: 2, awayScore: 0, actualOutcome,
+    date: '2026-10-10', ...(notes ? { notes } : {}),
+  });
+  const report = evaluateAuditedPredictionPerformance(
+    [prediction('no_source'), prediction('score_mismatch'), prediction('duplicate_result')],
+    [
+      result('no_source', 'home'),
+      result('score_mismatch', 'away', 'Settled via SportAPI.ai'),
+      result('duplicate_result', 'home', 'Settled via SportAPI.ai'),
+      result('duplicate_result', 'home', 'Settled via Sportmonks'),
+    ],
+  );
+  assert.equal(report.evaluatedCount, 0);
+  assert.equal(report.excludedCount, 3);
+  assert.match(report.evaluations.find((e) => e.fixtureId === 'no_source')?.exclusionReason || '', /provenance/);
+  assert.match(report.evaluations.find((e) => e.fixtureId === 'score_mismatch')?.exclusionReason || '', /conflicts with the final score/);
+  assert.match(report.evaluations.find((e) => e.fixtureId === 'duplicate_result')?.exclusionReason || '', /Multiple settled result records/);
+});

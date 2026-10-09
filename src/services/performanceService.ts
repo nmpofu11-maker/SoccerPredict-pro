@@ -37,6 +37,19 @@ export function calculateMultiClassBrierScore(
   };
 }
 
+const TRUSTED_SETTLEMENT_NOTES = new Set([
+  'Settled via SportAPI.ai',
+  'Settled via Sportmonks',
+  'Settled via Football-Data.org',
+  'Settled via PitchAPI',
+  'Settled via TheRundown.io',
+  'Settled via manual result upload',
+]);
+
+function hasTrustedSettlementProvenance(result: HistoricalMatchResult): boolean {
+  return typeof result.notes === 'string' && TRUSTED_SETTLEMENT_NOTES.has(result.notes.trim());
+}
+
 export interface AuditedPredictionEvaluation {
   fixtureId: string;
   homeTeam?: string;
@@ -95,10 +108,16 @@ export function evaluateAuditedPredictionPerformance(
   minSample = 30
 ): AuditedPerformanceReport {
   const settledMap = new Map<string, HistoricalMatchResult>();
+  const duplicateSettledIds = new Set<string>();
   for (const r of settledResults || []) {
-    if (r?.id && Number.isFinite(r.homeScore) && Number.isFinite(r.awayScore) && r.actualOutcome) {
-      settledMap.set(String(r.id), r);
+    if (!r?.id || !Number.isFinite(r.homeScore) || !Number.isFinite(r.awayScore) || !r.actualOutcome) continue;
+    const id = String(r.id);
+    if (settledMap.has(id) || duplicateSettledIds.has(id)) {
+      settledMap.delete(id);
+      duplicateSettledIds.add(id);
+      continue;
     }
+    settledMap.set(id, r);
   }
 
   const evaluations: AuditedPredictionEvaluation[] = [];
@@ -230,7 +249,7 @@ export function evaluateAuditedPredictionPerformance(
     }
 
     // Pre-match feature evidence requirement
-    if (pred.inputCoverage !== undefined && pred.inputCoverage <= 0) {
+    if (!Number.isFinite(pred.inputCoverage) || pred.inputCoverage <= 0 || pred.inputCoverage > 1) {
       evaluations.push({
         fixtureId: pred.fixtureId,
         homeTeam: pred.homeTeam,
@@ -250,7 +269,33 @@ export function evaluateAuditedPredictionPerformance(
         brierStandardSum: 0,
         brierHalfSum: 0,
         status: 'excluded',
-        exclusionReason: 'Prediction lacks verified pre-match feature evidence (inputCoverage = 0)',
+        exclusionReason: 'Prediction lacks valid verified pre-match feature evidence (inputCoverage must be finite and > 0)',
+      });
+      excludedCount++;
+      continue;
+    }
+
+    if (duplicateSettledIds.has(pred.fixtureId)) {
+      evaluations.push({
+        fixtureId: pred.fixtureId,
+        homeTeam: pred.homeTeam,
+        awayTeam: pred.awayTeam,
+        league: pred.league,
+        kickoffTime: pred.kickoffTime,
+        frozenAt: pred.frozenAt,
+        probabilities: probs,
+        probabilitySum: pSum,
+        predictedOutcome: pred.predicted,
+        actualOutcome: 'draw',
+        homeScore: 0,
+        awayScore: 0,
+        modelVersion: pred.modelVersion,
+        inputCoverage: pred.inputCoverage,
+        isCorrect: false,
+        brierStandardSum: 0,
+        brierHalfSum: 0,
+        status: 'excluded',
+        exclusionReason: 'Multiple settled result records share this fixture ID',
       });
       excludedCount++;
       continue;
@@ -259,6 +304,32 @@ export function evaluateAuditedPredictionPerformance(
     const settled = settledMap.get(pred.fixtureId);
     if (!settled) {
       pendingCount++;
+      continue;
+    }
+
+    if (!hasTrustedSettlementProvenance(settled)) {
+      evaluations.push({
+        fixtureId: pred.fixtureId,
+        homeTeam: pred.homeTeam,
+        awayTeam: pred.awayTeam,
+        league: pred.league,
+        kickoffTime: pred.kickoffTime,
+        frozenAt: pred.frozenAt,
+        probabilities: probs,
+        probabilitySum: pSum,
+        predictedOutcome: pred.predicted,
+        actualOutcome: settled.actualOutcome,
+        homeScore: settled.homeScore,
+        awayScore: settled.awayScore,
+        modelVersion: pred.modelVersion,
+        inputCoverage: pred.inputCoverage,
+        isCorrect: false,
+        brierStandardSum: 0,
+        brierHalfSum: 0,
+        status: 'excluded',
+        exclusionReason: 'Settled result lacks recognized provider or manual-upload provenance',
+      });
+      excludedCount++;
       continue;
     }
 
@@ -312,6 +383,37 @@ export function evaluateAuditedPredictionPerformance(
         brierHalfSum: 0,
         status: 'excluded',
         exclusionReason: 'Settled result has invalid final scores',
+      });
+      excludedCount++;
+      continue;
+    }
+
+    const scoreOutcome = settled.homeScore > settled.awayScore
+      ? 'home'
+      : settled.homeScore < settled.awayScore
+        ? 'away'
+        : 'draw';
+    if (settled.actualOutcome !== scoreOutcome) {
+      evaluations.push({
+        fixtureId: pred.fixtureId,
+        homeTeam: pred.homeTeam,
+        awayTeam: pred.awayTeam,
+        league: pred.league,
+        kickoffTime: pred.kickoffTime,
+        frozenAt: pred.frozenAt,
+        probabilities: probs,
+        probabilitySum: pSum,
+        predictedOutcome: pred.predicted,
+        actualOutcome: settled.actualOutcome,
+        homeScore: settled.homeScore,
+        awayScore: settled.awayScore,
+        modelVersion: pred.modelVersion,
+        inputCoverage: pred.inputCoverage,
+        isCorrect: false,
+        brierStandardSum: 0,
+        brierHalfSum: 0,
+        status: 'excluded',
+        exclusionReason: 'Recorded actual outcome conflicts with the final score',
       });
       excludedCount++;
       continue;
