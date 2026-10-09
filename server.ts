@@ -13,6 +13,7 @@ import type { DataIntegrityAuditReport } from './src/types/soccer';
 import {
   sportApiAiConfigured,
   hasSportApiAiKey,
+  isSportApiAiRateLimited,
   fetchSportApiAiFixturesByDate,
   isSportApiAiFixtureFinished,
   getSportApiAiScores,
@@ -2552,7 +2553,9 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
     try {
       return res.json({
         status: 'success',
-        sportApiAiConfigured: sportApiAiConfigured(),
+        // Configuration means the key exists; rate limiting is a separate runtime state.
+        sportApiAiConfigured: hasSportApiAiKey(),
+        sportApiAiRateLimited: isSportApiAiRateLimited(),
         theRundownConfigured: theRundownConfigured(),
         pitchApiConfigured: pitchApiConfigured(),
         sportDbConfigured: sportDbConfigured(),
