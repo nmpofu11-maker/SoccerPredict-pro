@@ -913,6 +913,34 @@ function normalizeTeamName(name: string): string {
   return (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+/**
+ * Safe fallback for settlement when provider IDs are unavailable.
+ * Team names alone are not enough: rematches/cup fixtures can share the same
+ * pair. Require an explicit provider kickoff within 3 hours and exactly one
+ * candidate; ambiguous or undated records are deliberately not settled.
+ */
+function providerSettlementKickoffMs(match: any): number {
+  const raw = match?.datetime ?? match?.kickoff_time ?? match?.utc_date ??
+    match?.starting_at ?? match?.date ?? match?.commence_time ??
+    match?.start_time ?? match?.startTime ?? match?.fixture?.date ??
+    match?.fixture?.kickoff_time ?? match?.fixture?.starting_at;
+  if (typeof raw !== 'string' || !/[T ]\d{2}:\d{2}/.test(raw)) return NaN;
+  return Date.parse(raw);
+}
+
+function findSafeSettlementNameMatch(candidates: any[] | undefined, fixture: any): any | undefined {
+  if (!Array.isArray(candidates) || candidates.length === 0) return undefined;
+  const targetKickoff = Date.parse(fixture?.kickoffTime || '');
+  if (!Number.isFinite(targetKickoff)) return undefined;
+  const eligible = candidates.filter((candidate) => {
+    const candidateKickoff = providerSettlementKickoffMs(candidate);
+    return Number.isFinite(candidateKickoff) &&
+      Math.abs(candidateKickoff - targetKickoff) <= 3 * 60 * 60 * 1000;
+  });
+  return eligible.length === 1 ? eligible[0] : undefined;
+}
+
+
 /** Build an internal fixture record from a SportAPI.ai fixture. */
 function parseProviderScore(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
@@ -1558,14 +1586,17 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
         try {
           const apiFixtures = await fetchSportApiAiFixturesByDate(dateStr);
           const byIdMap = new Map<string, any>();
-          const byNameMap = new Map<string, any>();
+          const byNameMap = new Map<string, any[]>();
 
           for (const af of apiFixtures) {
             if (af.id) byIdMap.set(String(af.id), af);
             const home = af.home_team?.name || af.homeTeam?.name || '';
             const away = af.away_team?.name || af.awayTeam?.name || '';
             if (home && away) {
-              byNameMap.set(`${normalizeTeamName(home)}_vs_${normalizeTeamName(away)}`, af);
+              {
+              const key = `${normalizeTeamName(home)}_vs_${normalizeTeamName(away)}`;
+              byNameMap.set(key, [...(byNameMap.get(key) || []), af]);
+            }
             }
           }
 
@@ -1573,7 +1604,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             let match = f.sportApiAiFixtureId ? byIdMap.get(String(f.sportApiAiFixtureId)) : undefined;
             if (!match) {
               const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
-              match = byNameMap.get(key);
+              match = findSafeSettlementNameMatch(byNameMap.get(key), f);
             }
 
             if (!match || !isSportApiAiFixtureFinished(match)) continue;
@@ -1603,7 +1634,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
         try {
           const rundownEvents = await fetchAllTheRundownSoccerEvents(dateStr);
           const byIdMap = new Map<string, any>();
-          const byNameMap = new Map<string, any>();
+          const byNameMap = new Map<string, any[]>();
 
           for (const ev of rundownEvents) {
             if (ev.event_id) byIdMap.set(String(ev.event_id), ev);
@@ -1611,7 +1642,10 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             const home = teams.find((t: any) => t.is_home) || teams[0];
             const away = teams.find((t: any) => t.is_away) || teams[1];
             if (home?.name && away?.name) {
-              byNameMap.set(`${normalizeTeamName(home.name)}_vs_${normalizeTeamName(away.name)}`, ev);
+              {
+              const key = `${normalizeTeamName(home.name)}_vs_${normalizeTeamName(away.name)}`;
+              byNameMap.set(key, [...(byNameMap.get(key) || []), ev]);
+            }
             }
           }
 
@@ -1620,7 +1654,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             let match = f.theRundownEventId ? byIdMap.get(String(f.theRundownEventId)) : undefined;
             if (!match) {
               const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
-              match = byNameMap.get(key);
+              match = findSafeSettlementNameMatch(byNameMap.get(key), f);
             }
 
             if (!match || !isTheRundownEventFinished(match)) continue;
@@ -1650,21 +1684,24 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
         try {
           const smFixtures = await fetchSportmonksFixturesByDate(dateStr);
           const byIdMap = new Map<string, any>();
-          const byNameMap = new Map<string, any>();
+          const byNameMap = new Map<string, any[]>();
           for (const smf of smFixtures) {
             if (smf.id) byIdMap.set(String(smf.id), smf);
             const participants = Array.isArray(smf.participants?.data ?? smf.participants) ? (smf.participants?.data ?? smf.participants) : [];
             const homeP = participants.find((p: any) => String(p?.meta?.location || p?.pivot?.location || '').toLowerCase() === 'home');
             const awayP = participants.find((p: any) => String(p?.meta?.location || p?.pivot?.location || '').toLowerCase() === 'away');
             if (homeP?.name && awayP?.name) {
-              byNameMap.set(`${normalizeTeamName(homeP.name)}_vs_${normalizeTeamName(awayP.name)}`, smf);
+              {
+              const key = `${normalizeTeamName(homeP.name)}_vs_${normalizeTeamName(awayP.name)}`;
+              byNameMap.set(key, [...(byNameMap.get(key) || []), smf]);
+            }
             }
           }
           for (const f of unsettledForSportmonks) {
             let match = f.sportmonksFixtureId ? byIdMap.get(String(f.sportmonksFixtureId)) : undefined;
             if (!match) {
               const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
-              match = byNameMap.get(key);
+              match = findSafeSettlementNameMatch(byNameMap.get(key), f);
             }
             if (!match) continue;
             const statusStr = String(match.state?.short_name || match.state?.name || match.status || '').toUpperCase();
