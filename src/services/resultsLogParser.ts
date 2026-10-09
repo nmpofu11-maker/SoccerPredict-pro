@@ -44,7 +44,7 @@ export function parseResultsArrays<T = unknown>(content: string): T[] {
       const char = content[offset];
       if (inString) {
         if (escaped) escaped = false;
-        else if (char === '\\\\') escaped = true;
+        else if (char === '\\') escaped = true;
         else if (char === '"') inString = false;
         continue;
       }
