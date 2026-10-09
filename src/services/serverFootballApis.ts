@@ -87,9 +87,9 @@ async function requestJson(url: URL, headers: Record<string, string>, provider: 
       message.toLowerCase().includes('unauthenticated') ||
       message.toLowerCase().includes('unauthorized')
     ) {
-      if (provider === 'API-Football') setApiFootballRateLimited(24 * 3600);
-      if (provider === 'Sportmonks') setSportmonksRateLimited(24 * 3600);
-      console.log(`[${provider}] Disabled due to auth/subscription response (${response.status}: ${message}); pausing requests for 24h.`);
+      // Authentication/plan failures are not rate limits. Avoid a misleading
+      // 24-hour cooldown; correct Secret Manager wiring/plan before retrying.
+      console.warn(`[${provider}] Authentication or subscription failure (HTTP ${response.status}); fix credentials/plan before retrying.`);
     } else if (response.status === 429 || message.toLowerCase().includes('rate limit')) {
       if (provider === 'Sportmonks') setSportmonksRateLimited(3600);
       if (provider === 'API-Football') setApiFootballRateLimited(3600);
@@ -160,19 +160,21 @@ export async function fetchApiFootballFixtureStatistics(fixtureId: number | stri
   return Array.isArray(body.response) ? body.response : [];
 }
 
-/** Call a Sportmonks v3 Football endpoint; api_token is added as a query parameter. */
+/** Call a Sportmonks v3 Football endpoint using the raw-token Authorization header.
+ * Keep the credential out of query strings, which can leak into URL/access logs.
+ */
 export async function sportmonksGet(path: string, params: Record<string, string | number | undefined> = {}): Promise<any> {
-  if (isSportmonksRateLimited()) throw new Error('Sportmonks is rate-limited or disabled');
+  if (isSportmonksRateLimited()) throw new Error('Sportmonks is rate-limited');
   const key = getSportmonksKey();
   if (!key) throw new Error('SPORTMONKS_API_KEY is not configured');
 
   const base = getBaseUrl(process.env.SPORTMONKS_BASE_URL, SPORTMONKS_DEFAULT_BASE_URL);
-  const url = new URL(`${base}/${path.replace(/^\/+/, '')}`);
-  url.searchParams.set('api_token', key);
+  const url = new URL(`${base}/${path.replace(/^\\/+/, '')}`);
   for (const [name, value] of Object.entries(params)) {
     if (value !== undefined && value !== '') url.searchParams.set(name, String(value));
   }
-  return requestJson(url, {}, 'Sportmonks');
+  return requestJson(url, { Authorization: key }, 'Sportmonks');
+}
 }
 
 export async function fetchSportmonksTeamsBySearch(name: string): Promise<any[]> {
