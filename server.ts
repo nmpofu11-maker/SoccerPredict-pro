@@ -61,6 +61,7 @@ import {
 } from './src/services/predictionLog';
 import { evaluateAuditedPredictionPerformance, isAuditableSettledResult } from './src/services/performanceService';
 import { parseRawResults } from './src/services/resultParserService';
+import { parseResultsArrays } from './src/services/resultsLogParser';
 import { readAdminGuardConfig, decideAdminAccess } from './src/services/adminGuard';
 import { sanitizeRuntimeManifest } from './src/services/manifestSanitizer';
 import {
@@ -765,29 +766,10 @@ function readResultsLog(): SettledResultEntry[] {
 
   try {
     const content = fs.readFileSync(RESULTS_LOG_PATH, 'utf-8');
-    if (content.trim().length === 0) return [];
-    
-    // Attempt standard parse first
-    try {
-        const data = JSON.parse(content);
-        if (!Array.isArray(data)) throw new Error('results-log.json must contain a JSON array');
-        return data;
-    } catch (e) {
-        // Fallback: recover concatenated JSON arrays
-        console.warn('Attempting to recover malformed results-log.json...');
-        const match = content.match(/\[.*?\]/gs);
-        if (!match) return [];
-        
-        let recovered: SettledResultEntry[] = [];
-        for (const m of match) {
-            try {
-                const parsed = JSON.parse(m);
-                if (Array.isArray(parsed)) recovered = recovered.concat(parsed);
-            } catch {}
-        }
-        return recovered;
-    }
+    return parseResultsArrays<SettledResultEntry>(content);
   } catch (e) {
+    // Fail closed: never treat a corrupt ledger as empty, because a later write
+    // could otherwise erase previously settled results.
     console.error('Refusing to use malformed results-log.json:', e);
     throw e;
   }
