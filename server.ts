@@ -760,24 +760,33 @@ interface SettledResultEntry {
 }
 
 function readResultsLog(): SettledResultEntry[] {
+  fs.mkdirSync(path.dirname(RESULTS_LOG_PATH), { recursive: true });
+  if (!fs.existsSync(RESULTS_LOG_PATH)) return [];
+
   try {
-    fs.mkdirSync(path.dirname(RESULTS_LOG_PATH), { recursive: true });
-    if (fs.existsSync(RESULTS_LOG_PATH)) {
-      const data = JSON.parse(fs.readFileSync(RESULTS_LOG_PATH, 'utf-8'));
-      if (Array.isArray(data)) return data;
-    }
+    const data = JSON.parse(fs.readFileSync(RESULTS_LOG_PATH, 'utf-8'));
+    if (!Array.isArray(data)) throw new Error('results-log.json must contain a JSON array');
+    return data;
   } catch (e) {
-    console.warn('Error reading results-log.json:', e);
+    // Do not turn a corrupt ledger into an empty array: a later settlement write could erase history.
+    console.error('Refusing to use malformed results-log.json:', e);
+    throw e;
   }
-  return [];
 }
 
 function writeResultsLog(entries: SettledResultEntry[]): void {
+  const tempPath = `${RESULTS_LOG_PATH}.${process.pid}.tmp`;
   try {
     fs.mkdirSync(path.dirname(RESULTS_LOG_PATH), { recursive: true });
-    fs.writeFileSync(RESULTS_LOG_PATH, JSON.stringify(entries, null, 2), 'utf-8');
+    fs.writeFileSync(tempPath, JSON.stringify(entries, null, 2), 'utf-8');
+    fs.renameSync(tempPath, RESULTS_LOG_PATH);
   } catch (e) {
-    console.error('Error writing results-log.json:', e);
+    try {
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    } catch {
+      // Preserve the original write error; cleanup is best-effort only.
+    }
+    console.error('Error writing results-log.json atomically:', e);
   }
 }
 
