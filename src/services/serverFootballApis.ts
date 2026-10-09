@@ -134,7 +134,6 @@ export async function fetchApiFootballFixturesByDate(date: string): Promise<any[
     if (isApiFootballRateLimited()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
-      setApiFootballRateLimited(24 * 3600);
       return [];
     }
     throw err;
@@ -175,7 +174,6 @@ export async function sportmonksGet(path: string, params: Record<string, string 
   }
   return requestJson(url, { Authorization: key }, 'Sportmonks');
 }
-}
 
 export async function fetchSportmonksTeamsBySearch(name: string): Promise<any[]> {
   const query = String(name || '').trim();
@@ -190,7 +188,6 @@ export async function fetchSportmonksTeamsBySearch(name: string): Promise<any[]>
       return [];
     }
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
-      setSportmonksRateLimited(24 * 3600);
       return [];
     }
     throw err;
@@ -208,7 +205,6 @@ export async function fetchSportmonksFixturesByDate(date: string, includes = 'pa
     if (isSportmonksRateLimited()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
-      setSportmonksRateLimited(24 * 3600);
       return [];
     }
     throw err;
@@ -225,7 +221,6 @@ export async function fetchSportmonksFixtureStatistics(fixtureId: number | strin
     if (isSportmonksRateLimited()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
-      setSportmonksRateLimited(24 * 3600);
       return [];
     }
     throw err;
@@ -252,7 +247,6 @@ export async function fetchSportmonksFixturesBetween(
     if (isSportmonksRateLimited()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
-      setSportmonksRateLimited(24 * 3600);
       return [];
     }
     throw err;
@@ -281,7 +275,6 @@ export async function fetchSportmonksFixturesBetweenForTeam(
     if (isSportmonksRateLimited()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
-      setSportmonksRateLimited(24 * 3600);
       return [];
     }
     throw err;
@@ -298,7 +291,6 @@ export async function fetchSportmonksStandingsBySeason(seasonId: number | string
     if (isSportmonksRateLimited()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
-      setSportmonksRateLimited(24 * 3600);
       return [];
     }
     throw err;
@@ -321,7 +313,6 @@ export async function fetchSportmonksHeadToHead(
     if (isSportmonksRateLimited()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
-      setSportmonksRateLimited(24 * 3600);
       return [];
     }
     throw err;
