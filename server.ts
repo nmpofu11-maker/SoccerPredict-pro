@@ -59,7 +59,7 @@ import {
   type PredictionRecord,
   type LogLine,
 } from './src/services/predictionLog';
-import { evaluateAuditedPredictionPerformance } from './src/services/performanceService';
+import { evaluateAuditedPredictionPerformance, isAuditableSettledResult } from './src/services/performanceService';
 import { parseRawResults } from './src/services/resultParserService';
 import { readAdminGuardConfig, decideAdminAccess } from './src/services/adminGuard';
 import { sanitizeRuntimeManifest } from './src/services/manifestSanitizer';
@@ -2728,7 +2728,17 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       const { lines } = readLog(PREDICTION_LOG_PATH);
       const predictions = lines.filter((l): l is PredictionRecord & LogLine => l.type === 'prediction');
       const settledResults = readResultsLog();
-      const settledIds = new Set(settledResults.map((r) => String(r.id)));
+      const resultIdCounts = new Map<string, number>();
+      for (const result of settledResults) {
+        if (!result?.id) continue;
+        const id = String(result.id);
+        resultIdCounts.set(id, (resultIdCounts.get(id) || 0) + 1);
+      }
+      const settledIds = new Set(
+        settledResults
+          .filter((result) => resultIdCounts.get(String(result.id)) === 1 && isAuditableSettledResult(result))
+          .map((result) => String(result.id)),
+      );
       const pending = predictions.filter((p) => !settledIds.has(p.fixtureId));
 
       const now = Date.now();

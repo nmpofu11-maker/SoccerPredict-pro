@@ -50,6 +50,19 @@ function hasTrustedSettlementProvenance(result: HistoricalMatchResult): boolean 
   return typeof result.notes === 'string' && TRUSTED_SETTLEMENT_NOTES.has(result.notes.trim());
 }
 
+/** A result is safe to remove from the pending queue only when its source and score agree. */
+export function isAuditableSettledResult(result: HistoricalMatchResult): boolean {
+  if (!result?.id || !hasTrustedSettlementProvenance(result)) return false;
+  if (!Number.isInteger(result.homeScore) || !Number.isInteger(result.awayScore) || result.homeScore < 0 || result.awayScore < 0) return false;
+  if (!['home', 'draw', 'away'].includes(result.actualOutcome)) return false;
+  const scoreOutcome = result.homeScore > result.awayScore
+    ? 'home'
+    : result.homeScore < result.awayScore
+      ? 'away'
+      : 'draw';
+  return result.actualOutcome === scoreOutcome;
+}
+
 export interface AuditedPredictionEvaluation {
   fixtureId: string;
   homeTeam?: string;
@@ -119,7 +132,7 @@ export function evaluateAuditedPredictionPerformance(
       continue;
     }
     seenSettledRecordIds.add(id);
-    if (!Number.isFinite(r.homeScore) || !Number.isFinite(r.awayScore) || !r.actualOutcome) continue;
+    // Retain malformed records for explicit exclusion diagnostics rather than disguising them as pending.
     settledMap.set(id, r);
   }
 
@@ -301,6 +314,7 @@ export function evaluateAuditedPredictionPerformance(
         exclusionReason: 'Multiple settled result records share this fixture ID',
       });
       excludedCount++;
+      pendingCount++;
       continue;
     }
 
@@ -333,6 +347,7 @@ export function evaluateAuditedPredictionPerformance(
         exclusionReason: 'Settled result lacks recognized provider or manual-upload provenance',
       });
       excludedCount++;
+      pendingCount++;
       continue;
     }
 
@@ -388,6 +403,7 @@ export function evaluateAuditedPredictionPerformance(
         exclusionReason: 'Settled result has invalid final scores',
       });
       excludedCount++;
+      pendingCount++;
       continue;
     }
 
@@ -419,10 +435,11 @@ export function evaluateAuditedPredictionPerformance(
         exclusionReason: 'Recorded actual outcome conflicts with the final score',
       });
       excludedCount++;
+      pendingCount++;
       continue;
     }
 
-    const actual = settled.actualOutcome;
+    const actual = settled.actualOutcome
     const isCorrect = pred.predicted === actual;
     if (isCorrect) correctCount++;
 

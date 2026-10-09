@@ -352,6 +352,7 @@ test('audited performance excludes settled results with untrusted provenance, sc
   );
   assert.equal(report.evaluatedCount, 0);
   assert.equal(report.excludedCount, 3);
+  assert.equal(report.pendingCount, 3);
   assert.match(report.evaluations.find((e) => e.fixtureId === 'no_source')?.exclusionReason || '', /provenance/);
   assert.match(report.evaluations.find((e) => e.fixtureId === 'score_mismatch')?.exclusionReason || '', /conflicts with the final score/);
   assert.match(report.evaluations.find((e) => e.fixtureId === 'duplicate_result')?.exclusionReason || '', /Multiple settled result records/);
