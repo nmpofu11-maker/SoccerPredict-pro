@@ -781,6 +781,18 @@ export function getLeagueMeta(leagueName: string): LeagueInfo {
     }
   }
 
+  // When the provider's country prefix conflicts with a recognized competition
+  // (for example, "Italy • Brazilian Serie A"), trust the exact competition
+  // identity in our directory rather than assigning the wrong country's flag.
+  if (leagueName.includes('•')) {
+    const competitionSuffix = leagueName.split('•').slice(1).join('•').trim().toLowerCase();
+    for (const [key, info] of Object.entries(ALL_LEAGUES_DIRECTORY)) {
+      if (key.toLowerCase() === competitionSuffix) {
+        return info;
+      }
+    }
+  }
+
   // 3. Known aliases
   const aliasMap: Record<string, string> = {
     'japanese j1 league': 'Japanese J.League',
