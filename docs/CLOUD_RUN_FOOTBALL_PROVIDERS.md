@@ -4,10 +4,13 @@ The server-only provider clients read these environment variables:
 
 | Cloud Run environment variable | Secret Manager secret |
 | --- | --- |
-| `API_FOOTBALL_USE_RAPIDAPI` | `API_FOOTBALL_USE_RAPIDAPI` |
+| `SPORTAPI_AI_KEY` | `SPORTAPI_AI_KEY` |
 | `SPORTMONKS_API_KEY` | `SPORTMONKS_API_KEY` |
+| `API_FOOTBALL_USE_RAPIDAPI` | `API_FOOTBALL_USE_RAPIDAPI` |
 
-The API-Football secret must contain the RapidAPI credential used for the
+`SPORTAPI_AI_KEY` is the canonical environment variable read by the SportAPI.ai
+client (the client also accepts the legacy `SPORTAPI_API_KEY` name). The
+API-Football secret must contain the RapidAPI credential used for the
 API-Football RapidAPI host. No secret values belong in this repository,
 `.env.example`, browser code, or build-time Vite variables.
 
@@ -19,7 +22,7 @@ First confirm both secrets exist and identify the version you want to pin. Then 
 ```bash
 gcloud run services update SERVICE_NAME \
   --region REGION \
-  --update-secrets=API_FOOTBALL_USE_RAPIDAPI=API_FOOTBALL_USE_RAPIDAPI:VERSION,SPORTMONKS_API_KEY=SPORTMONKS_API_KEY:VERSION
+  --update-secrets=SPORTAPI_AI_KEY=SPORTAPI_AI_KEY:VERSION,SPORTMONKS_API_KEY=SPORTMONKS_API_KEY:VERSION,API_FOOTBALL_USE_RAPIDAPI=API_FOOTBALL_USE_RAPIDAPI:VERSION
 ```
 
 The Cloud Run service identity needs Secret Manager Secret Accessor
@@ -54,7 +57,10 @@ coverage; successful authentication does not prove every competition is covered.
 
 The repository includes mocked client tests, but real provider calls require the
 Cloud Run secrets and cannot be authenticated from a source-only repository
-change. After attaching secrets, trigger the daily ingestion job and inspect
+change. After attaching all required secrets, trigger the daily ingestion job and inspect
 `/api/cron/status` (or the app's ingestion diagnostics) for each provider's
-request counts, mapped fixtures and errors. Confirm Betway Premiership plus
+request counts, mapped fixtures and errors. A UI label of `CONNECTED`/`UNSET`
+only reflects the runtime configuration check; it does not prove a successful
+live API request. Confirm actual successful responses and mapped fixtures in
+server-side diagnostics without logging or exposing secret values. Confirm Betway Premiership plus
 international competitions separately before treating a provider as authoritative.
