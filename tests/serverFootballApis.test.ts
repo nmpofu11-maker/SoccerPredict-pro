@@ -52,19 +52,50 @@ describe('server football provider clients', () => {
     assert.equal((capturedHeaders as Record<string, string>)['x-rapidapi-key'], 'rapid-key');
   });
 
-  it('uses Sportmonks api_token and parses fixture results', async () => {
+  it('uses the raw-token Authorization header without exposing the token in the URL', async () => {
     process.env.SPORTMONKS_API_KEY = 'monks-key';
     process.env.SPORTMONKS_BASE_URL = 'https://sportmonks.test/v3/football';
     let capturedUrl = '';
-    globalThis.fetch = (async (input: URL | RequestInfo) => {
+    let capturedHeaders: HeadersInit | undefined;
+    globalThis.fetch = (async (input: URL | RequestInfo, init?: RequestInit) => {
       capturedUrl = String(input);
+      capturedHeaders = init?.headers;
       return new Response(JSON.stringify({ data: [{ id: 456 }] }), { status: 200 });
     }) as typeof fetch;
 
     const fixtures = await fetchSportmonksFixturesByDate('2026-10-02');
     assert.equal(fixtures[0].id, 456);
-    assert.match(capturedUrl, /api_token=monks-key/);
+    assert.doesNotMatch(capturedUrl, /api_token|monks-key/);
     assert.match(capturedUrl, /fixtures\/date\/2026-10-02/);
+    assert.equal((capturedHeaders as Record<string, string>).Authorization, 'monks-key');
+  });
+
+  it('blocks repeated calls for a rejected key but permits a rotated key without a 24-hour cooldown', async () => {
+    process.env.SPORTMONKS_API_KEY = 'rejected-monks-key';
+    process.env.SPORTMONKS_BASE_URL = 'https://sportmonks.test/v3/football';
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      return new Response(JSON.stringify({ message: 'Invalid token provided' }), { status: 401 });
+    }) as typeof fetch;
+
+    await fetchSportmonksFixturesByDate('2026-10-02');
+    assert.equal(sportmonksConfigured(), false);
+    await fetchSportmonksFixturesByDate('2026-10-03');
+    assert.equal(calls, 1, 'invalid credential should not trigger repeated API requests');
+
+    process.env.SPORTMONKS_API_KEY = 'rotated-monks-key';
+    assert.equal(sportmonksConfigured(), true);
+
+    let rotatedCalls = 0;
+    globalThis.fetch = (async (_input: URL | RequestInfo, init?: RequestInit) => {
+      rotatedCalls++;
+      assert.equal((init?.headers as Record<string, string>).Authorization, 'rotated-monks-key');
+      return new Response(JSON.stringify({ data: [{ id: 789 }] }), { status: 200 });
+    }) as typeof fetch;
+    const fixtures = await fetchSportmonksFixturesByDate('2026-10-04');
+    assert.equal(rotatedCalls, 1);
+    assert.equal(fixtures[0].id, 789);
   });
 
   it('rejects invalid dates before making provider requests', async () => {

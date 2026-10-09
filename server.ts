@@ -42,8 +42,6 @@ import {
   hasSportmonksKey,
   fetchSportmonksFixturesByDate,
   fetchApiFootballFixturesByDate,
-  setSportmonksRateLimited,
-  setApiFootballRateLimited,
 } from './src/services/serverFootballApis';
 import { enrichFixturesWithFootballApis } from './src/services/serverFootballProviderEnrichment';
 import { mergeEvidenceFallbackFixtures } from './src/services/predictionEvidenceMerge';
@@ -758,6 +756,43 @@ interface SettledResultEntry {
   date: string;
   notes?: string;
   settledAt: string;
+}
+
+function parseCompleteJsonValues(raw: string): unknown[] | null {
+  const values: unknown[] = [];
+  let index = 0;
+  while (index < raw.length) {
+    while (index < raw.length && /[\s,]/.test(raw[index])) index++;
+    if (index >= raw.length) break;
+    const start = index;
+    if (raw[index] !== '{' && raw[index] !== '[') return null;
+    const stack: string[] = [];
+    let inString = false;
+    let escaped = false;
+    for (; index < raw.length; index++) {
+      const ch = raw[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === '\\') escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') { inString = true; continue; }
+      if (ch === '{') stack.push('}');
+      else if (ch === '[') stack.push(']');
+      else if (ch === '}' || ch === ']') {
+        if (stack.pop() !== ch) return null;
+        if (stack.length === 0) {
+          index++;
+          try { values.push(JSON.parse(raw.slice(start, index))); }
+          catch { return null; }
+          break;
+        }
+      }
+    }
+    if (stack.length !== 0 || inString) return null;
+  }
+  return values.length ? values : null;
 }
 
 function readResultsLog(): SettledResultEntry[] {
@@ -1716,8 +1751,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
         } catch (err: unknown) {
           const errMsg = String(err instanceof Error ? err.message : err);
           if (errMsg.includes('401') || errMsg.includes('Invalid token') || errMsg.includes('403') || errMsg.includes('unauthenticated')) {
-            setSportmonksRateLimited(24 * 3600);
-            console.log(`[cron:settlement] Sportmonks auth failed (invalid or expired token); pausing Sportmonks queries for 24h.`);
+            console.warn('[cron:settlement] Sportmonks authentication failed; current settlement pass stopped. Rotate/update SPORTMONKS_API_KEY before retrying.');
             break;
           }
           console.warn(`[cron:settlement] Sportmonks settlement failed for ${dateStr}:`, errMsg);
