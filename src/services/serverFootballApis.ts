@@ -28,6 +28,10 @@ function getBaseUrl(value: string | undefined, fallback: string): string {
 
 let sportmonksRateLimitedUntil = 0;
 let apiFootballRateLimitedUntil = 0;
+// Pause a rejected credential without misclassifying 401/403 as rate limits.
+// Rotating the key automatically clears this block.
+let sportmonksAuthFailedKey = '';
+let apiFootballAuthFailedKey = '';
 
 export function isSportmonksRateLimited(): boolean {
   return Date.now() < sportmonksRateLimitedUntil;
@@ -54,11 +58,11 @@ export function hasSportmonksKey(): boolean {
 }
 
 export function apiFootballConfigured(): boolean {
-  return hasApiFootballKey() && !isApiFootballRateLimited();
+  return hasApiFootballKey() && !isApiFootballRateLimited() && getApiFootballKey() !== apiFootballAuthFailedKey;
 }
 
 export function sportmonksConfigured(): boolean {
-  return hasSportmonksKey() && !isSportmonksRateLimited();
+  return hasSportmonksKey() && !isSportmonksRateLimited() && getSportmonksKey() !== sportmonksAuthFailedKey;
 }
 
 function assertDate(date: string): void {
@@ -87,9 +91,11 @@ async function requestJson(url: URL, headers: Record<string, string>, provider: 
       message.toLowerCase().includes('unauthenticated') ||
       message.toLowerCase().includes('unauthorized')
     ) {
-      if (provider === 'API-Football') setApiFootballRateLimited(24 * 3600);
-      if (provider === 'Sportmonks') setSportmonksRateLimited(24 * 3600);
-      console.log(`[${provider}] Disabled due to auth/subscription response (${response.status}: ${message}); pausing requests for 24h.`);
+      // Authentication/plan failures are not rate limits. Avoid a misleading
+      // 24-hour cooldown; correct Secret Manager wiring/plan before retrying.
+      if (provider === 'Sportmonks') sportmonksAuthFailedKey = getSportmonksKey();
+      if (provider === 'API-Football') apiFootballAuthFailedKey = getApiFootballKey();
+      console.warn(`[${provider}] Authentication or subscription failure (HTTP ${response.status}); provider paused until its credential changes.`);
     } else if (response.status === 429 || message.toLowerCase().includes('rate limit')) {
       if (provider === 'Sportmonks') setSportmonksRateLimited(3600);
       if (provider === 'API-Football') setApiFootballRateLimited(3600);
@@ -104,9 +110,10 @@ async function requestJson(url: URL, headers: Record<string, string>, provider: 
 
 /** Call an API-Football v3 endpoint using the RapidAPI credential. */
 export async function apiFootballGet(path: string, params: Record<string, string | number | undefined> = {}): Promise<any> {
-  if (isApiFootballRateLimited()) throw new Error('API-Football is rate-limited or disabled');
+  if (isApiFootballRateLimited()) throw new Error('API-Football is rate-limited');
   const key = getApiFootballKey();
   if (!key) throw new Error('API_FOOTBALL_USE_RAPIDAPI is not configured');
+  if (key === apiFootballAuthFailedKey) throw new Error('API-Football credential was rejected; rotate the configured key before retrying');
 
   const base = getBaseUrl(process.env.API_FOOTBALL_BASE_URL, API_FOOTBALL_DEFAULT_BASE_URL);
   const url = new URL(`${base}/${path.replace(/^\/+/, '')}`);
@@ -125,7 +132,7 @@ export async function apiFootballGet(path: string, params: Record<string, string
 
 export async function fetchApiFootballFixturesByDate(date: string): Promise<any[]> {
   assertDate(date);
-  if (isApiFootballRateLimited()) return [];
+  if (!apiFootballConfigured()) return [];
   try {
     const body = await apiFootballGet('fixtures', { date });
     if (!Array.isArray(body.response)) throw new Error('API-Football fixtures response.response is not an array');
@@ -134,7 +141,6 @@ export async function fetchApiFootballFixturesByDate(date: string): Promise<any[
     if (isApiFootballRateLimited()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
-      setApiFootballRateLimited(24 * 3600);
       return [];
     }
     throw err;
@@ -160,35 +166,36 @@ export async function fetchApiFootballFixtureStatistics(fixtureId: number | stri
   return Array.isArray(body.response) ? body.response : [];
 }
 
-/** Call a Sportmonks v3 Football endpoint; api_token is added as a query parameter. */
+/** Call a Sportmonks v3 Football endpoint using the raw-token Authorization header.
+ * Keep the credential out of query strings, which can leak into URL/access logs.
+ */
 export async function sportmonksGet(path: string, params: Record<string, string | number | undefined> = {}): Promise<any> {
-  if (isSportmonksRateLimited()) throw new Error('Sportmonks is rate-limited or disabled');
+  if (isSportmonksRateLimited()) throw new Error('Sportmonks is rate-limited');
   const key = getSportmonksKey();
   if (!key) throw new Error('SPORTMONKS_API_KEY is not configured');
+  if (key === sportmonksAuthFailedKey) throw new Error('Sportmonks credential was rejected; rotate the configured key before retrying');
 
   const base = getBaseUrl(process.env.SPORTMONKS_BASE_URL, SPORTMONKS_DEFAULT_BASE_URL);
-  const url = new URL(`${base}/${path.replace(/^\/+/, '')}`);
-  url.searchParams.set('api_token', key);
+  const url = new URL(`${base}/${path.replace(/^\\/+/, '')}`);
   for (const [name, value] of Object.entries(params)) {
     if (value !== undefined && value !== '') url.searchParams.set(name, String(value));
   }
-  return requestJson(url, {}, 'Sportmonks');
+  return requestJson(url, { Authorization: key }, 'Sportmonks');
 }
 
 export async function fetchSportmonksTeamsBySearch(name: string): Promise<any[]> {
   const query = String(name || '').trim();
-  if (!query || isSportmonksRateLimited()) return [];
+  if (!query || !sportmonksConfigured()) return [];
   try {
     const body = await sportmonksGet(`teams/search/${encodeURIComponent(query)}`, { per_page: 10 });
     return Array.isArray(body.data) ? body.data : [];
   } catch (err) {
-    if (isSportmonksRateLimited()) return [];
+    if (!sportmonksConfigured()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('404') || msg.includes('not exist')) {
       return [];
     }
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
-      setSportmonksRateLimited(24 * 3600);
       return [];
     }
     throw err;
@@ -206,7 +213,6 @@ export async function fetchSportmonksFixturesByDate(date: string, includes = 'pa
     if (isSportmonksRateLimited()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
-      setSportmonksRateLimited(24 * 3600);
       return [];
     }
     throw err;
@@ -223,7 +229,6 @@ export async function fetchSportmonksFixtureStatistics(fixtureId: number | strin
     if (isSportmonksRateLimited()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
-      setSportmonksRateLimited(24 * 3600);
       return [];
     }
     throw err;
@@ -250,7 +255,6 @@ export async function fetchSportmonksFixturesBetween(
     if (isSportmonksRateLimited()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
-      setSportmonksRateLimited(24 * 3600);
       return [];
     }
     throw err;
@@ -279,7 +283,6 @@ export async function fetchSportmonksFixturesBetweenForTeam(
     if (isSportmonksRateLimited()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
-      setSportmonksRateLimited(24 * 3600);
       return [];
     }
     throw err;
@@ -296,7 +299,6 @@ export async function fetchSportmonksStandingsBySeason(seasonId: number | string
     if (isSportmonksRateLimited()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
-      setSportmonksRateLimited(24 * 3600);
       return [];
     }
     throw err;
@@ -319,7 +321,6 @@ export async function fetchSportmonksHeadToHead(
     if (isSportmonksRateLimited()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
-      setSportmonksRateLimited(24 * 3600);
       return [];
     }
     throw err;
