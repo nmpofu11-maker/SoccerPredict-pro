@@ -7,7 +7,7 @@ test('parses a normal results array', () => {
 });
 
 test('recovers concatenated complete arrays without losing entries', () => {
-  assert.deepEqual(parseResultsArrays('[{"id":"a"}]\n[{"id":"b"},{"id":"c"}]' as any), [
+  assert.deepEqual(parseResultsArrays('[{"id":"a"}]\n[{"id":"b"},{"id":"c"}]'), [
     { id: 'a' }, { id: 'b' }, { id: 'c' },
   ]);
 });
