@@ -1761,8 +1761,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
         } catch (err: unknown) {
           const errMsg = String(err instanceof Error ? err.message : err);
           if (errMsg.includes('401') || errMsg.includes('Invalid token') || errMsg.includes('403') || errMsg.includes('unauthenticated')) {
-            setSportmonksRateLimited(24 * 3600);
-            console.log(`[cron:settlement] Sportmonks auth failed (invalid or expired token); pausing Sportmonks queries for 24h.`);
+            console.warn('[cron:settlement] Sportmonks authentication failed; current settlement pass stopped. Rotate/update SPORTMONKS_API_KEY before retrying.');
             break;
           }
           console.warn(`[cron:settlement] Sportmonks settlement failed for ${dateStr}:`, errMsg);
