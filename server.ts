@@ -37,7 +37,7 @@ import {
 } from './src/services/serverFootballData';
 import { pitchApiConfigured, fetchPitchApiFixturesByDate } from './src/services/serverPitchApi';
 import { sportDbConfigured, fetchSportDbFixturesByDate } from './src/services/serverSportDb';
-import { apiFootballConfigured, sportmonksConfigured, hasApiFootballKey, hasSportmonksKey, fetchSportmonksFixturesByDate, fetchApiFootballFixturesByDate } from './src/services/serverFootballApis';
+import { apiFootballConfigured, sportmonksConfigured, hasApiFootballKey, hasSportmonksKey, isApiFootballRateLimited, isSportmonksRateLimited, fetchSportmonksFixturesByDate, fetchApiFootballFixturesByDate } from './src/services/serverFootballApis';
 import { enrichFixturesWithFootballApis } from './src/services/serverFootballProviderEnrichment';
 import { extractTextFromPDF, scrapeUrl } from './src/services/manualDataService';
 import { evaluateFixturePrediction, sanitizeEngineWeights, fixtureHasEvidence } from './src/engine/rulesEngine';
@@ -2570,8 +2570,11 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
         theRundownConfigured: theRundownConfigured(),
         pitchApiConfigured: pitchApiConfigured(),
         sportDbConfigured: sportDbConfigured(),
-        apiFootballConfigured: apiFootballConfigured(),
-        sportmonksConfigured: sportmonksConfigured(),
+        // Key presence and rate-limit state are separate; a throttled provider is not "UNSET".
+        apiFootballConfigured: hasApiFootballKey(),
+        apiFootballRateLimited: isApiFootballRateLimited(),
+        sportmonksConfigured: hasSportmonksKey(),
+        sportmonksRateLimited: isSportmonksRateLimited(),
         footballDataConfigured: footballDataConfigured(),
         cron: readCronStatus(),
       });
