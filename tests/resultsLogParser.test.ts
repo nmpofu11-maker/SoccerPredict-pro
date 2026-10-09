@@ -12,7 +12,7 @@ test('recovers concatenated complete arrays without losing entries', () => {
   ]);
 });
 
-test('handles nested arrays, escaped strings, and bracket characters in values', () => {
+test('handles nested arrays and bracket characters inside string values', () => {
   const source = '[{"id":"a","nested":[1,2],"note":"text ] and ["}][{"id":"b"}]';
   assert.deepEqual(parseResultsArrays(source), [
     { id: 'a', nested: [1, 2], note: 'text ] and [' },
