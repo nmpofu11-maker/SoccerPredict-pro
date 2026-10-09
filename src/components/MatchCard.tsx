@@ -12,6 +12,7 @@ import { CountryFlagCircle } from './CountryFlagCircle';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
 import { calculateHomeWinProbabilityTrend } from '../utils/probabilityTrend';
 import { getDisplayPredictionProbabilities } from '../utils/predictionDisplay';
+import { classifyFixtureStatus } from '../utils/fixtureStatus';
 import { getTeamOutlierStatus } from '../utils/robustMetricsCalculator';
 import { OutlierIndicator } from './OutlierIndicator';
 import { VolatilityHeatmapOverlay } from './VolatilityHeatmapOverlay';
@@ -185,8 +186,12 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   const now = Date.now();
   const kickoffMs = kickoffDate.getTime();
   const diffMinutes = Math.floor((now - kickoffMs) / 60000);
-  const isLive = diffMinutes >= 0 && diffMinutes <= 115;
-  const isFinished = diffMinutes > 115;
+  const fixtureStatusState = classifyFixtureStatus(fixture.status);
+  // Never infer FT or LIVE from elapsed time alone: postponed and delayed games exist.
+  const isLive = fixtureStatusState === 'live';
+  const isFinished = fixtureStatusState === 'finished';
+  const isPastKickoff = diffMinutes >= 0;
+  const needsStatusVerification = isPastKickoff && !isLive && !isFinished;
   const liveMinute = isLive ? (diffMinutes > 90 ? '90+' : diffMinutes > 45 ? `${Math.min(90, diffMinutes)}'` : `${Math.max(1, diffMinutes)}'`) : null;
 
   const leagueMeta = getLeagueMeta(fixture.league || '');
@@ -206,9 +211,13 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   const isDrawPick = prediction.predictedWinner === 'draw';
 
   // Do not display neutral-prior percentages as if they were match-specific analysis.
-  const { home: safeHomePct, draw: safeDrawPct, away: safeAwayPct } = getDisplayPredictionProbabilities(prediction);
+  const displayProbabilities = getDisplayPredictionProbabilities(prediction);
+  const canShowPreMatchProbabilities = !isPastKickoff && !isLive && !isFinished;
+  const safeHomePct = canShowPreMatchProbabilities ? displayProbabilities.home : null;
+  const safeDrawPct = canShowPreMatchProbabilities ? displayProbabilities.draw : null;
+  const safeAwayPct = canShowPreMatchProbabilities ? displayProbabilities.away : null;
 
-  const hasNoPick = prediction.predictedWinner === 'none';
+  const hasNoPick = prediction.predictedWinner === 'none' || isPastKickoff || isLive || isFinished;
   const pickProbability = hasNoPick
     ? null
     : isHomePick
@@ -388,10 +397,20 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
           {isFinished && (
             <span
-              className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 text-[9.5px] font-bold"
-              title="Match concluded"
+              className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 text-[9.5px] font-bold"
+              title={Number.isInteger(fixture.homeScore) && Number.isInteger(fixture.awayScore) ? 'Provider-reported final score' : 'Provider confirms the match finished, but final score is unavailable'}
             >
-              FT
+              {Number.isInteger(fixture.homeScore) && Number.isInteger(fixture.awayScore)
+                ? `FT ${fixture.homeScore}-${fixture.awayScore}`
+                : 'FT · SCORE N/A'}
+            </span>
+          )}
+          {needsStatusVerification && (
+            <span
+              className="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[9.5px] font-bold"
+              title="Kickoff time has passed, but no verified live/finished status is available. Pre-match probabilities are withheld."
+            >
+              STATUS UNVERIFIED
             </span>
           )}
 
@@ -523,7 +542,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             )}
             <span className="text-[9px] font-mono uppercase tracking-wider font-extrabold flex items-center gap-1">
               <CheckCircle2 className="w-2.5 h-2.5" />
-              <span>{hasNoPick ? 'NO PICK · NO DATA' : isHomePick ? 'HOME WIN' : isAwayPick ? 'AWAY WIN' : 'MATCH DRAW'}</span>
+              <span>{isFinished ? 'FINISHED · NO PICK' : isLive ? 'LIVE · NO PRE-MATCH PICK' : isPastKickoff ? 'PAST KICKOFF · NO PICK' : hasNoPick ? 'NO PICK · NO DATA' : isHomePick ? 'HOME WIN' : isAwayPick ? 'AWAY WIN' : 'MATCH DRAW'}</span>
             </span>
             <span className="text-xl sm:text-2xl font-black font-mono leading-none my-0.5 text-white">
               {pickProbability !== null ? `${pickProbability.toFixed(0)}%` : '--'}
