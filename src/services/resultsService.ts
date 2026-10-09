@@ -62,6 +62,7 @@ export async function fetchDailySlate(): Promise<MatchFixture[] | null> {
 export interface CronStatusResponse {
   status: 'success' | 'error';
   sportApiAiConfigured: boolean;
+  sportApiAiRateLimited?: boolean;
   theRundownConfigured: boolean;
   pitchApiConfigured: boolean;
   sportDbConfigured: boolean;
