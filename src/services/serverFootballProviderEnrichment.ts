@@ -850,7 +850,16 @@ export function canonicalizeProviderCompetitionName(value: unknown): string {
     .replace(/\s+/g, ' ')
     .trim();
 
-  if (/^(psl|premier soccer league|south african premiership|premiership)$/.test(compact)) {
+  // A bare "Premiership" is ambiguous internationally. Only map it to
+  // South Africa when the original label carries a South African or local
+  // sponsor marker; otherwise preserve the provider's competition identity.
+  const hasSouthAfricanContext =
+    /^(south africa|rsa|south african)\\b/.test(normalized) ||
+    /\\b(hollywoodbets|betway|dstv)\\b/.test(normalized);
+  if (
+    /^(psl|premier soccer league|south african premiership)$/.test(compact) ||
+    (compact === 'premiership' && hasSouthAfricanContext)
+  ) {
     return 'south african premiership';
   }
   if (/^(?:(?:usa|us)\s+)*(?:major league soccer|mls)$/.test(compact)) {
