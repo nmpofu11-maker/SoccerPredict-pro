@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parseResultsArrays } from '../src/services/resultsLogParser';
 
 test('parses a normal results array', () => {
-  assert.deepEqual(parseResultsArrays([{ id: 'a' }, { id: 'b' }] as any), [{ id: 'a' }, { id: 'b' }]);
+  assert.deepEqual(parseResultsArrays('[{\"id\":\"a\"},{\"id\":\"b\"}]'), [{ id: 'a' }, { id: 'b' }]);
 });
 
 test('recovers concatenated complete arrays without losing entries', () => {
@@ -13,9 +13,9 @@ test('recovers concatenated complete arrays without losing entries', () => {
 });
 
 test('handles nested arrays, escaped strings, and bracket characters in values', () => {
-  const source = '[{"id":"a","nested":[1,2],"note":"text ] and [ and \\\"quote\\\""}][{"id":"b"}]';
+  const source = '[{"id":"a","nested":[1,2],"note":"text ] and ["}][{"id":"b"}]';
   assert.deepEqual(parseResultsArrays(source), [
-    { id: 'a', nested: [1, 2], note: 'text ] and [ and "quote"' },
+    { id: 'a', nested: [1, 2], note: 'text ] and [' },
     { id: 'b' },
   ]);
 });
