@@ -759,18 +759,64 @@ interface SettledResultEntry {
   settledAt: string;
 }
 
+function parseCompleteJsonValues(raw: string): unknown[] | null {
+  const values: unknown[] = [];
+  let index = 0;
+  while (index < raw.length) {
+    while (index < raw.length && /[\s,]/.test(raw[index])) index++;
+    if (index >= raw.length) break;
+    const start = index;
+    if (raw[index] !== '{' && raw[index] !== '[') return null;
+    const stack: string[] = [];
+    let inString = false;
+    let escaped = false;
+    for (; index < raw.length; index++) {
+      const ch = raw[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === '\\') escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') { inString = true; continue; }
+      if (ch === '{') stack.push('}');
+      else if (ch === '[') stack.push(']');
+      else if (ch === '}' || ch === ']') {
+        if (stack.pop() !== ch) return null;
+        if (stack.length === 0) {
+          index++;
+          try { values.push(JSON.parse(raw.slice(start, index))); }
+          catch { return null; }
+          break;
+        }
+      }
+    }
+    if (stack.length !== 0 || inString) return null;
+  }
+  return values.length ? values : null;
+}
+
 function readResultsLog(): SettledResultEntry[] {
   fs.mkdirSync(path.dirname(RESULTS_LOG_PATH), { recursive: true });
   if (!fs.existsSync(RESULTS_LOG_PATH)) return [];
 
+  const raw = fs.readFileSync(RESULTS_LOG_PATH, 'utf-8');
   try {
-    const data = JSON.parse(fs.readFileSync(RESULTS_LOG_PATH, 'utf-8'));
+    const data = JSON.parse(raw);
     if (!Array.isArray(data)) throw new Error('results-log.json must contain a JSON array');
     return data;
-  } catch (e) {
-    // Do not turn a corrupt ledger into an empty array: a later settlement write could erase history.
-    console.error('Refusing to use malformed results-log.json:', e);
-    throw e;
+  } catch (parseError) {
+    // Recover only if the file contains complete JSON arrays concatenated by a
+    // prior non-atomic writer. Never silently replace an unrecoverable ledger
+    // with [] because a later settlement write could erase historical results.
+    const recovered = parseCompleteJsonValues(raw);
+    if (recovered && recovered.length > 0 && recovered.every(Array.isArray)) {
+      const combined = recovered.flat() as SettledResultEntry[];
+      console.warn(\`Recovered \${combined.length} results from concatenated JSON arrays in results-log.json\`);
+      return combined;
+    }
+    console.error('Refusing to use malformed results-log.json:', parseError);
+    throw parseError;
   }
 }
 
