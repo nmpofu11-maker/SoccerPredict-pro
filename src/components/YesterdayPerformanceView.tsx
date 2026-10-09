@@ -118,6 +118,7 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
   // -------------------------------------------------------------
   const report: AuditedPerformanceReport | undefined = auditedData?.audited;
   const trackRecord: TrackRecord | undefined = auditedData?.trackRecord;
+  const minSampleThreshold = report?.minSample ?? trackRecord?.minSample ?? 30;
   const evaluations: AuditedPredictionEvaluation[] = useMemo(() => {
     return report?.evaluations || [];
   }, [report]);
@@ -436,10 +437,10 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
               <Info className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <div className="font-bold text-amber-300">
-                  AUDIT REQUIREMENT: Minimum Sample Size Threshold (N ≥ 30)
+                  AUDIT REQUIREMENT: Minimum Sample Size Threshold (N ≥ {minSampleThreshold})
                 </div>
                 <div className="text-amber-200/90 leading-relaxed">
-                  <strong>{report?.evaluatedCount ?? (isLoadingAudited || diagnosticsError ? 'N/A' : 0)}</strong> pre-kickoff predictions have completed and passed the audit checks, while <strong>{report?.pendingCount ?? (isLoadingAudited || diagnosticsError ? 'N/A' : pendingPredictions.length)}</strong> remain pending. Performance metrics are provisional and should not be treated as reliable long-term estimates until at least 30 eligible pre-match forecasts have settled.
+                  <strong>{report?.evaluatedCount ?? (isLoadingAudited || diagnosticsError ? 'N/A' : 0)}</strong> pre-kickoff predictions have completed and passed the audit checks, while <strong>{report?.pendingCount ?? (isLoadingAudited || diagnosticsError ? 'N/A' : pendingPredictions.length)}</strong> remain pending. Performance metrics are provisional and should not be treated as reliable long-term estimates until at least {minSampleThreshold} eligible pre-match forecasts have settled.
                 </div>
               </div>
             </div>
