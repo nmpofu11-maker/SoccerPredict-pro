@@ -53,6 +53,47 @@ export interface CronStatus {
   settlement: SettlementStatus;
 }
 
+/** Parse one JSON value or a sequence of complete top-level JSON objects/arrays.
+ * Returns null for truncated or otherwise unrecoverable input.
+ */
+function parseCompleteJsonValues(raw: string): unknown[] | null {
+  const values: unknown[] = [];
+  let index = 0;
+  while (index < raw.length) {
+    while (index < raw.length && (/[\s,]/.test(raw[index]))) index++;
+    if (index >= raw.length) break;
+    const start = index;
+    const first = raw[index];
+    if (first !== '{' && first !== '[') return null;
+    const stack: string[] = [];
+    let inString = false;
+    let escaped = false;
+    for (; index < raw.length; index++) {
+      const ch = raw[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === '\\\\') escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') { inString = true; continue; }
+      if (ch === '{') stack.push('}');
+      else if (ch === '[') stack.push(']');
+      else if (ch === '}' || ch === ']') {
+        if (stack.pop() !== ch) return null;
+        if (stack.length === 0) {
+          index++;
+          try { values.push(JSON.parse(raw.slice(start, index))); }
+          catch { return null; }
+          break;
+        }
+      }
+    }
+    if (stack.length !== 0 || inString) return null;
+  }
+  return values.length ? values : null;
+}
+
 export const DEFAULT_CRON_STATUS_PATH = path.join(process.cwd(), 'data', 'cron-status.json');
 
 export function getDefaultCronStatus(): CronStatus {
@@ -80,7 +121,21 @@ export function readCronStatus(filePath: string = DEFAULT_CRON_STATUS_PATH): Cro
   const empty = getDefaultCronStatus();
   try {
     if (fs.existsSync(filePath)) {
-      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      let parsed: any;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        // Recover the last complete cron snapshot if a previous writer appended
+        // multiple complete JSON objects. Truncated/corrupt data still falls back.
+        const recovered = parseCompleteJsonValues(raw);
+        parsed = recovered?.filter((value) => value && typeof value === 'object' && !Array.isArray(value)).at(-1);
+        if (!parsed) throw new Error('cron-status.json contains unrecoverable JSON');
+        console.warn('Recovered latest complete object from malformed cron-status.json');
+      }
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('cron-status.json must contain a JSON object');
+      }
       return {
         ingest: { ...empty.ingest, ...(parsed?.ingest || {}) },
         settlement: { ...empty.settlement, ...(parsed?.settlement || {}) },
