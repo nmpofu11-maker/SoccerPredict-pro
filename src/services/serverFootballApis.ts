@@ -89,7 +89,9 @@ async function requestJson(url: URL, headers: Record<string, string>, provider: 
     ) {
       // Authentication/plan failures are not rate limits. Avoid a misleading
       // 24-hour cooldown; correct Secret Manager wiring/plan before retrying.
-      console.warn(`[${provider}] Authentication or subscription failure (HTTP ${response.status}); fix credentials/plan before retrying.`);
+      if (provider === 'Sportmonks') sportmonksAuthFailedKey = getSportmonksKey();
+      if (provider === 'API-Football') apiFootballAuthFailedKey = getApiFootballKey();
+      console.warn(`[${provider}] Authentication or subscription failure (HTTP ${response.status}); provider paused until its credential changes.`);
     } else if (response.status === 429 || message.toLowerCase().includes('rate limit')) {
       if (provider === 'Sportmonks') setSportmonksRateLimited(3600);
       if (provider === 'API-Football') setApiFootballRateLimited(3600);
