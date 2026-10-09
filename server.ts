@@ -1579,8 +1579,6 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
     for (const [dateStr, fixturesForDate] of dateGroups.entries()) {
       if (!allowedDates.has(dateStr)) continue;
 
-      let dateSettled = false;
-
       // 1. Try SportAPI.ai settlement
       if (sportApiAiConfigured()) {
         try {
@@ -1593,10 +1591,8 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             const home = af.home_team?.name || af.homeTeam?.name || '';
             const away = af.away_team?.name || af.awayTeam?.name || '';
             if (home && away) {
-              {
               const key = `${normalizeTeamName(home)}_vs_${normalizeTeamName(away)}`;
               byNameMap.set(key, [...(byNameMap.get(key) || []), af]);
-            }
             }
           }
 
@@ -1623,14 +1619,13 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             });
             settledCount++;
           }
-          dateSettled = true;
         } catch (err) {
           console.warn(`[cron:settlement] SportAPI.ai settlement failed for ${dateStr}:`, err);
         }
       }
 
       // 2. Try TheRundown as fallback for remaining unsettled
-      if (!dateSettled && theRundownConfigured()) {
+      if (theRundownConfigured()) {
         try {
           const rundownEvents = await fetchAllTheRundownSoccerEvents(dateStr);
           const byIdMap = new Map<string, any>();
@@ -1642,10 +1637,8 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             const home = teams.find((t: any) => t.is_home) || teams[0];
             const away = teams.find((t: any) => t.is_away) || teams[1];
             if (home?.name && away?.name) {
-              {
               const key = `${normalizeTeamName(home.name)}_vs_${normalizeTeamName(away.name)}`;
               byNameMap.set(key, [...(byNameMap.get(key) || []), ev]);
-            }
             }
           }
 
@@ -1691,10 +1684,8 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             const homeP = participants.find((p: any) => String(p?.meta?.location || p?.pivot?.location || '').toLowerCase() === 'home');
             const awayP = participants.find((p: any) => String(p?.meta?.location || p?.pivot?.location || '').toLowerCase() === 'away');
             if (homeP?.name && awayP?.name) {
-              {
               const key = `${normalizeTeamName(homeP.name)}_vs_${normalizeTeamName(awayP.name)}`;
               byNameMap.set(key, [...(byNameMap.get(key) || []), smf]);
-            }
             }
           }
           for (const f of unsettledForSportmonks) {
