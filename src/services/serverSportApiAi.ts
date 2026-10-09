@@ -118,17 +118,32 @@ export async function fetchSportApiAiFixturesByDate(dateStr: string): Promise<an
  * Checks whether a fixture has reached final time / settlement status.
  */
 export function isSportApiAiFixtureFinished(f: any): boolean {
-  if (!f) return false;
-  const statusStr = String(f.status || f.state || f.status_short || '').toUpperCase();
-  const finishedStatuses = ['FINISHED', 'FT', 'AET', 'PEN', 'ENDED', 'FINAL'];
-  if (finishedStatuses.includes(statusStr)) return true;
-  if (typeof f.home_score === 'number' && typeof f.away_score === 'number' && statusStr !== 'LIVE' && statusStr !== 'IN PLAY') {
-    return true;
-  }
-  if (f.score && typeof f.score.home === 'number' && typeof f.score.away === 'number' && statusStr !== 'LIVE') {
-    return true;
-  }
-  return false;
+  if (!f || typeof f !== 'object') return false;
+
+  const statusValues = [
+    f.status,
+    f.state,
+    f.status_short,
+    f.status?.short,
+    f.status?.name,
+    f.state?.short,
+    f.state?.name,
+    f.fixture?.status?.short,
+    f.fixture?.status?.name,
+  ];
+
+  const finishedStatuses = new Set([
+    'FINISHED', 'FT', 'AET', 'PEN', 'ENDED', 'FINAL', 'COMPLETED',
+    'FULL TIME', 'MATCH FINISHED',
+  ]);
+
+  // Never infer completion from score fields alone: some feeds publish
+  // provisional scores before the match has finished.
+  return statusValues.some((value) => {
+    if (typeof value !== 'string') return false;
+    const normalized = value.trim().toUpperCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+    return finishedStatuses.has(normalized);
+  });
 }
 
 /**
