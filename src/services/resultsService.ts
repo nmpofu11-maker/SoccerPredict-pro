@@ -105,7 +105,9 @@ export interface CronStatusResponse {
   pitchApiConfigured: boolean;
   sportDbConfigured: boolean;
   apiFootballConfigured: boolean;
+  apiFootballRateLimited?: boolean;
   sportmonksConfigured: boolean;
+  sportmonksRateLimited?: boolean;
   footballDataConfigured: boolean;
   cron: {
     ingest: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; fixturesIngested: number; sourceUsed?: string | null; diagnostics?: IngestDiagnostics };
