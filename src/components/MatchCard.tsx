@@ -11,6 +11,7 @@ import { getLeagueMeta } from '../constants/leagues';
 import { CountryFlagCircle } from './CountryFlagCircle';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
 import { calculateHomeWinProbabilityTrend } from '../utils/probabilityTrend';
+import { getDisplayPredictionProbabilities } from '../utils/predictionDisplay';
 import { getTeamOutlierStatus } from '../utils/robustMetricsCalculator';
 import { OutlierIndicator } from './OutlierIndicator';
 import { VolatilityHeatmapOverlay } from './VolatilityHeatmapOverlay';
@@ -198,15 +199,14 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     return fixture.league;
   }, [fixture.league]);
 
-  const isQuickBet = prediction.modelLeaderProbabilityPct >= 50;
+  const isQuickBet = prediction.hasEvidence && prediction.modelLeaderProbabilityPct >= 50;
 
   const isHomePick = prediction.predictedWinner === 'home';
   const isAwayPick = prediction.predictedWinner === 'away';
   const isDrawPick = prediction.predictedWinner === 'draw';
 
-  const safeHomePct = Number.isFinite(prediction.homeWinPct) ? prediction.homeWinPct : null;
-  const safeDrawPct = Number.isFinite(prediction.drawPct) ? prediction.drawPct : null;
-  const safeAwayPct = Number.isFinite(prediction.awayWinPct) ? prediction.awayWinPct : null;
+  // Do not display neutral-prior percentages as if they were match-specific analysis.
+  const { home: safeHomePct, draw: safeDrawPct, away: safeAwayPct } = getDisplayPredictionProbabilities(prediction);
 
   const hasNoPick = prediction.predictedWinner === 'none';
   const pickProbability = hasNoPick
@@ -245,7 +245,9 @@ export const MatchCard: React.FC<MatchCardProps> = ({
       {/* Confidence Level Heatmap Top Strip */}
       <div 
         className={`absolute top-0 left-0 w-full h-1.5 rounded-t-xl opacity-90 ${
-          Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75 
+          !prediction.hasEvidence
+            ? 'bg-slate-600'
+            : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75 
             ? 'bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 shadow-[0_2px_10px_rgba(16,185,129,0.3)]' 
             : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct >= 50 
             ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 shadow-[0_2px_10px_rgba(245,158,11,0.2)]' 
@@ -259,23 +261,29 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           {/* Confidence Level Heatmap Pill */}
           <span
             className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-[9.5px] font-mono font-bold uppercase tracking-wide shadow-sm ${
-              Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
+              !prediction.hasEvidence
+                ? 'bg-slate-800 text-slate-300 border-slate-700'
+                : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                 : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct >= 50
                 ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
                 : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
             }`}
-            title={`Leading Model Probability: ${Number.isFinite(prediction.modelLeaderProbabilityPct) ? prediction.modelLeaderProbabilityPct : 'N/A'}%`}
+            title={!prediction.hasEvidence ? 'No verified strength evidence; probabilities are withheld.' : `Leading Model Probability: ${Number.isFinite(prediction.modelLeaderProbabilityPct) ? prediction.modelLeaderProbabilityPct : 'N/A'}%`}
           >
             <span className={`w-1.5 h-1.5 rounded-full ${
-              Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
+              !prediction.hasEvidence
+                ? 'bg-slate-400'
+                : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
                 ? 'bg-emerald-400 animate-pulse'
                 : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct >= 50
                 ? 'bg-amber-400 animate-pulse'
                 : 'bg-rose-400'
             }`} />
             <span>
-              {Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
+              {!prediction.hasEvidence
+                ? 'INSUFFICIENT DATA'
+                : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
                 ? `High Lead Prob (${prediction.modelLeaderProbabilityPct}%)`
                 : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct >= 50
                 ? `Moderate Lead Prob (${prediction.modelLeaderProbabilityPct}%)`
@@ -524,7 +532,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
               <span>Fair <strong className="text-white">{pickFairOdds}</strong></span>
               <span>•</span>
               <span className={isQuickBet ? 'text-amber-400 font-bold' : 'text-slate-400'}>
-                {prediction.modelLeaderProbabilityPct}%
+                {prediction.hasEvidence && Number.isFinite(prediction.modelLeaderProbabilityPct) ? `${prediction.modelLeaderProbabilityPct}%` : 'N/A'}
               </span>
             </div>
           </div>
@@ -703,10 +711,16 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           </div>
 
           {/* Small Sparkline Trend Chart: Fluctuation of Home Win Probability over Last 3 Matches */}
-          <HomeWinSparkline
-            trend={homeWinTrend}
-            teamName={fixture.homeTeam.name}
-          />
+          {prediction.hasEvidence ? (
+            <HomeWinSparkline
+              trend={homeWinTrend}
+              teamName={fixture.homeTeam.name}
+            />
+          ) : (
+            <div className="text-[10px] text-slate-500 text-center px-2 py-1">
+              Trend unavailable until verified team data is found.
+            </div>
+          )}
         </div>
       </div>
 
