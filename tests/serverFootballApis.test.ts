@@ -86,6 +86,16 @@ describe('server football provider clients', () => {
 
     process.env.SPORTMONKS_API_KEY = 'rotated-monks-key';
     assert.equal(sportmonksConfigured(), true);
+
+    let rotatedCalls = 0;
+    globalThis.fetch = (async (_input: URL | RequestInfo, init?: RequestInit) => {
+      rotatedCalls++;
+      assert.equal((init?.headers as Record<string, string>).Authorization, 'rotated-monks-key');
+      return new Response(JSON.stringify({ data: [{ id: 789 }] }), { status: 200 });
+    }) as typeof fetch;
+    const fixtures = await fetchSportmonksFixturesByDate('2026-10-04');
+    assert.equal(rotatedCalls, 1);
+    assert.equal(fixtures[0].id, 789);
   });
 
   it('rejects invalid dates before making provider requests', async () => {
