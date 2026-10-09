@@ -59,17 +59,58 @@ export async function fetchDailySlate(): Promise<MatchFixture[] | null> {
   }
 }
  
+export interface ProviderIngestDiagnostics {
+  configured: boolean;
+  requestedDates: string[];
+  requestCount: number;
+  successfulRequests: number;
+  failedRequests: number;
+  httpErrors: string[];
+  rawRecords: number;
+  mappedRecords: number;
+  rejectedRecords: number;
+  mappingRejectReasons: Record<string, number>;
+  notes: string[];
+}
+
+export interface IngestDiagnostics {
+  startedAt: string;
+  completedAt?: string;
+  timezone: string;
+  requestedDates: string[];
+  sportApiAi: ProviderIngestDiagnostics;
+  theRundown: ProviderIngestDiagnostics;
+  pitchApi: ProviderIngestDiagnostics;
+  sportDb: ProviderIngestDiagnostics;
+  apiFootball: ProviderIngestDiagnostics;
+  sportmonks: ProviderIngestDiagnostics;
+  manifestBefore: number;
+  manifestAfter: number;
+  added: number;
+  sourceUsed: string | null;
+}
+
+export interface IngestNowResponse {
+  success: boolean;
+  message: string;
+  count: number;
+  diagnostics?: IngestDiagnostics;
+}
+
 export interface CronStatusResponse {
   status: 'success' | 'error';
   sportApiAiConfigured: boolean;
+  sportApiAiRateLimited?: boolean;
   theRundownConfigured: boolean;
   pitchApiConfigured: boolean;
   sportDbConfigured: boolean;
   apiFootballConfigured: boolean;
+  apiFootballRateLimited?: boolean;
   sportmonksConfigured: boolean;
+  sportmonksRateLimited?: boolean;
   footballDataConfigured: boolean;
   cron: {
-    ingest: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; fixturesIngested: number; sourceUsed?: string | null };
+    ingest: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; fixturesIngested: number; sourceUsed?: string | null; diagnostics?: IngestDiagnostics };
     settlement: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; resultsSettled: number };
   };
 }
@@ -111,7 +152,7 @@ export async function fetchEvidenceCoverage(): Promise<EvidenceCoverageResponse 
 }
 
 /** Manually triggers the ingestion job right now, for a 'Sync Now' button that does something real. */
-export async function triggerIngestNow(): Promise<{ success: boolean; message: string; count: number }> {
+export async function triggerIngestNow(): Promise<IngestNowResponse> {
   try {
     const res = await fetch('/api/admin/run-ingest-now', { method: 'POST', headers: getAdminApiHeaders() });
     const data = await res.json().catch(() => ({}));

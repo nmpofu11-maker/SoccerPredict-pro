@@ -11,6 +11,8 @@ import { getLeagueMeta } from '../constants/leagues';
 import { CountryFlagCircle } from './CountryFlagCircle';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
 import { calculateHomeWinProbabilityTrend } from '../utils/probabilityTrend';
+import { getDisplayPredictionProbabilities } from '../utils/predictionDisplay';
+import { classifyFixtureStatus } from '../utils/fixtureStatus';
 import { getTeamOutlierStatus } from '../utils/robustMetricsCalculator';
 import { OutlierIndicator } from './OutlierIndicator';
 import { VolatilityHeatmapOverlay } from './VolatilityHeatmapOverlay';
@@ -184,8 +186,12 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   const now = Date.now();
   const kickoffMs = kickoffDate.getTime();
   const diffMinutes = Math.floor((now - kickoffMs) / 60000);
-  const isLive = diffMinutes >= 0 && diffMinutes <= 115;
-  const isFinished = diffMinutes > 115;
+  const fixtureStatusState = classifyFixtureStatus(fixture.status);
+  // Never infer FT or LIVE from elapsed time alone: postponed and delayed games exist.
+  const isLive = fixtureStatusState === 'live';
+  const isFinished = fixtureStatusState === 'finished';
+  const isPastKickoff = diffMinutes >= 0;
+  const needsStatusVerification = isPastKickoff && !isLive && !isFinished;
   const liveMinute = isLive ? (diffMinutes > 90 ? '90+' : diffMinutes > 45 ? `${Math.min(90, diffMinutes)}'` : `${Math.max(1, diffMinutes)}'`) : null;
 
   const leagueMeta = getLeagueMeta(fixture.league || '');
@@ -198,17 +204,20 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     return fixture.league;
   }, [fixture.league]);
 
-  const isQuickBet = prediction.modelLeaderProbabilityPct >= 50;
+  const isQuickBet = prediction.hasEvidence && prediction.modelLeaderProbabilityPct >= 50;
 
   const isHomePick = prediction.predictedWinner === 'home';
   const isAwayPick = prediction.predictedWinner === 'away';
   const isDrawPick = prediction.predictedWinner === 'draw';
 
-  const safeHomePct = Number.isFinite(prediction.homeWinPct) ? prediction.homeWinPct : null;
-  const safeDrawPct = Number.isFinite(prediction.drawPct) ? prediction.drawPct : null;
-  const safeAwayPct = Number.isFinite(prediction.awayWinPct) ? prediction.awayWinPct : null;
+  // Do not display neutral-prior percentages as if they were match-specific analysis.
+  const displayProbabilities = getDisplayPredictionProbabilities(prediction);
+  const canShowPreMatchProbabilities = prediction.hasEvidence && !isPastKickoff && !isLive && !isFinished;
+  const safeHomePct = canShowPreMatchProbabilities ? displayProbabilities.home : null;
+  const safeDrawPct = canShowPreMatchProbabilities ? displayProbabilities.draw : null;
+  const safeAwayPct = canShowPreMatchProbabilities ? displayProbabilities.away : null;
 
-  const hasNoPick = prediction.predictedWinner === 'none';
+  const hasNoPick = prediction.predictedWinner === 'none' || isPastKickoff || isLive || isFinished;
   const pickProbability = hasNoPick
     ? null
     : isHomePick
@@ -245,7 +254,9 @@ export const MatchCard: React.FC<MatchCardProps> = ({
       {/* Confidence Level Heatmap Top Strip */}
       <div 
         className={`absolute top-0 left-0 w-full h-1.5 rounded-t-xl opacity-90 ${
-          Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75 
+          !prediction.hasEvidence
+            ? 'bg-slate-600'
+            : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75 
             ? 'bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 shadow-[0_2px_10px_rgba(16,185,129,0.3)]' 
             : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct >= 50 
             ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 shadow-[0_2px_10px_rgba(245,158,11,0.2)]' 
@@ -259,23 +270,29 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           {/* Confidence Level Heatmap Pill */}
           <span
             className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-[9.5px] font-mono font-bold uppercase tracking-wide shadow-sm ${
-              Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
+              !prediction.hasEvidence
+                ? 'bg-slate-800 text-slate-300 border-slate-700'
+                : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                 : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct >= 50
                 ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
                 : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
             }`}
-            title={`Leading Model Probability: ${Number.isFinite(prediction.modelLeaderProbabilityPct) ? prediction.modelLeaderProbabilityPct : 'N/A'}%`}
+            title={!prediction.hasEvidence ? 'No verified strength evidence; probabilities are withheld.' : `Leading Model Probability: ${Number.isFinite(prediction.modelLeaderProbabilityPct) ? prediction.modelLeaderProbabilityPct : 'N/A'}%`}
           >
             <span className={`w-1.5 h-1.5 rounded-full ${
-              Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
+              !prediction.hasEvidence
+                ? 'bg-slate-400'
+                : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
                 ? 'bg-emerald-400 animate-pulse'
                 : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct >= 50
                 ? 'bg-amber-400 animate-pulse'
                 : 'bg-rose-400'
             }`} />
             <span>
-              {Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
+              {!prediction.hasEvidence
+                ? 'INSUFFICIENT DATA'
+                : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
                 ? `High Lead Prob (${prediction.modelLeaderProbabilityPct}%)`
                 : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct >= 50
                 ? `Moderate Lead Prob (${prediction.modelLeaderProbabilityPct}%)`
@@ -380,10 +397,20 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
           {isFinished && (
             <span
-              className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 text-[9.5px] font-bold"
-              title="Match concluded"
+              className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 text-[9.5px] font-bold"
+              title={Number.isInteger(fixture.homeScore) && Number.isInteger(fixture.awayScore) ? 'Provider-reported final score' : 'Provider confirms the match finished, but final score is unavailable'}
             >
-              FT
+              {Number.isInteger(fixture.homeScore) && Number.isInteger(fixture.awayScore)
+                ? `FT ${fixture.homeScore}-${fixture.awayScore}`
+                : 'FT · SCORE N/A'}
+            </span>
+          )}
+          {needsStatusVerification && (
+            <span
+              className="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[9.5px] font-bold"
+              title="Kickoff time has passed, but no verified live/finished status is available. Pre-match probabilities are withheld."
+            >
+              STATUS UNVERIFIED
             </span>
           )}
 
@@ -515,7 +542,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             )}
             <span className="text-[9px] font-mono uppercase tracking-wider font-extrabold flex items-center gap-1">
               <CheckCircle2 className="w-2.5 h-2.5" />
-              <span>{hasNoPick ? 'NO PICK · NO DATA' : isHomePick ? 'HOME WIN' : isAwayPick ? 'AWAY WIN' : 'MATCH DRAW'}</span>
+              <span>{isFinished ? 'FINISHED · NO PICK' : isLive ? 'LIVE · NO PRE-MATCH PICK' : isPastKickoff ? 'PAST KICKOFF · NO PICK' : hasNoPick ? 'NO PICK · NO DATA' : isHomePick ? 'HOME WIN' : isAwayPick ? 'AWAY WIN' : 'MATCH DRAW'}</span>
             </span>
             <span className="text-xl sm:text-2xl font-black font-mono leading-none my-0.5 text-white">
               {pickProbability !== null ? `${pickProbability.toFixed(0)}%` : '--'}
@@ -524,7 +551,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
               <span>Fair <strong className="text-white">{pickFairOdds}</strong></span>
               <span>•</span>
               <span className={isQuickBet ? 'text-amber-400 font-bold' : 'text-slate-400'}>
-                {prediction.modelLeaderProbabilityPct}%
+                {prediction.hasEvidence && Number.isFinite(prediction.modelLeaderProbabilityPct) ? `${prediction.modelLeaderProbabilityPct}%` : 'N/A'}
               </span>
             </div>
           </div>
@@ -625,7 +652,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           <div className="grid grid-cols-3 gap-1 text-center font-mono text-[11px] flex-1">
             <button
               type="button"
-              disabled={homeOdds === "--"}
+              disabled={homeOdds === "--" || !canShowPreMatchProbabilities}
               onClick={() => onAddToBetSlip?.({
                 id: `${fixture.id}-home`,
                 matchId: fixture.id,
@@ -638,7 +665,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
                 odds: Number(homeOdds) || 0,
                 probability: safeHomePct,
               })}
-              title={homeOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Home Win to Accumulator Bet Slip"}
+              title={!canShowPreMatchProbabilities ? "Unavailable: verified pre-match evidence is required" : homeOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Home Win to Accumulator Bet Slip"}
               className={`py-1.5 px-1 rounded flex items-center justify-center gap-1 transition-transform hover:scale-[1.02] cursor-pointer ${
                 isHomePick ? 'bg-emerald-950/70 text-emerald-300 font-bold border border-emerald-800/60 shadow-sm' : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700'
               }`}
@@ -651,7 +678,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
             <button
               type="button"
-              disabled={drawOdds === "--"}
+              disabled={drawOdds === "--" || !canShowPreMatchProbabilities}
               onClick={() => onAddToBetSlip?.({
                 id: `${fixture.id}-draw`,
                 matchId: fixture.id,
@@ -664,7 +691,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
                 odds: Number(drawOdds) || 0,
                 probability: safeDrawPct,
               })}
-              title={drawOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Draw to Accumulator Bet Slip"}
+              title={!canShowPreMatchProbabilities ? "Unavailable: verified pre-match evidence is required" : drawOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Draw to Accumulator Bet Slip"}
               className={`py-1.5 px-1 rounded flex items-center justify-center gap-1 transition-transform hover:scale-[1.02] cursor-pointer ${
                 isDrawPick ? 'bg-sky-950/70 text-sky-300 font-bold border border-sky-800/60 shadow-sm' : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700'
               }`}
@@ -677,7 +704,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
             <button
               type="button"
-              disabled={awayOdds === "--"}
+              disabled={awayOdds === "--" || !canShowPreMatchProbabilities}
               onClick={() => onAddToBetSlip?.({
                 id: `${fixture.id}-away`,
                 matchId: fixture.id,
@@ -690,7 +717,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
                 odds: Number(awayOdds) || 0,
                 probability: safeAwayPct,
               })}
-              title={awayOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Away Win to Accumulator Bet Slip"}
+              title={!canShowPreMatchProbabilities ? "Unavailable: verified pre-match evidence is required" : awayOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Away Win to Accumulator Bet Slip"}
               className={`py-1.5 px-1 rounded flex items-center justify-center gap-1 transition-transform hover:scale-[1.02] cursor-pointer ${
                 isAwayPick ? 'bg-rose-950/70 text-rose-300 font-bold border border-rose-800/60 shadow-sm' : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700'
               }`}
@@ -703,10 +730,16 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           </div>
 
           {/* Small Sparkline Trend Chart: Fluctuation of Home Win Probability over Last 3 Matches */}
-          <HomeWinSparkline
-            trend={homeWinTrend}
-            teamName={fixture.homeTeam.name}
-          />
+          {prediction.hasEvidence ? (
+            <HomeWinSparkline
+              trend={homeWinTrend}
+              teamName={fixture.homeTeam.name}
+            />
+          ) : (
+            <div className="text-[10px] text-slate-500 text-center px-2 py-1">
+              Trend unavailable until verified team data is found.
+            </div>
+          )}
         </div>
       </div>
 

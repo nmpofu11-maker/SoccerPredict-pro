@@ -54,6 +54,12 @@ export interface H2HRecord {
 export interface MatchFixture {
   id: string;
   kickoffTime: string; // ISO string e.g. "2026-09-04T16:30:00Z"
+  /** Provider-reported status; absent means the status is unverified. */
+  status?: string;
+  /** Final scores only when supplied by the provider. Never infer a 0-0 result. */
+  homeScore?: number | null;
+  awayScore?: number | null;
+  resultSource?: string;
   league: string;
   competition?: string;
   venue: string;

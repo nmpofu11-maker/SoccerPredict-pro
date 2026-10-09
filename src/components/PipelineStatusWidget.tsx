@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cpu, RefreshCw, CheckCircle2, AlertCircle, Clock, ShieldCheck, ShieldAlert } from 'lucide-react';
-import { fetchCronStatus, triggerIngestNow, fetchDailySlate, fetchEvidenceCoverage, CronStatusResponse, EvidenceCoverageResponse } from '../services/resultsService';
+import { fetchCronStatus, triggerIngestNow, fetchDailySlate, fetchEvidenceCoverage, CronStatusResponse, EvidenceCoverageResponse, IngestNowResponse, IngestDiagnostics, ProviderIngestDiagnostics } from '../services/resultsService';
 import { MatchFixture } from '../types/soccer';
 
 interface PipelineStatusWidgetProps {
@@ -11,6 +11,7 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
   const [status, setStatus] = useState<CronStatusResponse | null>(null);
   const [evidence, setEvidence] = useState<EvidenceCoverageResponse | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<IngestNowResponse | null>(null);
 
   const refresh = () => {
     fetchCronStatus().then(setStatus);
@@ -26,9 +27,10 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
   const handleSyncNow = async () => {
     setIsSyncing(true);
     try {
-      await triggerIngestNow();
+      const result = await triggerIngestNow();
+      setSyncResult(result);
       refresh();
-      if (onFixturesSynced) {
+      if (result.success && onFixturesSynced) {
         const fixtures = await fetchDailySlate();
         if (fixtures) onFixturesSynced(fixtures);
       }
@@ -40,6 +42,21 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
   const ingest = status?.cron.ingest;
   const isHealthy = ingest?.lastSuccess === true;
   const hasRun = ingest?.lastRunAt != null;
+  const diagnostics = (syncResult?.diagnostics || ingest?.diagnostics) as IngestDiagnostics | undefined;
+  const providerSummary = (label: string, provider?: ProviderIngestDiagnostics) => {
+    if (!provider) return null;
+    const requestStatus = provider.requestCount > 0
+      ? `${provider.successfulRequests}/${provider.requestCount} requests succeeded`
+      : provider.configured ? 'configured; not queried' : 'not configured';
+    return (
+      <div key={label} className="flex items-start justify-between gap-3">
+        <span className="text-slate-300">{label}</span>
+        <span className={provider.failedRequests > 0 || provider.mappedRecords === 0 && provider.rawRecords > 0 ? 'text-amber-300 text-right' : 'text-slate-400 text-right'}>
+          {requestStatus} · {provider.rawRecords} raw · {provider.mappedRecords} mapped · {provider.rejectedRecords} rejected
+        </span>
+      </div>
+    );
+  };
 
   return (
     <div
@@ -91,6 +108,33 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
               {ingest?.lastMessage}
             </div>
           )}
+          {syncResult && (
+            <div className={`text-[11px] mt-1 max-w-xl ${syncResult.success ? 'text-emerald-300' : 'text-rose-300'}`} role="status">
+              {syncResult.success ? 'Sync completed' : 'Sync failed'}: {syncResult.message} ({syncResult.count} fixtures)
+            </div>
+          )}
+          {diagnostics && (
+            <details className="mt-2 text-[10.5px] text-slate-400 max-w-2xl">
+              <summary className="cursor-pointer hover:text-slate-200">Provider diagnostics · {diagnostics.timezone}</summary>
+              <div className="mt-1 space-y-1 rounded border border-slate-700/70 bg-slate-950/60 p-2">
+                {providerSummary('SportAPI.ai', diagnostics.sportApiAi)}
+                {providerSummary('Sportmonks', diagnostics.sportmonks)}
+                {providerSummary('API-Football', diagnostics.apiFootball)}
+                {providerSummary('TheRundown', diagnostics.theRundown)}
+                {providerSummary('PitchAPI', diagnostics.pitchApi)}
+                {providerSummary('SportDB', diagnostics.sportDb)}
+                <div className="border-t border-slate-700 pt-1 mt-1">
+                  Manifest: {diagnostics.manifestBefore} before → {diagnostics.manifestAfter} after · Added: {diagnostics.added} · Source: {diagnostics.sourceUsed || 'none'}
+                </div>
+                {[...diagnostics.sportApiAi.httpErrors, ...diagnostics.sportmonks.httpErrors, ...diagnostics.apiFootball.httpErrors].slice(0, 3).map((error, index) => (
+                  <div key={index} className="text-amber-300 break-words">{error}</div>
+                ))}
+                {[...diagnostics.sportApiAi.notes, ...diagnostics.sportmonks.notes].slice(0, 3).map((note, index) => (
+                  <div key={`note-${index}`} className="text-slate-500 break-words">{note}</div>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
       </div>
 
@@ -99,8 +143,20 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
           <div className="flex items-center gap-2">
             <div className="flex flex-col items-end">
               <span className="text-[10px] text-slate-400 font-sans">SportAPI.ai</span>
-              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.sportApiAiConfigured ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
-                {status.sportApiAiConfigured ? 'CONNECTED' : 'UNSET'}
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.sportApiAiRateLimited ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : status.sportApiAiConfigured ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                {status.sportApiAiRateLimited ? 'RATE LIMITED' : status.sportApiAiConfigured ? 'KEY SET' : 'UNSET'}
+              </span>
+            </div>
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] text-slate-400 font-sans">Sportmonks</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.sportmonksRateLimited ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : status.sportmonksConfigured ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                {status.sportmonksRateLimited ? 'RATE LIMITED' : status.sportmonksConfigured ? 'KEY SET' : 'UNSET'}
+              </span>
+            </div>
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] text-slate-400 font-sans">API-Football</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.apiFootballRateLimited ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : status.apiFootballConfigured ? 'bg-slate-700/70 border-slate-600 text-slate-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                {status.apiFootballRateLimited ? 'RATE LIMITED' : status.apiFootballConfigured ? 'KEY SET' : 'UNSET'}
               </span>
             </div>
             <div className="flex flex-col items-end">

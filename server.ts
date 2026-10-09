@@ -8,11 +8,14 @@ import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import cron from 'node-cron';
 import { verifyAndSanitizeFixtures } from './src/services/dataIntegrityValidator';
+import { normalizeFixtureStatus } from './src/utils/fixtureStatus';
+import { findSafeSettlementNameMatch } from './src/utils/settlementMatching';
 import { parseHollywoodbetsRawText } from './src/services/hollywoodbetsParser';
 import type { DataIntegrityAuditReport } from './src/types/soccer';
 import {
   sportApiAiConfigured,
   hasSportApiAiKey,
+  isSportApiAiRateLimited,
   fetchSportApiAiFixturesByDate,
   isSportApiAiFixtureFinished,
   getSportApiAiScores,
@@ -35,7 +38,7 @@ import {
 } from './src/services/serverFootballData';
 import { pitchApiConfigured, fetchPitchApiFixturesByDate } from './src/services/serverPitchApi';
 import { sportDbConfigured, fetchSportDbFixturesByDate } from './src/services/serverSportDb';
-import { apiFootballConfigured, sportmonksConfigured, hasApiFootballKey, hasSportmonksKey, fetchSportmonksFixturesByDate, fetchApiFootballFixturesByDate } from './src/services/serverFootballApis';
+import { apiFootballConfigured, sportmonksConfigured, hasApiFootballKey, hasSportmonksKey, isApiFootballRateLimited, isSportmonksRateLimited, fetchSportmonksFixturesByDate, fetchApiFootballFixturesByDate } from './src/services/serverFootballApis';
 import { enrichFixturesWithFootballApis } from './src/services/serverFootballProviderEnrichment';
 import { extractTextFromPDF, scrapeUrl } from './src/services/manualDataService';
 import { evaluateFixturePrediction, sanitizeEngineWeights, fixtureHasEvidence } from './src/engine/rulesEngine';
@@ -911,7 +914,14 @@ function normalizeTeamName(name: string): string {
   return (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+
 /** Build an internal fixture record from a SportAPI.ai fixture. */
+function parseProviderScore(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const score = Number(value);
+  return Number.isInteger(score) && score >= 0 ? score : null;
+}
+
 function mapSportApiAiToInternalFixture(f: any, providerDate?: string): any {
   const homeName = f.home_team?.name || f.homeTeam?.name || (typeof f.home_team === 'string' ? f.home_team : '');
   const awayName = f.away_team?.name || f.awayTeam?.name || (typeof f.away_team === 'string' ? f.away_team : '');
@@ -944,6 +954,10 @@ function mapSportApiAiToInternalFixture(f: any, providerDate?: string): any {
     sportApiAiAwayTeamId: Number(f.away_id || f.away_team?.id || f.awayTeam?.id) || undefined,
     automationSource: 'SPORTAPI_AI',
     kickoffTime,
+    status: normalizeFixtureStatus(f.status ?? f.fixture?.status),
+    homeScore: parseProviderScore(f.home_team?.score ?? f.homeTeam?.score ?? f.home_score ?? f.score?.home ?? f.goals?.home),
+    awayScore: parseProviderScore(f.away_team?.score ?? f.awayTeam?.score ?? f.away_score ?? f.score?.away ?? f.goals?.away),
+    resultSource: normalizeFixtureStatus(f.status ?? f.fixture?.status) && ['FINISHED', 'FT', 'AET', 'PEN', 'FINAL', 'COMPLETED', 'ENDED', 'MATCH_FINISHED'].includes(normalizeFixtureStatus(f.status ?? f.fixture?.status)!) ? 'SPORTAPI_AI' : undefined,
     league: leagueName,
     venue: f.venue?.name || f.venue || 'Unknown Venue',
     round: f.stage || f.league?.round || f.round || 'Unknown Round',
@@ -1539,21 +1553,20 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
     for (const [dateStr, fixturesForDate] of dateGroups.entries()) {
       if (!allowedDates.has(dateStr)) continue;
 
-      let dateSettled = false;
-
       // 1. Try SportAPI.ai settlement
       if (sportApiAiConfigured()) {
         try {
           const apiFixtures = await fetchSportApiAiFixturesByDate(dateStr);
           const byIdMap = new Map<string, any>();
-          const byNameMap = new Map<string, any>();
+          const byNameMap = new Map<string, any[]>();
 
           for (const af of apiFixtures) {
             if (af.id) byIdMap.set(String(af.id), af);
             const home = af.home_team?.name || af.homeTeam?.name || '';
             const away = af.away_team?.name || af.awayTeam?.name || '';
             if (home && away) {
-              byNameMap.set(`${normalizeTeamName(home)}_vs_${normalizeTeamName(away)}`, af);
+              const key = `${normalizeTeamName(home)}_vs_${normalizeTeamName(away)}`;
+              byNameMap.set(key, [...(byNameMap.get(key) || []), af]);
             }
           }
 
@@ -1561,7 +1574,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             let match = f.sportApiAiFixtureId ? byIdMap.get(String(f.sportApiAiFixtureId)) : undefined;
             if (!match) {
               const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
-              match = byNameMap.get(key);
+              match = findSafeSettlementNameMatch(byNameMap.get(key), f);
             }
 
             if (!match || !isSportApiAiFixtureFinished(match)) continue;
@@ -1580,18 +1593,17 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             });
             settledCount++;
           }
-          dateSettled = true;
         } catch (err) {
           console.warn(`[cron:settlement] SportAPI.ai settlement failed for ${dateStr}:`, err);
         }
       }
 
       // 2. Try TheRundown as fallback for remaining unsettled
-      if (!dateSettled && theRundownConfigured()) {
+      if (theRundownConfigured()) {
         try {
           const rundownEvents = await fetchAllTheRundownSoccerEvents(dateStr);
           const byIdMap = new Map<string, any>();
-          const byNameMap = new Map<string, any>();
+          const byNameMap = new Map<string, any[]>();
 
           for (const ev of rundownEvents) {
             if (ev.event_id) byIdMap.set(String(ev.event_id), ev);
@@ -1599,7 +1611,8 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             const home = teams.find((t: any) => t.is_home) || teams[0];
             const away = teams.find((t: any) => t.is_away) || teams[1];
             if (home?.name && away?.name) {
-              byNameMap.set(`${normalizeTeamName(home.name)}_vs_${normalizeTeamName(away.name)}`, ev);
+              const key = `${normalizeTeamName(home.name)}_vs_${normalizeTeamName(away.name)}`;
+              byNameMap.set(key, [...(byNameMap.get(key) || []), ev]);
             }
           }
 
@@ -1608,7 +1621,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             let match = f.theRundownEventId ? byIdMap.get(String(f.theRundownEventId)) : undefined;
             if (!match) {
               const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
-              match = byNameMap.get(key);
+              match = findSafeSettlementNameMatch(byNameMap.get(key), f);
             }
 
             if (!match || !isTheRundownEventFinished(match)) continue;
@@ -1638,21 +1651,22 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
         try {
           const smFixtures = await fetchSportmonksFixturesByDate(dateStr);
           const byIdMap = new Map<string, any>();
-          const byNameMap = new Map<string, any>();
+          const byNameMap = new Map<string, any[]>();
           for (const smf of smFixtures) {
             if (smf.id) byIdMap.set(String(smf.id), smf);
             const participants = Array.isArray(smf.participants?.data ?? smf.participants) ? (smf.participants?.data ?? smf.participants) : [];
             const homeP = participants.find((p: any) => String(p?.meta?.location || p?.pivot?.location || '').toLowerCase() === 'home');
             const awayP = participants.find((p: any) => String(p?.meta?.location || p?.pivot?.location || '').toLowerCase() === 'away');
             if (homeP?.name && awayP?.name) {
-              byNameMap.set(`${normalizeTeamName(homeP.name)}_vs_${normalizeTeamName(awayP.name)}`, smf);
+              const key = `${normalizeTeamName(homeP.name)}_vs_${normalizeTeamName(awayP.name)}`;
+              byNameMap.set(key, [...(byNameMap.get(key) || []), smf]);
             }
           }
           for (const f of unsettledForSportmonks) {
             let match = f.sportmonksFixtureId ? byIdMap.get(String(f.sportmonksFixtureId)) : undefined;
             if (!match) {
               const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
-              match = byNameMap.get(key);
+              match = findSafeSettlementNameMatch(byNameMap.get(key), f);
             }
             if (!match) continue;
             const statusStr = String(match.state?.short_name || match.state?.name || match.status || '').toUpperCase();
@@ -2552,12 +2566,17 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
     try {
       return res.json({
         status: 'success',
-        sportApiAiConfigured: sportApiAiConfigured(),
+        // Configuration means the key exists; rate limiting is a separate runtime state.
+        sportApiAiConfigured: hasSportApiAiKey(),
+        sportApiAiRateLimited: isSportApiAiRateLimited(),
         theRundownConfigured: theRundownConfigured(),
         pitchApiConfigured: pitchApiConfigured(),
         sportDbConfigured: sportDbConfigured(),
-        apiFootballConfigured: apiFootballConfigured(),
-        sportmonksConfigured: sportmonksConfigured(),
+        // Key presence and rate-limit state are separate; a throttled provider is not "UNSET".
+        apiFootballConfigured: hasApiFootballKey(),
+        apiFootballRateLimited: isApiFootballRateLimited(),
+        sportmonksConfigured: hasSportmonksKey(),
+        sportmonksRateLimited: isSportmonksRateLimited(),
         footballDataConfigured: footballDataConfigured(),
         cron: readCronStatus(),
       });
