@@ -42,8 +42,6 @@ import {
   hasSportmonksKey,
   fetchSportmonksFixturesByDate,
   fetchApiFootballFixturesByDate,
-  setSportmonksRateLimited,
-  setApiFootballRateLimited,
 } from './src/services/serverFootballApis';
 import { enrichFixturesWithFootballApis } from './src/services/serverFootballProviderEnrichment';
 import { mergeEvidenceFallbackFixtures } from './src/services/predictionEvidenceMerge';
