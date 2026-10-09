@@ -258,7 +258,7 @@ test('evaluateAuditedPredictionPerformance rejects zero input coverage and enfor
   assert.equal(report.evaluatedCount, 0);
   assert.equal(report.excludedCount, 1);
   assert.equal(report.evaluations[0].status, 'excluded');
-  assert.match(report.evaluations[0].exclusionReason!, /lacks verified pre-match feature evidence/);
+  assert.match(report.evaluations[0].exclusionReason!, /inputCoverage/);
 });
 
 test('evaluateAuditedPredictionPerformance calculates Wilson confidence intervals and respects minSample', () => {
@@ -308,8 +308,6 @@ test('evaluateAuditedPredictionPerformance calculates Wilson confidence interval
   assert.ok(report.meanLogLoss !== null);
   assert.ok(Math.abs(report.meanLogLoss! - (-Math.log(0.6))) < 1e-9);
 });
-
-
 
 test('audited performance excludes predictions with missing or invalid input coverage', () => {
   const prediction = (fixtureId: string, inputCoverage: number | undefined): PredictionRecord => ({
