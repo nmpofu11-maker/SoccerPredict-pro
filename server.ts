@@ -8,6 +8,7 @@ import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import cron from 'node-cron';
 import { verifyAndSanitizeFixtures } from './src/services/dataIntegrityValidator';
+import { normalizeFixtureStatus } from './src/utils/fixtureStatus';
 import { parseHollywoodbetsRawText } from './src/services/hollywoodbetsParser';
 import type { DataIntegrityAuditReport } from './src/types/soccer';
 import {
@@ -913,6 +914,12 @@ function normalizeTeamName(name: string): string {
 }
 
 /** Build an internal fixture record from a SportAPI.ai fixture. */
+function parseProviderScore(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const score = Number(value);
+  return Number.isInteger(score) && score >= 0 ? score : null;
+}
+
 function mapSportApiAiToInternalFixture(f: any, providerDate?: string): any {
   const homeName = f.home_team?.name || f.homeTeam?.name || (typeof f.home_team === 'string' ? f.home_team : '');
   const awayName = f.away_team?.name || f.awayTeam?.name || (typeof f.away_team === 'string' ? f.away_team : '');
@@ -945,6 +952,10 @@ function mapSportApiAiToInternalFixture(f: any, providerDate?: string): any {
     sportApiAiAwayTeamId: Number(f.away_id || f.away_team?.id || f.awayTeam?.id) || undefined,
     automationSource: 'SPORTAPI_AI',
     kickoffTime,
+    status: normalizeFixtureStatus(f.status ?? f.fixture?.status),
+    homeScore: parseProviderScore(f.home_team?.score ?? f.homeTeam?.score ?? f.home_score ?? f.score?.home ?? f.goals?.home),
+    awayScore: parseProviderScore(f.away_team?.score ?? f.awayTeam?.score ?? f.away_score ?? f.score?.away ?? f.goals?.away),
+    resultSource: normalizeFixtureStatus(f.status ?? f.fixture?.status) && ['FINISHED', 'FT', 'AET', 'PEN', 'FINAL', 'COMPLETED', 'ENDED', 'MATCH_FINISHED'].includes(normalizeFixtureStatus(f.status ?? f.fixture?.status)!) ? 'SPORTAPI_AI' : undefined,
     league: leagueName,
     venue: f.venue?.name || f.venue || 'Unknown Venue',
     round: f.stage || f.league?.round || f.round || 'Unknown Round',
