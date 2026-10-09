@@ -314,7 +314,7 @@ test('audited performance excludes predictions with missing or invalid input cov
     type: 'prediction', fixtureId, kickoffTime: '2026-10-10T15:00:00.000Z',
     league: 'Test League', homeTeam: 'Team A', awayTeam: 'Team B',
     frozenAt: '2026-10-10T14:00:00.000Z', probabilities: { home: 60, draw: 25, away: 15 },
-    predicted: 'home', modelVersion: 'v1', ...(inputCoverage === undefined ? {} : { inputCoverage }),
+    predicted: 'home', modelVersion: 'v1', inputCoverage: inputCoverage as number,
   });
   const result = (id: string): HistoricalMatchResult => ({
     id, fixture: {} as any, homeScore: 2, awayScore: 0, actualOutcome: 'home',
