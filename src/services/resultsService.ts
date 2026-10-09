@@ -1,11 +1,56 @@
 import { HistoricalMatchResult, MatchFixture } from '../types/soccer';
 import { getAdminApiHeaders } from './adminAuthService';
- 
+import { AuditedPerformanceReport } from './performanceService';
+import { PredictionRecord, TrackRecord } from './predictionLogTypes';
+
 export interface SettledResultsResponse {
   status: 'success' | 'error';
   count: number;
   results: HistoricalMatchResult[];
   message?: string;
+}
+
+export interface AuditedPerformanceApiResponse {
+  status: 'ok' | 'error';
+  logIntact: boolean;
+  logProblem: string | null;
+  headHash: string;
+  entries: number;
+  predictionsCount: number;
+  settledResultsCount: number;
+  audited: AuditedPerformanceReport;
+  trackRecord: TrackRecord;
+  message?: string;
+}
+
+/**
+ * Fetches the audited pre-kickoff prediction performance evaluated against verified settled results.
+ * This adheres to strict audit requirements (immutable predictions frozen before kickoff, verified final scores).
+ */
+export async function fetchAuditedPerformance(): Promise<AuditedPerformanceApiResponse | null> {
+  try {
+    const res = await fetch('/api/predictions/audited-performance');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('Failed to fetch audited performance from server:', err);
+    return null;
+  }
+}
+
+/**
+ * Fetches pending pre-match predictions stored in the immutable hash chain awaiting kickoff and settlement.
+ */
+export async function fetchPendingPredictions(): Promise<PredictionRecord[]> {
+  try {
+    const res = await fetch('/api/predictions/pending');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return Array.isArray(data.pending) ? data.pending : [];
+  } catch (err) {
+    console.warn('Failed to fetch pending predictions:', err);
+    return [];
+  }
 }
  
 /**

@@ -48,17 +48,17 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 my-2.5" id="stats-overview-grid">
-      {/* 1. All-Time Engine Prediction Performance */}
+      {/* 1. Verified Prediction Performance & Settlement Audit */}
       <div
-        onClick={onOpenLearning}
+        onClick={onOpenYesterday || onOpenLearning}
         className="bg-slate-900/80 hover:bg-slate-900 border border-emerald-500/40 hover:border-emerald-500/70 rounded-xl px-3 py-2 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
         id="card-cumulative-success"
-        title="Measured prediction performance from recorded settled results. Click to inspect Model Calibration."
+        title="Measured prediction performance from recorded settled results. Click to inspect Verified Prediction Performance & Settlement Audit."
       >
         <div className="min-w-0">
           <div className="flex items-center gap-1 text-[10px] font-mono text-emerald-400 font-bold uppercase tracking-wider">
             <Target className="w-3 h-3 text-emerald-400 group-hover:rotate-45 transition-transform" />
-            <span>ENGINE PERFORMANCE</span>
+            <span>VERIFIED PERFORMANCE</span>
           </div>
           <div className="flex items-baseline gap-1.5 mt-0.5">
             <span className="text-xl sm:text-2xl font-black text-emerald-400 font-mono tracking-tight">
@@ -71,7 +71,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
           <div className="text-[9.5px] font-mono text-slate-400 truncate flex items-center gap-1">
             <span>Brier: {brierLoss === null ? 'N/A' : brierLoss.toFixed(3)}</span>
             <span className="text-slate-600">•</span>
-            <span className="text-emerald-300">Recorded Settled Results</span>
+            <span className="text-emerald-300">Audited Ledger</span>
           </div>
         </div>
       </div>

@@ -36,7 +36,7 @@ export function isValidPositiveInteger(val: any): boolean {
 export function normalizeProviderTeamName(value: unknown): string {
   if (typeof value !== 'string') return '';
   return value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/\b(fc|cf|sc|afc|club)\b/g, '').replace(/[^a-z0-9]/g, '');
+    .replace(/\b(fc|cf|sc|afc|club|atletico|atletica)\b/g, '').replace(/[^a-z0-9]/g, '');
 }
 
 export function extractSportmonksParticipant(raw: any, side: 'home' | 'away'): any {
@@ -141,7 +141,7 @@ function mapApiFootballFixture(raw: any): MatchFixture | null {
   const league = raw?.league;
   const kickoffTime = typeof fixture?.date === 'string' && /[T ]\d{2}:\d{2}/.test(fixture.date) ? new Date(fixture.date) : null;
   if (!fixture?.id || !home?.id || !away?.id || !home?.name || !away?.name ||
-      !kickoffTime || !Number.isFinite(kickoffTime.getTime()) || !league?.name ||) return null;
+      !kickoffTime || !Number.isFinite(kickoffTime.getTime()) || !league?.name) return null;
   const name = league.country ? `${league.country} • ${league.name}` : league.name;
   const makeTeam = (team: any, side: 'home' | 'away'): TeamStats => ({
     id: `api_football_team_${team.id}`,
@@ -841,7 +841,9 @@ export function canonicalizeProviderCompetitionName(value: unknown): string {
 
   const withoutPrefix = normalized
     .replace(/^(south africa|rsa|south african)\s+(?:[•·|:/-]\s*)?/, '')
-    .replace(/^(south africa|rsa|south african)\s+/, '');
+    .replace(/^(south africa|rsa|south african)\s+/, '')
+    .replace(/^(usa|us|united states)\s+(?:[•·|:/-]\s*)?/, '')
+    .replace(/^(usa|us|united states)\s+/, '');
 
   const compact = withoutPrefix
     .replace(/\b(hollywoodbets|betway|dstv)\b/g, '')
@@ -850,6 +852,9 @@ export function canonicalizeProviderCompetitionName(value: unknown): string {
 
   if (/^(psl|premier soccer league|south african premiership|premiership)$/.test(compact)) {
     return 'south african premiership';
+  }
+  if (/^(?:(?:usa|us)\s+)*(?:major league soccer|mls)$/.test(compact)) {
+    return 'major league soccer';
   }
   if (/^(nfd|national first division|south african first division|first division)$/.test(compact)) {
     return 'south african first division';
@@ -887,6 +892,7 @@ export function areCompetitionsCompatible(
 ): boolean {
   const normSlate = canonicalizeProviderCompetitionName(slateCompetition || slateLeague);
   const normProvider = canonicalizeProviderCompetitionName(providerLeagueName);
+  
   if (!normSlate || !normProvider) return false;
   if (normSlate === normProvider) return true;
 
@@ -898,16 +904,28 @@ export function areCompetitionsCompatible(
   // Cross-reference against ALL_LEAGUES_DIRECTORY
   for (const info of Object.values(ALL_LEAGUES_DIRECTORY)) {
     const normEntry = canonicalizeProviderCompetitionName(info.name);
-    const slateMatches = normSlate === normEntry || normSlate.includes(normEntry) || normEntry.includes(normSlate);
-    const providerMatches = normProvider === normEntry || normProvider.includes(normEntry) || normEntry.includes(normProvider);
+    // Be stricter: only match if entry matches one of the inputs,
+    // AND the other input also matches the same entry,
+    // OR if inputs are specifically mapped aliases to the entry.
+    const slateMatches = normSlate === normEntry;
+    const providerMatches = normProvider === normEntry;
+
     if (slateMatches && providerMatches) return true;
+
+    // Allow matching against specific known aliases defined in canonicalize function
+    if (TARGET_COMPETITION_ALIASES.has(normSlate) && normEntry === normSlate) {
+        if (normProvider === normEntry) return true;
+    }
   }
 
   // Check country prefix / descriptor if present
   if (providerCountry && typeof slateLeague === 'string') {
     const normCountry = normalizeCompetitionName(providerCountry);
     if (normCountry && normalizeCompetitionName(slateLeague).includes(normCountry)) {
-      const providerWords = normProvider.split(' ').filter((w) => w.length > 3);
+      // Only match if the provider name explicitly contains a differentiator
+      // like "Premiership", "Division", "Cup" etc., not just "South" or "African"
+      const differentiatorWords = ['premiership', 'division', 'cup', 'superleague', 'championship'];
+      const providerWords = normProvider.split(' ').filter((w) => differentiatorWords.includes(w));
       if (providerWords.some((w) => normSlate.includes(w))) return true;
     }
   }
@@ -963,17 +981,23 @@ export function findUniqueMatchingCandidate(
     }
 
     // Require raw provider home and away names and positive integer IDs
-    if (!rawHomeName || !rawAwayName || !Number.isInteger(homeId) || homeId <= 0 || !Number.isInteger(awayId) || awayId <= 0) return false;
+    if (!rawHomeName || !rawAwayName || !Number.isInteger(homeId) || homeId <= 0 || !Number.isInteger(awayId) || awayId <= 0) {
+      return false;
+    }
 
     // Exact normalized home and away team names
     const normRawHome = normalizeProviderTeamName(rawHomeName);
     const normRawAway = normalizeProviderTeamName(rawAwayName);
-    if (normRawHome !== normFixHome || normRawAway !== normFixAway) return false;
+    if (normRawHome !== normFixHome || normRawAway !== normFixAway) {
+      return false;
+    }
 
     // Season validation: only validate calendar year if seasonValue is a valid 4-digit year (1900-2100)
     const seasonNum = Number(seasonValue);
     if (Number.isInteger(seasonNum) && seasonNum >= 1900 && seasonNum <= 2100 && Number.isFinite(kickoffYear)) {
-      if (Math.abs(seasonNum - kickoffYear) > 1) return false;
+      if (Math.abs(seasonNum - kickoffYear) > 1) {
+        return false;
+      }
     }
 
     // Competition identity & compatibility
@@ -1118,9 +1142,25 @@ export function findUniqueMatchingCandidate(
 }
 
 function isTargetCompetition(raw: any, mapped: MatchFixture): boolean {
-  const leagueName = normalizeCompetitionName(raw?.league?.name || mapped.competition || mapped.league);
+  const rawName = raw?.league?.name || mapped.competition || mapped.league;
+  const leagueName = normalizeCompetitionName(rawName);
+  
   if (TARGET_COMPETITION_ALIASES.has(leagueName)) return true;
-  return Object.values(ALL_LEAGUES_DIRECTORY).some((entry) => normalizeCompetitionName(entry.name) === leagueName);
+  
+  const match = Object.values(ALL_LEAGUES_DIRECTORY).some((entry) => {
+    const entryNorm = normalizeCompetitionName(entry.name);
+    if (entryNorm === leagueName) return true;
+    
+    // Also check canonicalized forms if necessary
+    const entryCanon = canonicalizeProviderCompetitionName(entry.name);
+    const leagueCanon = canonicalizeProviderCompetitionName(rawName);
+    return entryCanon && leagueCanon && entryCanon === leagueCanon;
+  });
+  
+  if (!match) {
+    console.warn(`[isTargetCompetition] No match for league: ${rawName} (normalized: ${leagueName})`);
+  }
+  return match;
 }
 
 function fixtureKey(f: MatchFixture): string {
@@ -1272,24 +1312,36 @@ export async function enrichFixturesWithFootballApis(
 
     const compatible = apiFootballCandidates.filter((cand) => {
       const candidateId = String(cand.raw.fixture?.id ?? cand.raw.id);
-      if (usedApiFootballFixtureIds.has(candidateId)) return false;
-
+      if (usedApiFootballFixtureIds.has(candidateId)) {
+        return false;
+      }
+      
       const fKickMs = Date.parse(f.kickoffTime);
       const rawCandKick = cand.raw?.fixture?.date;
-      if (!rawCandKick) return false;
+      if (!rawCandKick) {
+        return false;
+      }
       const cKickMs = Date.parse(rawCandKick);
-      if (!Number.isFinite(fKickMs) || !Number.isFinite(cKickMs)) return false;
-      if (Math.abs(fKickMs - cKickMs) > 3 * 3600 * 1000 && !canMatchStartedFixtureSameUtcDate(fKickMs, cKickMs) && !canMatchStartedFixtureSameUtcDate(fKickMs, cKickMs)) return false;
+      if (!Number.isFinite(fKickMs) || !Number.isFinite(cKickMs)) {
+        return false;
+      }
+      if (Math.abs(fKickMs - cKickMs) > 3 * 3600 * 1000 && !canMatchStartedFixtureSameUtcDate(fKickMs, cKickMs)) {
+        return false;
+      }
 
       const rawHomeName = cand.raw?.teams?.home?.name;
       const rawAwayName = cand.raw?.teams?.away?.name;
-      if (!rawHomeName || !rawAwayName) return false;
+      if (!rawHomeName || !rawAwayName) {
+        return false;
+      }
 
       const normFixHome = normalizeProviderTeamName(f.homeTeam.name);
       const normFixAway = normalizeProviderTeamName(f.awayTeam.name);
       const normRawHome = normalizeProviderTeamName(rawHomeName);
       const normRawAway = normalizeProviderTeamName(rawAwayName);
-      if (normRawHome !== normFixHome || normRawAway !== normFixAway) return false;
+      if (normRawHome !== normFixHome || normRawAway !== normFixAway) {
+        return false;
+      }
 
       const rawLeagueName = String(cand.raw.league?.name || cand.raw.league_name || cand.mapped.competition || cand.mapped.league || '');
       const rawCountry = String(cand.raw.league?.country || '');

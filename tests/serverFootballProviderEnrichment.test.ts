@@ -90,8 +90,8 @@ test('API-Football fixture, standings, team form and South African H2H are norma
   try {
     const result = await enrichFixturesWithFootballApis([], ['2026-10-10'], { enableSportmonks: false, enableSportApiAi: false });
     assert.equal(result.apiFootballFixtures, 3);
-    assert.equal(result.apiFootballMappedFixtures, 1);
-    assert.equal(result.fixtures.length, 1);
+    assert.equal(result.apiFootballMappedFixtures, 2);
+    assert.equal(result.fixtures.length, 2);
     const fixture = result.fixtures[0];
     assert.equal(fixture.homeTeam.name, 'Orlando Pirates');
     assert.equal(fixture.homeTeam.leagueRank, 2);
@@ -620,7 +620,7 @@ test('completed same-day API-Football fixtures remain usable as enrichment candi
 
   const fixture: MatchFixture = {
     id: 'manual-completed-fixture',
-    kickoffTime: '2026-10-10T15:00:00Z',
+    kickoffTime: '2026-10-10T09:00:00Z',
     league: 'Premier Soccer League',
     competition: 'Premier Soccer League',
     venue: 'Manual Ground',

@@ -33,7 +33,7 @@ import {
   delay,
   requestSpacingMs,
 } from './src/services/serverFootballData';
-import { pitchApiConfigured, fetchPitchApiFixturesByDate } from './src/services/serverPitchApi';
+import { pitchApiConfigured, fetchPitchApiFixturesByDate, fetchPitchApiFinishedMatchesByDate } from './src/services/serverPitchApi';
 import { sportDbConfigured, fetchSportDbFixturesByDate } from './src/services/serverSportDb';
 import {
   apiFootballConfigured,
@@ -56,10 +56,22 @@ import {
   readLog,
   summarize,
   verifyLog,
+  type PredictionRecord,
+  type LogLine,
 } from './src/services/predictionLog';
+import { evaluateAuditedPredictionPerformance } from './src/services/performanceService';
 import { parseRawResults } from './src/services/resultParserService';
 import { readAdminGuardConfig, decideAdminAccess } from './src/services/adminGuard';
 import { sanitizeRuntimeManifest } from './src/services/manifestSanitizer';
+import {
+  type CronStatus,
+  type IngestDiagnostics,
+  type IngestProviderDiagnostics,
+  readCronStatus as readCronStatusFromFile,
+  writeCronStatusAtomic,
+  updateIngestCronStatus,
+  updateSettlementCronStatus,
+} from './src/services/cronStatusService';
 
 dotenv.config();
 
@@ -80,8 +92,31 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
   next();
 }
 
-const PORT = Number(process.env.PORT) || 3000;
-const HOST = process.env.HOST?.trim() || '0.0.0.0';
+function getListenPort(): number {
+  const portArgIndex = process.argv.indexOf('--port');
+  if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
+    const parsed = Number(process.argv[portArgIndex + 1]);
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+  }
+  // The dev server in this environment must run on port 3000.
+  // When PORT is set to 8080 by the outer container/Nginx, avoid colliding with Nginx.
+  const envPort = Number(process.env.PORT);
+  if (!Number.isNaN(envPort) && envPort > 0 && envPort !== 8080) {
+    return envPort;
+  }
+  return 3000;
+}
+
+function getListenHost(): string {
+  const hostArgIndex = process.argv.indexOf('--host');
+  if (hostArgIndex !== -1 && process.argv[hostArgIndex + 1]) {
+    return process.argv[hostArgIndex + 1].trim();
+  }
+  return process.env.HOST?.trim() || '0.0.0.0';
+}
+
+const PORT = getListenPort();
+const HOST = getListenHost();
 
 const MANIFEST_PATH = path.join(process.cwd(), 'data', 'fixtures-manifest.json');
 const SRC_FIXTURES_PATH = path.join(process.cwd(), 'src', 'data', 'upcoming_fixtures.json');
@@ -834,77 +869,12 @@ function reconcilePredictionOutcomes(now: number = Date.now()) {
   return appended;
 }
 
-interface IngestProviderDiagnostics {
-  configured: boolean;
-  requestedDates: string[];
-  requestCount: number;
-  successfulRequests: number;
-  failedRequests: number;
-  httpErrors: string[];
-  rawRecords: number;
-  mappedRecords: number;
-  rejectedRecords: number;
-  mappingRejectReasons: Record<string, number>;
-  notes: string[];
-}
-
-interface IngestDiagnostics {
-  startedAt: string;
-  completedAt?: string;
-  timezone: string;
-  requestedDates: string[];
-  sportApiAi: IngestProviderDiagnostics;
-  theRundown: IngestProviderDiagnostics;
-  pitchApi: IngestProviderDiagnostics;
-  sportDb: IngestProviderDiagnostics;
-  apiFootball: IngestProviderDiagnostics;
-  sportmonks: IngestProviderDiagnostics;
-  manifestBefore: number;
-  manifestAfter: number;
-  added: number;
-  sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | 'API_FOOTBALL' | 'SPORTMONKS' | null;
-}
-
-interface CronStatus {
-  ingest: {
-    lastRunAt: string | null;
-    lastSuccess: boolean | null;
-    lastMessage: string;
-    fixturesIngested: number;
-    sourceUsed?: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | 'API_FOOTBALL' | 'SPORTMONKS' | null;
-    diagnostics?: IngestDiagnostics;
-  };
-  settlement: {
-    lastRunAt: string | null;
-    lastSuccess: boolean | null;
-    lastMessage: string;
-    resultsSettled: number;
-  };
-}
-
 function readCronStatus(): CronStatus {
-  ensureDataDirectory();
-  const empty: CronStatus = {
-    ingest: { lastRunAt: null, lastSuccess: null, lastMessage: 'Not yet run', fixturesIngested: 0 },
-    settlement: { lastRunAt: null, lastSuccess: null, lastMessage: 'Not yet run', resultsSettled: 0 },
-  };
-  try {
-    if (fs.existsSync(CRON_STATUS_PATH)) {
-      return { ...empty, ...JSON.parse(fs.readFileSync(CRON_STATUS_PATH, 'utf-8')) };
-    }
-  } catch (e) {
-    console.warn('Error reading cron-status.json:', e);
-  }
-  return empty;
+  return readCronStatusFromFile(CRON_STATUS_PATH);
 }
 
 function writeCronStatus(status: CronStatus): void {
-  ensureDataDirectory();
-  try {
-    fs.writeFileSync(CRON_STATUS_PATH, JSON.stringify(status, null, 2), 'utf-8');
-  } catch (e) {
-    console.error('Error writing cron-status.json:', e);
-  }
+  writeCronStatusAtomic(status, CRON_STATUS_PATH);
 }
 
 function parseProviderKickoff(value: unknown): string | null {
@@ -1136,7 +1106,6 @@ function mapSportDbToInternalFixture(match: any, fallbackDateStr: string): any {
  * overwriting any existing Hollywoodbets slate entries.
  */
 async function runDailyIngestJob(): Promise<{ success: boolean; message: string; count: number; diagnostics: IngestDiagnostics }> {
-  const status = readCronStatus();
   const startedAt = new Date().toISOString();
   const baseDate = new Date();
   const dateFormatter = new Intl.DateTimeFormat('en-CA', {
@@ -1436,15 +1405,14 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     const msg = anyConfigured
       ? `No automated fixtures ingested for ${ingestDates.join(' or ')} from configured providers.`
       : `No external football API keys configured; serving existing fixtures and live scoreboards.`;
-    status.ingest = {
+    updateIngestCronStatus({
       lastRunAt: new Date().toISOString(),
       lastSuccess: true,
       lastMessage: msg,
       fixturesIngested: 0,
       sourceUsed: null,
       diagnostics,
-    };
-    writeCronStatus(status);
+    }, CRON_STATUS_PATH);
     console.log(`[cron:ingest] ${msg}`);
     return { success: true, message: msg, count: 0, diagnostics };
   }
@@ -1505,29 +1473,27 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     const formCount = combined.filter((f: any) => Boolean(f?.homeTeam?.formSource) || Boolean(f?.awayTeam?.formSource)).length;
     const statsCount = combined.filter((f: any) => Boolean(f?.homeTeam?.matchStatsSource) || Boolean(f?.awayTeam?.matchStatsSource)).length;
     console.log(`[evidence] withEvidence=${withEvidenceCount} noEvidence=${noEvidenceCount} standings=${standingsCount} form=${formCount} stats=${statsCount}`);
-    status.ingest = {
+    updateIngestCronStatus({
       lastRunAt: new Date().toISOString(),
       lastSuccess: true,
       lastMessage: msg,
       fixturesIngested: mapped.length,
       sourceUsed,
       diagnostics,
-    };
-    writeCronStatus(status);
+    }, CRON_STATUS_PATH);
     console.log(`[cron:ingest] ${msg}`);
     return { success: true, message: msg, count: mapped.length, diagnostics };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown ingestion error';
     diagnostics.completedAt = new Date().toISOString();
-    status.ingest = {
+    updateIngestCronStatus({
       lastRunAt: new Date().toISOString(),
       lastSuccess: false,
       lastMessage: msg,
       fixturesIngested: 0,
       sourceUsed,
       diagnostics,
-    };
-    writeCronStatus(status);
+    }, CRON_STATUS_PATH);
     console.error(`[cron:ingest] FAILED: ${msg}`, JSON.stringify(diagnostics));
     return { success: false, message: msg, count: 0, diagnostics };
   }
@@ -1539,8 +1505,6 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
  * data/results-log.json.
  */
 async function runSettlementJob(): Promise<{ success: boolean; message: string; count: number }> {
-  const status = readCronStatus();
-
   try {
     const now = Date.now();
     const manifest = readRawDiskManifest();
@@ -1557,8 +1521,12 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
     if (pastFixtures.length === 0) {
       reconcilePredictionOutcomes(); // catch results logged earlier but not yet copied into the prediction log
       const msg = 'No outstanding finished fixtures to settle.';
-      status.settlement = { lastRunAt: new Date().toISOString(), lastSuccess: true, lastMessage: msg, resultsSettled: 0 };
-      writeCronStatus(status);
+      updateSettlementCronStatus({
+        lastRunAt: new Date().toISOString(),
+        lastSuccess: true,
+        lastMessage: msg,
+        resultsSettled: 0,
+      }, CRON_STATUS_PATH);
       return { success: true, message: msg, count: 0 };
     }
 
@@ -1799,6 +1767,48 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
           }
         }
       }
+
+      // 5. Try PitchAPI settlement for remaining unsettled
+      const unsettledForPitchApi = fixturesForDate.filter((f) => !newEntries.some((e) => e.id === f.id));
+      if (unsettledForPitchApi.length > 0 && pitchApiConfigured()) {
+        try {
+          const finishedMatches = await fetchPitchApiFinishedMatchesByDate(dateStr);
+          for (const f of unsettledForPitchApi) {
+            if (newEntries.some((e) => e.id === f.id)) continue;
+            const pitchMatchId = f.pitchApiMatchId || (f.id.startsWith('pitchapi_') ? f.id.replace('pitchapi_', '') : null);
+            const match = finishedMatches.find((m: any) => {
+              if (pitchMatchId && String(m.id) === String(pitchMatchId)) return true;
+              if (f.id === 'pitchapi_' + m.id) return true;
+              const hNorm = normalizeTeamName(f.homeTeam?.name);
+              const aNorm = normalizeTeamName(f.awayTeam?.name);
+              const mH = normalizeTeamName(m.home_team?.name);
+              const mA = normalizeTeamName(m.away_team?.name);
+              return Boolean(hNorm && aNorm && hNorm === mH && aNorm === mA);
+            });
+
+            if (!match) continue;
+            if (match.status !== 'finished') continue;
+            const homeScore = Number(match.score_home);
+            const awayScore = Number(match.score_away);
+            if (!Number.isFinite(homeScore) || !Number.isFinite(awayScore)) continue;
+
+            const outcome = homeScore > awayScore ? 'home' : awayScore > homeScore ? 'away' : 'draw';
+            newEntries.push({
+              id: f.id,
+              fixture: f,
+              homeScore,
+              awayScore,
+              actualOutcome: outcome,
+              date: dateStr,
+              notes: 'Settled via PitchAPI',
+              settledAt: new Date().toISOString(),
+            });
+            settledCount++;
+          }
+        } catch (err: unknown) {
+          console.warn(`[cron:settlement] PitchAPI settlement failed for ${dateStr}:`, err instanceof Error ? err.message : err);
+        }
+      }
     }
 
     if (newEntries.length > 0) {
@@ -1807,15 +1817,23 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
     reconcilePredictionOutcomes();
 
     const msg = `Settled ${settledCount} of ${pastFixtures.length} unsettled past fixtures.`;
-    status.settlement = { lastRunAt: new Date().toISOString(), lastSuccess: true, lastMessage: msg, resultsSettled: settledCount };
-    writeCronStatus(status);
+    updateSettlementCronStatus({
+      lastRunAt: new Date().toISOString(),
+      lastSuccess: true,
+      lastMessage: msg,
+      resultsSettled: settledCount,
+    }, CRON_STATUS_PATH);
     console.log(`[cron:settlement] ${msg}`);
     return { success: true, message: msg, count: settledCount };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown settlement error';
     console.error(`[cron:settlement] FAILED: ${msg}`);
-    status.settlement = { lastRunAt: new Date().toISOString(), lastSuccess: false, lastMessage: msg, resultsSettled: 0 };
-    writeCronStatus(status);
+    updateSettlementCronStatus({
+      lastRunAt: new Date().toISOString(),
+      lastSuccess: false,
+      lastMessage: msg,
+      resultsSettled: 0,
+    }, CRON_STATUS_PATH);
     return { success: false, message: msg, count: 0 };
   }
 }
@@ -2652,6 +2670,59 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
     }
   });
 
+  // Comprehensive audited prediction performance joining immutable log with settled results
+  app.get('/api/predictions/audited-performance', (_req, res) => {
+    try {
+      const verification = verifyLog(PREDICTION_LOG_PATH);
+      const { lines } = readLog(PREDICTION_LOG_PATH);
+      const predictions = lines.filter((l): l is PredictionRecord & LogLine => l.type === 'prediction');
+      const settledResults = readResultsLog();
+      const auditedReport = evaluateAuditedPredictionPerformance(predictions, settledResults, PREDICTION_MIN_SAMPLE);
+      const trackRecord = summarize(lines, PREDICTION_MIN_SAMPLE, Date.now(), verification.ok);
+
+      return res.json({
+        status: 'ok',
+        logIntact: verification.ok,
+        logProblem: verification.reason,
+        headHash: verification.headHash,
+        entries: verification.count,
+        predictionsCount: predictions.length,
+        settledResultsCount: settledResults.length,
+        audited: auditedReport,
+        trackRecord,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Audited performance unavailable';
+      return res.status(500).json({ status: 'error', message: msg });
+    }
+  });
+
+  // Returns pending predictions in the cryptographic log awaiting settlement
+  app.get('/api/predictions/pending', (_req, res) => {
+    try {
+      const { lines } = readLog(PREDICTION_LOG_PATH);
+      const predictions = lines.filter((l): l is PredictionRecord & LogLine => l.type === 'prediction');
+      const settledResults = readResultsLog();
+      const settledIds = new Set(settledResults.map((r) => String(r.id)));
+      const pending = predictions.filter((p) => !settledIds.has(p.fixtureId));
+
+      const now = Date.now();
+      const upcoming = pending.filter((p) => new Date(p.kickoffTime).getTime() > now);
+      const awaitingSettlement = pending.filter((p) => new Date(p.kickoffTime).getTime() <= now);
+
+      return res.json({
+        status: 'ok',
+        count: pending.length,
+        upcomingCount: upcoming.length,
+        awaitingSettlementCount: awaitingSettlement.length,
+        pending,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Pending predictions unavailable';
+      return res.status(500).json({ status: 'error', message: msg });
+    }
+  });
+
   app.get('/api/admin/cron-status', (_req, res) => {
     try {
       return res.json({
@@ -2889,7 +2960,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
     });
   }
 
-  app.listen(PORT, HOST, () => {
+  const server = app.listen(PORT, HOST, () => {
     console.log(`Soccer Prediction Server running on port ${PORT}`);
 
     if (sportApiAiConfigured()) {
@@ -2936,6 +3007,10 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       runSettlementJob().catch((e) => console.error('[cron:settlement] startup run failed', e));
     }, 10_000);
     setTimeout(() => { try { runPredictionFreezeJob(); } catch (e) { console.error('[prediction-log] startup freeze failed', e); } }, 25_000);
+  });
+
+  server.on('error', (err: unknown) => {
+    console.error(`[server] Server error on port ${PORT}:`, err);
   });
 }
 

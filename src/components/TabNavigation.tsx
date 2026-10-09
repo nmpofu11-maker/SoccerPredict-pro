@@ -278,10 +278,10 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
             id="tab-yesterday-performance"
           >
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>YESTERDAY&apos;S RESULTS</span>
+            <span>VERIFIED PERFORMANCE</span>
             {yesterdayStats && (
               <span className="ml-0.5 px-2 py-0.5 bg-emerald-950/80 border border-emerald-700/60 text-emerald-300 rounded-full font-mono text-[11px] font-bold">
-                {yesterdayStats.correct} Correct / {yesterdayStats.wrong} Wrong
+                Audited
               </span>
             )}
           </button>
