@@ -404,7 +404,7 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
                 <span className="text-xs font-mono text-slate-400">Pending</span>
               </div>
               <div className="mt-1 text-[11px] font-mono text-emerald-400">
-                ✓ 0 Excluded from log
+                {report ? `✓ ${report.excludedCount} Excluded from audited sample` : 'Exclusion count unavailable'}
               </div>
             </div>
           </div>
@@ -418,7 +418,7 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
                   AUDIT REQUIREMENT: Minimum Sample Size Threshold (N ≥ 30)
                 </div>
                 <div className="text-amber-200/90 leading-relaxed">
-                  Only <strong>1</strong> pre-kickoff prediction (<span className="font-mono">Veres Rivne vs Shakhtar Donetsk</span>) has completed and settled so far, while <strong>{report?.pendingCount ?? pendingPredictions.length}</strong> predictions remain pending in the queue. In accordance with honest evaluation principles, official accuracy metrics remain unpublishable until at least 30 pre-match predictions have settled.
+                  <strong>{report?.evaluatedCount ?? 0}</strong> pre-kickoff predictions have completed and passed the audit checks, while <strong>{report?.pendingCount ?? pendingPredictions.length}</strong> remain pending. Performance metrics are provisional and should not be treated as reliable long-term estimates until at least 30 eligible pre-match forecasts have settled.
                 </div>
               </div>
             </div>
@@ -705,7 +705,7 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
                 </span>
               </div>
               <div className="mt-1 text-[11px] text-slate-400 font-mono">
-                Across 10 evidence-backed fixtures
+                Across {performanceSummary.allTimeTotal} evidence-backed historical fixtures (retrospective replay)
               </div>
             </div>
 
@@ -743,7 +743,7 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
 
             <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5">
               <div className="flex items-center justify-between text-xs text-slate-400">
-                <span className="font-mono uppercase tracking-wider text-[10.5px]">Total Settled Records</span>
+                <span className="font-mono uppercase tracking-wider text-[10.5px]">Evidence-Backed Replay Records</span>
                 <Database className="w-3.5 h-3.5 text-sky-400" />
               </div>
               <div className="mt-1 flex items-baseline gap-2">
@@ -753,7 +753,7 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
                 <span className="text-xs font-mono text-slate-400">Ledger</span>
               </div>
               <div className="mt-1 text-[11px] text-slate-400 font-mono">
-                12 SportAPI + 22 PitchAPI
+                Retrospective engine replay; not prospective forecasts
               </div>
             </div>
           </div>
