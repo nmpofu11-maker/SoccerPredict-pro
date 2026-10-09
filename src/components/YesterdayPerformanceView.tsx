@@ -77,18 +77,26 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
       ]);
       if (perfRes?.status === 'ok') {
         setAuditedData(perfRes);
+      } else {
+        setAuditedData(null);
       }
       if (pendingRes !== null) {
         setPendingPredictions(pendingRes);
+      } else {
+        setPendingPredictions([]);
       }
       if (perfRes?.status === 'ok' && pendingRes !== null) {
         setDiagnosticsError(null);
         setLastRefreshedAt(new Date().toISOString());
       } else {
-        setDiagnosticsError('Could not refresh all prediction audit data. Displayed values may be from the last successful refresh.');
+        setLastRefreshedAt(null);
+        setDiagnosticsError('Prediction audit data is unavailable or ledger integrity could not be verified. Metrics and pending forecasts are hidden until verification succeeds.');
       }
-    } catch (err) {
-      setDiagnosticsError('Could not refresh prediction audit data. Displayed values may be from the last successful refresh.');
+    } catch {
+      setAuditedData(null);
+      setPendingPredictions([]);
+      setLastRefreshedAt(null);
+      setDiagnosticsError('Prediction audit data could not be refreshed. Metrics and pending forecasts are hidden until verification succeeds.');
     } finally {
       setIsLoadingAudited(false);
     }

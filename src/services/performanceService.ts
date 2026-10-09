@@ -108,15 +108,18 @@ export function evaluateAuditedPredictionPerformance(
   minSample = 30
 ): AuditedPerformanceReport {
   const settledMap = new Map<string, HistoricalMatchResult>();
+  const seenSettledRecordIds = new Set<string>();
   const duplicateSettledIds = new Set<string>();
   for (const r of settledResults || []) {
-    if (!r?.id || !Number.isFinite(r.homeScore) || !Number.isFinite(r.awayScore) || !r.actualOutcome) continue;
+    if (!r?.id) continue;
     const id = String(r.id);
-    if (settledMap.has(id) || duplicateSettledIds.has(id)) {
+    if (seenSettledRecordIds.has(id)) {
       settledMap.delete(id);
       duplicateSettledIds.add(id);
       continue;
     }
+    seenSettledRecordIds.add(id);
+    if (!Number.isFinite(r.homeScore) || !Number.isFinite(r.awayScore) || !r.actualOutcome) continue;
     settledMap.set(id, r);
   }
 

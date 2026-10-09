@@ -2676,6 +2676,18 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       const verification = verifyLog(PREDICTION_LOG_PATH);
       const { lines } = readLog(PREDICTION_LOG_PATH);
       const predictions = lines.filter((l): l is PredictionRecord & LogLine => l.type === 'prediction');
+      if (!verification.ok) {
+        return res.status(409).json({
+          status: 'error',
+          logIntact: false,
+          logProblem: verification.reason,
+          headHash: verification.headHash,
+          entries: verification.count,
+          predictionsCount: predictions.length,
+          settledResultsCount: 0,
+          message: 'Prediction ledger integrity verification failed; audited metrics are suppressed.',
+        });
+      }
       const settledResults = readResultsLog();
       const auditedReport = evaluateAuditedPredictionPerformance(predictions, settledResults, PREDICTION_MIN_SAMPLE);
       const trackRecord = summarize(lines, PREDICTION_MIN_SAMPLE, Date.now(), verification.ok);
@@ -2700,6 +2712,19 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
   // Returns pending predictions in the cryptographic log awaiting settlement
   app.get('/api/predictions/pending', (_req, res) => {
     try {
+      const verification = verifyLog(PREDICTION_LOG_PATH);
+      if (!verification.ok) {
+        return res.status(409).json({
+          status: 'error',
+          logIntact: false,
+          logProblem: verification.reason,
+          count: 0,
+          upcomingCount: 0,
+          awaitingSettlementCount: 0,
+          pending: [],
+          message: 'Prediction ledger integrity verification failed; pending forecasts are suppressed.',
+        });
+      }
       const { lines } = readLog(PREDICTION_LOG_PATH);
       const predictions = lines.filter((l): l is PredictionRecord & LogLine => l.type === 'prediction');
       const settledResults = readResultsLog();
