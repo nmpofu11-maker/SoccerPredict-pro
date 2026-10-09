@@ -72,7 +72,7 @@ function parseCompleteJsonValues(raw: string): unknown[] | null {
       const ch = raw[index];
       if (inString) {
         if (escaped) escaped = false;
-        else if (ch === '\\\\') escaped = true;
+        else if (ch === '\\') escaped = true;
         else if (ch === '"') inString = false;
         continue;
       }
