@@ -311,7 +311,7 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
               <Clock className="w-3.5 h-3.5" />
               <span>Pending Forecasts Queue</span>
               <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${activeViewMode === 'pending' ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
-                {report?.pendingCount ?? pendingPredictions.length}
+                {report?.pendingCount ?? (isLoadingAudited || diagnosticsError ? 'N/A' : pendingPredictions.length)}
               </span>
             </button>
 
@@ -361,12 +361,12 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
                     : 'N/A'}
                 </span>
                 <span className="text-xs font-mono text-slate-400 font-semibold">
-                  ({report?.correctCount ?? 0}/{report?.evaluatedCount ?? 0} Correct)
+                  ({report?.correctCount ?? 0}/{report?.evaluatedCount ?? (isLoadingAudited || diagnosticsError ? 'N/A' : 0)} Correct)
                 </span>
               </div>
               <div className="mt-1 text-[11px] font-mono text-amber-400 flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-                <span>N = {report?.evaluatedCount ?? 0} (Min threshold: 30)</span>
+                <span>N = {report?.evaluatedCount ?? (isLoadingAudited || diagnosticsError ? 'N/A' : 0)} (Min threshold: 30)</span>
               </div>
             </div>
 
@@ -420,7 +420,7 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
               </div>
               <div className="mt-1 flex items-baseline gap-2">
                 <span className="text-2xl font-black font-mono text-purple-300">
-                  {report?.pendingCount ?? pendingPredictions.length}
+                  {report?.pendingCount ?? (isLoadingAudited || diagnosticsError ? 'N/A' : pendingPredictions.length)}
                 </span>
                 <span className="text-xs font-mono text-slate-400">Pending</span>
               </div>
@@ -439,7 +439,7 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
                   AUDIT REQUIREMENT: Minimum Sample Size Threshold (N ≥ 30)
                 </div>
                 <div className="text-amber-200/90 leading-relaxed">
-                  <strong>{report?.evaluatedCount ?? 0}</strong> pre-kickoff predictions have completed and passed the audit checks, while <strong>{report?.pendingCount ?? pendingPredictions.length}</strong> remain pending. Performance metrics are provisional and should not be treated as reliable long-term estimates until at least 30 eligible pre-match forecasts have settled.
+                  <strong>{report?.evaluatedCount ?? (isLoadingAudited || diagnosticsError ? 'N/A' : 0)}</strong> pre-kickoff predictions have completed and passed the audit checks, while <strong>{report?.pendingCount ?? (isLoadingAudited || diagnosticsError ? 'N/A' : pendingPredictions.length)}</strong> remain pending. Performance metrics are provisional and should not be treated as reliable long-term estimates until at least 30 eligible pre-match forecasts have settled.
                 </div>
               </div>
             </div>
@@ -898,7 +898,7 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
               <Clock className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <div className="font-bold text-sky-300">
-                  {pendingPredictions.length} PREDICTIONS FROZEN PRIOR TO KICKOFF
+                  {diagnosticsError || isLoadingAudited ? 'PENDING QUEUE UNAVAILABLE' : `${pendingPredictions.length} PREDICTIONS FROZEN PRIOR TO KICKOFF`}
                 </div>
                 <div className="text-sky-200/90 leading-relaxed">
                   These forecasts are immutably committed into the SHA-256 hash chain before each match kicks off. Once final scores are verified by the settlement job, they will automatically join the Audited Prospective Track Record without human intervention.
@@ -923,7 +923,9 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
           <div className="space-y-2">
             {filteredPendingPredictions.length === 0 ? (
               <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-8 text-center text-slate-400 text-xs">
-                No pending predictions match your search query.
+                {diagnosticsError || isLoadingAudited
+                  ? 'Pending forecasts are unavailable until the audit endpoints respond and ledger integrity is verified.'
+                  : 'No pending predictions match your search query.'}
               </div>
             ) : (
               filteredPendingPredictions.map((pred) => {
