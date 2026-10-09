@@ -743,8 +743,10 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
 // and the learning engine has real new data to train on.
 // ---------------------------------------------------------------------------
 
-const RESULTS_LOG_PATH = path.join(process.cwd(), 'data', 'results-log.json');
-const CRON_STATUS_PATH = path.join(process.cwd(), 'data', 'cron-status.json');
+const RESULTS_LOG_PATH = process.env.RESULTS_LOG_PATH?.trim()
+  || path.join(process.cwd(), 'data', 'results-log.json');
+const CRON_STATUS_PATH = process.env.CRON_STATUS_PATH?.trim()
+  || path.join(process.cwd(), 'data', 'cron-status.json');
 
 interface SettledResultEntry {
   id: string;
@@ -758,8 +760,8 @@ interface SettledResultEntry {
 }
 
 function readResultsLog(): SettledResultEntry[] {
-  ensureDataDirectory();
   try {
+    fs.mkdirSync(path.dirname(RESULTS_LOG_PATH), { recursive: true });
     if (fs.existsSync(RESULTS_LOG_PATH)) {
       const data = JSON.parse(fs.readFileSync(RESULTS_LOG_PATH, 'utf-8'));
       if (Array.isArray(data)) return data;
@@ -771,8 +773,8 @@ function readResultsLog(): SettledResultEntry[] {
 }
 
 function writeResultsLog(entries: SettledResultEntry[]): void {
-  ensureDataDirectory();
   try {
+    fs.mkdirSync(path.dirname(RESULTS_LOG_PATH), { recursive: true });
     fs.writeFileSync(RESULTS_LOG_PATH, JSON.stringify(entries, null, 2), 'utf-8');
   } catch (e) {
     console.error('Error writing results-log.json:', e);
