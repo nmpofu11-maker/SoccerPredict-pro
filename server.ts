@@ -812,7 +812,7 @@ function readResultsLog(): SettledResultEntry[] {
     const recovered = parseCompleteJsonValues(raw);
     if (recovered && recovered.length > 0 && recovered.every(Array.isArray)) {
       const combined = recovered.flat() as SettledResultEntry[];
-      console.warn(\`Recovered \${combined.length} results from concatenated JSON arrays in results-log.json\`);
+      console.warn(`Recovered ${combined.length} results from concatenated JSON arrays in results-log.json`);
       return combined;
     }
     console.error('Refusing to use malformed results-log.json:', parseError);
