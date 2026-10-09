@@ -16,7 +16,7 @@ API-Football RapidAPI host. No secret values belong in this repository,
 
 ## Attach the existing secrets to a Cloud Run service
 
-First confirm both secrets exist and identify the version you want to pin. Then replace
+First confirm all three secrets exist and identify the version you want to pin. Then replace
 `SERVICE_NAME`, `REGION`, and `VERSION` below with your deployment's values:
 
 ```bash
@@ -26,7 +26,7 @@ gcloud run services update SERVICE_NAME \
 ```
 
 The Cloud Run service identity needs Secret Manager Secret Accessor
-(`roles/secretmanager.secretAccessor`) on both secrets. Pin a numbered secret
+(`roles/secretmanager.secretAccessor`) on all three secrets. Pin a numbered secret
 version for reproducible rollbacks rather than relying on `latest`.
 
 Updating the service creates a new Cloud Run revision. This repository change
