@@ -212,7 +212,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
   // Do not display neutral-prior percentages as if they were match-specific analysis.
   const displayProbabilities = getDisplayPredictionProbabilities(prediction);
-  const canShowPreMatchProbabilities = !isPastKickoff && !isLive && !isFinished;
+  const canShowPreMatchProbabilities = prediction.hasEvidence && !isPastKickoff && !isLive && !isFinished;
   const safeHomePct = canShowPreMatchProbabilities ? displayProbabilities.home : null;
   const safeDrawPct = canShowPreMatchProbabilities ? displayProbabilities.draw : null;
   const safeAwayPct = canShowPreMatchProbabilities ? displayProbabilities.away : null;
@@ -652,7 +652,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           <div className="grid grid-cols-3 gap-1 text-center font-mono text-[11px] flex-1">
             <button
               type="button"
-              disabled={homeOdds === "--"}
+              disabled={homeOdds === "--" || !canShowPreMatchProbabilities}
               onClick={() => onAddToBetSlip?.({
                 id: `${fixture.id}-home`,
                 matchId: fixture.id,
@@ -665,7 +665,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
                 odds: Number(homeOdds) || 0,
                 probability: safeHomePct,
               })}
-              title={homeOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Home Win to Accumulator Bet Slip"}
+              title={!canShowPreMatchProbabilities ? "Unavailable: verified pre-match evidence is required" : homeOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Home Win to Accumulator Bet Slip"}
               className={`py-1.5 px-1 rounded flex items-center justify-center gap-1 transition-transform hover:scale-[1.02] cursor-pointer ${
                 isHomePick ? 'bg-emerald-950/70 text-emerald-300 font-bold border border-emerald-800/60 shadow-sm' : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700'
               }`}
@@ -678,7 +678,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
             <button
               type="button"
-              disabled={drawOdds === "--"}
+              disabled={drawOdds === "--" || !canShowPreMatchProbabilities}
               onClick={() => onAddToBetSlip?.({
                 id: `${fixture.id}-draw`,
                 matchId: fixture.id,
@@ -691,7 +691,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
                 odds: Number(drawOdds) || 0,
                 probability: safeDrawPct,
               })}
-              title={drawOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Draw to Accumulator Bet Slip"}
+              title={!canShowPreMatchProbabilities ? "Unavailable: verified pre-match evidence is required" : drawOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Draw to Accumulator Bet Slip"}
               className={`py-1.5 px-1 rounded flex items-center justify-center gap-1 transition-transform hover:scale-[1.02] cursor-pointer ${
                 isDrawPick ? 'bg-sky-950/70 text-sky-300 font-bold border border-sky-800/60 shadow-sm' : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700'
               }`}
@@ -704,7 +704,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
             <button
               type="button"
-              disabled={awayOdds === "--"}
+              disabled={awayOdds === "--" || !canShowPreMatchProbabilities}
               onClick={() => onAddToBetSlip?.({
                 id: `${fixture.id}-away`,
                 matchId: fixture.id,
@@ -717,7 +717,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
                 odds: Number(awayOdds) || 0,
                 probability: safeAwayPct,
               })}
-              title={awayOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Away Win to Accumulator Bet Slip"}
+              title={!canShowPreMatchProbabilities ? "Unavailable: verified pre-match evidence is required" : awayOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Away Win to Accumulator Bet Slip"}
               className={`py-1.5 px-1 rounded flex items-center justify-center gap-1 transition-transform hover:scale-[1.02] cursor-pointer ${
                 isAwayPick ? 'bg-rose-950/70 text-rose-300 font-bold border border-rose-800/60 shadow-sm' : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700'
               }`}
