@@ -206,13 +206,13 @@ export async function fetchSportmonksTeamsBySearch(name: string): Promise<any[]>
 
 export async function fetchSportmonksFixturesByDate(date: string, includes = 'participants;scores;league;state'): Promise<any[]> {
   assertDate(date);
-  if (isSportmonksRateLimited()) return [];
+  if (!sportmonksConfigured()) return [];
   try {
     const body = await sportmonksGet(`fixtures/date/${date}`, { include: includes });
     if (!Array.isArray(body.data)) throw new Error('Sportmonks fixtures response.data is not an array');
     return body.data;
   } catch (err) {
-    if (isSportmonksRateLimited()) return [];
+    if (!sportmonksConfigured()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
       return [];
@@ -222,13 +222,13 @@ export async function fetchSportmonksFixturesByDate(date: string, includes = 'pa
 }
 
 export async function fetchSportmonksFixtureStatistics(fixtureId: number | string): Promise<any[]> {
-  if (isSportmonksRateLimited()) return [];
+  if (!sportmonksConfigured()) return [];
   try {
     const body = await sportmonksGet(`fixtures/${fixtureId}`, { include: 'statistics.type;participants' });
     const stats = body.data?.statistics?.data ?? body.data?.statistics;
     return Array.isArray(stats) ? stats : [];
   } catch (err) {
-    if (isSportmonksRateLimited()) return [];
+    if (!sportmonksConfigured()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
       return [];
@@ -245,7 +245,7 @@ export async function fetchSportmonksFixturesBetween(
   assertDate(startDate);
   assertDate(endDate);
   if (startDate > endDate) throw new Error('Start date must be on or before end date');
-  if (isSportmonksRateLimited()) return [];
+  if (!sportmonksConfigured()) return [];
   try {
     const body = await sportmonksGet(`fixtures/between/${startDate}/${endDate}`, {
       include: includes,
@@ -254,7 +254,7 @@ export async function fetchSportmonksFixturesBetween(
     if (!Array.isArray(body.data)) throw new Error('Sportmonks fixture range response.data is not an array');
     return body.data;
   } catch (err) {
-    if (isSportmonksRateLimited()) return [];
+    if (!sportmonksConfigured()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
       return [];
@@ -273,7 +273,7 @@ export async function fetchSportmonksFixturesBetweenForTeam(
   assertDate(endDate);
   if (startDate > endDate) throw new Error('Start date must be on or before end date');
   if (!String(teamId).trim()) throw new Error('Sportmonks team id is required');
-  if (isSportmonksRateLimited()) return [];
+  if (!sportmonksConfigured()) return [];
   try {
     const body = await sportmonksGet(`fixtures/between/${startDate}/${endDate}/${encodeURIComponent(String(teamId))}`, {
       include: includes,
@@ -282,7 +282,7 @@ export async function fetchSportmonksFixturesBetweenForTeam(
     if (!Array.isArray(body.data)) throw new Error('Sportmonks team fixture response.data is not an array');
     return body.data;
   } catch (err) {
-    if (isSportmonksRateLimited()) return [];
+    if (!sportmonksConfigured()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
       return [];
@@ -293,12 +293,12 @@ export async function fetchSportmonksFixturesBetweenForTeam(
 
 export async function fetchSportmonksStandingsBySeason(seasonId: number | string): Promise<any[]> {
   if (!String(seasonId).trim()) throw new Error('Sportmonks season id is required');
-  if (isSportmonksRateLimited()) return [];
+  if (!sportmonksConfigured()) return [];
   try {
     const body = await sportmonksGet(`standings/seasons/${encodeURIComponent(String(seasonId))}`, {});
     return Array.isArray(body.data) ? body.data : [];
   } catch (err) {
-    if (isSportmonksRateLimited()) return [];
+    if (!sportmonksConfigured()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
       return [];
@@ -312,7 +312,7 @@ export async function fetchSportmonksHeadToHead(
   team2Id: number | string
 ): Promise<any[]> {
   if (!String(team1Id).trim() || !String(team2Id).trim()) throw new Error('Sportmonks team ids are required');
-  if (isSportmonksRateLimited()) return [];
+  if (!sportmonksConfigured()) return [];
   try {
     const body = await sportmonksGet(
       `fixtures/head-to-head/${encodeURIComponent(String(team1Id))}/${encodeURIComponent(String(team2Id))}`,
@@ -320,7 +320,7 @@ export async function fetchSportmonksHeadToHead(
     );
     return Array.isArray(body.data) ? body.data : [];
   } catch (err) {
-    if (isSportmonksRateLimited()) return [];
+    if (!sportmonksConfigured()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('403') || msg.includes('unauthenticated')) {
       return [];
