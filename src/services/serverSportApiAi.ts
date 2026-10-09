@@ -141,7 +141,7 @@ export function isSportApiAiFixtureFinished(f: any): boolean {
 
   return statusValues.some((value) => {
     if (typeof value !== 'string') return false;
-    const normalized = value.trim().toUpperCase().replace(/[_-]+/g, ' ').replace(/\\s+/g, ' ');
+    const normalized = value.trim().toUpperCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
     return finishedStatuses.has(normalized);
   });
 }
