@@ -790,7 +790,6 @@ export function getLeagueMeta(leagueName: string): LeagueInfo {
     'epl': 'English Premier League',
     'la liga': 'Spanish La Liga',
     'laliga': 'Spanish La Liga',
-    'serie a': 'Italian Serie A',
     'bundesliga': 'German Bundesliga',
     'ligue 1': 'French Ligue 1',
     'psl': 'South African Premiership',
@@ -981,7 +980,8 @@ export function getLeagueMeta(leagueName: string): LeagueInfo {
     inferredCountry = "Germany";
     inferredFlag = "🇩🇪";
     inferredRegion = "top5";
-  } else if (/italy|italian|serie a|serie b|coppa italia/i.test(normalizedKey)) {
+  } else if (/italy|italian|coppa italia/i.test(normalizedKey) || normalizedKey === 'italian serie a' || normalizedKey === 'italian serie b') {
+
     inferredCountry = "Italy";
     inferredFlag = "🇮🇹";
     inferredRegion = "top5";

@@ -80,14 +80,36 @@ export function readCronStatus(filePath: string = DEFAULT_CRON_STATUS_PATH): Cro
   const empty = getDefaultCronStatus();
   try {
     if (fs.existsSync(filePath)) {
-      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-      return {
-        ingest: { ...empty.ingest, ...(parsed?.ingest || {}) },
-        settlement: { ...empty.settlement, ...(parsed?.settlement || {}) },
-      };
+      const content = fs.readFileSync(filePath, 'utf-8');
+      if (content.trim().length === 0) return empty;
+      
+      try {
+        const parsed = JSON.parse(content);
+        return {
+          ingest: { ...empty.ingest, ...(parsed?.ingest || {}) },
+          settlement: { ...empty.settlement, ...(parsed?.settlement || {}) },
+        };
+      } catch (e) {
+        // Fallback: Try to recover the first JSON object
+        console.warn(`Attempting to recover malformed cron status at ${filePath}:`, e);
+        try {
+          const match = content.match(/\{.*?\}/s);
+          if (!match) return empty;
+          const parsed = JSON.parse(match[0]);
+          return {
+            ingest: { ...empty.ingest, ...(parsed?.ingest || {}) },
+            settlement: { ...empty.settlement, ...(parsed?.settlement || {}) },
+          };
+        } catch (innerE) {
+          console.warn(`Failed to recover cron status from ${filePath}:`, innerE);
+          return empty;
+        }
+      }
     }
   } catch (e) {
-    console.warn(`Error reading cron status at ${filePath}:`, e);
+    if (fs.existsSync(filePath) && fs.readFileSync(filePath, 'utf-8').trim().length > 0) {
+      console.warn(`Error reading cron status at ${filePath}:`, e);
+    }
   }
   return empty;
 }

@@ -764,11 +764,30 @@ function readResultsLog(): SettledResultEntry[] {
   if (!fs.existsSync(RESULTS_LOG_PATH)) return [];
 
   try {
-    const data = JSON.parse(fs.readFileSync(RESULTS_LOG_PATH, 'utf-8'));
-    if (!Array.isArray(data)) throw new Error('results-log.json must contain a JSON array');
-    return data;
+    const content = fs.readFileSync(RESULTS_LOG_PATH, 'utf-8');
+    if (content.trim().length === 0) return [];
+    
+    // Attempt standard parse first
+    try {
+        const data = JSON.parse(content);
+        if (!Array.isArray(data)) throw new Error('results-log.json must contain a JSON array');
+        return data;
+    } catch (e) {
+        // Fallback: recover concatenated JSON arrays
+        console.warn('Attempting to recover malformed results-log.json...');
+        const match = content.match(/\[.*?\]/gs);
+        if (!match) return [];
+        
+        let recovered: SettledResultEntry[] = [];
+        for (const m of match) {
+            try {
+                const parsed = JSON.parse(m);
+                if (Array.isArray(parsed)) recovered = recovered.concat(parsed);
+            } catch {}
+        }
+        return recovered;
+    }
   } catch (e) {
-    // Do not turn a corrupt ledger into an empty array: a later settlement write could erase history.
     console.error('Refusing to use malformed results-log.json:', e);
     throw e;
   }

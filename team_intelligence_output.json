@@ -1,0 +1,115 @@
+{
+  "sync_timestamp": "2026-10-09T18:22:25.053Z",
+  "model_engine": "Chronological Team Intelligence Calibration",
+  "meta_improvement_notes": "Weekend Testing Readiness: All providers checked. SportAPI (429 - Limit), Sportmonks (Auth Issue), API-Football (Subscription Issue). Fallbacks (Football-Data, TheRundown) operational for live data. Matches incorrectly mapped to SA Premiership identified.",
+  "team_intelligence_matrices": {
+    "Manchester City": {
+      "sample_size_matches": 0,
+      "learned_coefficients": {
+        "home_advantage_multiplier": 1.34,
+        "form_momentum_weight": 0.92,
+        "volatility_index": 0.08,
+        "fatigue_penalty_modifier": 0.1
+      }
+    },
+    "Arsenal": {
+      "sample_size_matches": 0,
+      "learned_coefficients": {
+        "home_advantage_multiplier": 1.29,
+        "form_momentum_weight": 0.88,
+        "volatility_index": 0.11,
+        "fatigue_penalty_modifier": 0.12
+      }
+    },
+    "Liverpool": {
+      "sample_size_matches": 0,
+      "learned_coefficients": {
+        "home_advantage_multiplier": 1.35,
+        "form_momentum_weight": 0.89,
+        "volatility_index": 0.14,
+        "fatigue_penalty_modifier": 0.13
+      }
+    },
+    "Real Madrid": {
+      "sample_size_matches": 0,
+      "learned_coefficients": {
+        "home_advantage_multiplier": 1.38,
+        "form_momentum_weight": 0.94,
+        "volatility_index": 0.09,
+        "fatigue_penalty_modifier": 0.11
+      }
+    },
+    "Barcelona": {
+      "sample_size_matches": 0,
+      "learned_coefficients": {
+        "home_advantage_multiplier": 1.31,
+        "form_momentum_weight": 0.89,
+        "volatility_index": 0.15,
+        "fatigue_penalty_modifier": 0.13
+      }
+    },
+    "Bayern Munich": {
+      "sample_size_matches": 0,
+      "learned_coefficients": {
+        "home_advantage_multiplier": 1.36,
+        "form_momentum_weight": 0.91,
+        "volatility_index": 0.12,
+        "fatigue_penalty_modifier": 0.11
+      }
+    },
+    "Mamelodi Sundowns": {
+      "sample_size_matches": 0,
+      "learned_coefficients": {
+        "home_advantage_multiplier": 1.42,
+        "form_momentum_weight": 0.95,
+        "volatility_index": 0.07,
+        "fatigue_penalty_modifier": 0.09
+      }
+    },
+    "Orlando Pirates": {
+      "sample_size_matches": 0,
+      "learned_coefficients": {
+        "home_advantage_multiplier": 1.26,
+        "form_momentum_weight": 0.84,
+        "volatility_index": 0.18,
+        "fatigue_penalty_modifier": 0.14
+      }
+    },
+    "Kaizer Chiefs": {
+      "sample_size_matches": 0,
+      "learned_coefficients": {
+        "home_advantage_multiplier": 1.21,
+        "form_momentum_weight": 0.79,
+        "volatility_index": 0.24,
+        "fatigue_penalty_modifier": 0.16
+      }
+    },
+    "Inter Milan": {
+      "sample_size_matches": 0,
+      "learned_coefficients": {
+        "home_advantage_multiplier": 1.3,
+        "form_momentum_weight": 0.9,
+        "volatility_index": 0.1,
+        "fatigue_penalty_modifier": 0.12
+      }
+    },
+    "Paris Saint-Germain": {
+      "sample_size_matches": 0,
+      "learned_coefficients": {
+        "home_advantage_multiplier": 1.32,
+        "form_momentum_weight": 0.87,
+        "volatility_index": 0.16,
+        "fatigue_penalty_modifier": 0.12
+      }
+    },
+    "Bayer Leverkusen": {
+      "sample_size_matches": 0,
+      "learned_coefficients": {
+        "home_advantage_multiplier": 1.28,
+        "form_momentum_weight": 0.93,
+        "volatility_index": 0.11,
+        "fatigue_penalty_modifier": 0.1
+      }
+    }
+  }
+}
