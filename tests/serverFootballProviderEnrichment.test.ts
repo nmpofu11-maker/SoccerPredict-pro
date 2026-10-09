@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { enrichFixturesWithFootballApis } from '../src/services/serverFootballProviderEnrichment';
+import { enrichFixturesWithFootballApis, canonicalizeProviderCompetitionName, areCompetitionsCompatible } from '../src/services/serverFootballProviderEnrichment';
+
+test('competition aliases never map an unqualified Premiership to South Africa', () => {
+  assert.equal(canonicalizeProviderCompetitionName('Premiership'), 'premiership');
+  assert.equal(canonicalizeProviderCompetitionName('Scottish Premiership'), 'scottish premiership');
+  assert.equal(canonicalizeProviderCompetitionName('South Africa • Premiership'), 'south african premiership');
+  assert.equal(canonicalizeProviderCompetitionName('Betway Premiership'), 'south african premiership');
+  assert.equal(areCompetitionsCompatible('Scottish Premiership', 'Scottish Premiership', 'Premiership'), false);
+  assert.equal(areCompetitionsCompatible('South African Premiership', 'South African Premiership', 'Scottish Premiership'), false);
+});
+
 import type { MatchFixture } from '../src/types/soccer';
 
 const originalFetch = globalThis.fetch;
