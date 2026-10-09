@@ -41,15 +41,18 @@ export async function fetchAuditedPerformance(): Promise<AuditedPerformanceApiRe
 /**
  * Fetches pending pre-match predictions stored in the immutable hash chain awaiting kickoff and settlement.
  */
-export async function fetchPendingPredictions(): Promise<PredictionRecord[]> {
+export async function fetchPendingPredictions(): Promise<PredictionRecord[] | null> {
   try {
     const res = await fetch('/api/predictions/pending');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    return Array.isArray(data.pending) ? data.pending : [];
+    if (data?.status !== 'ok' || !Array.isArray(data.pending)) {
+      throw new Error('Pending predictions response has an invalid shape');
+    }
+    return data.pending;
   } catch (err) {
     console.warn('Failed to fetch pending predictions:', err);
-    return [];
+    return null;
   }
 }
  

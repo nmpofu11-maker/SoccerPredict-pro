@@ -65,6 +65,7 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
   const [auditedData, setAuditedData] = useState<AuditedPerformanceApiResponse | null>(initialAuditedData);
   const [pendingPredictions, setPendingPredictions] = useState<PredictionRecord[]>([]);
   const [isLoadingAudited, setIsLoadingAudited] = useState(false);
+  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
 
   const loadAuditedDiagnostics = useCallback(async () => {
@@ -74,13 +75,20 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
         fetchAuditedPerformance(),
         fetchPendingPredictions(),
       ]);
-      if (perfRes) {
+      if (perfRes?.status === 'ok') {
         setAuditedData(perfRes);
       }
-      if (pendingRes) {
+      if (pendingRes !== null) {
         setPendingPredictions(pendingRes);
       }
-      setLastRefreshedAt(new Date().toISOString());
+      if (perfRes?.status === 'ok' && pendingRes !== null) {
+        setDiagnosticsError(null);
+        setLastRefreshedAt(new Date().toISOString());
+      } else {
+        setDiagnosticsError('Could not refresh all prediction audit data. Displayed values may be from the last successful refresh.');
+      }
+    } catch (err) {
+      setDiagnosticsError('Could not refresh prediction audit data. Displayed values may be from the last successful refresh.');
     } finally {
       setIsLoadingAudited(false);
     }
@@ -203,6 +211,11 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
 
   return (
     <div className="space-y-4" id="prediction-performance-dashboard">
+      {diagnosticsError && (
+        <div role="alert" className="rounded-lg border border-amber-600/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+          {diagnosticsError}
+        </div>
+      )}
       {/* 1. Header & Integrity Status Banner */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 sm:p-5">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
