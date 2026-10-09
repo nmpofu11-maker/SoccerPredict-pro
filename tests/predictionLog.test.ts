@@ -186,3 +186,18 @@ test('summarize withholds score metrics when the log integrity check fails', () 
   assert.equal(report.overall.accuracyPct, null);
   assert.equal(report.overall.brier, null);
 });
+
+
+test('track-record Brier score uses all three probabilities and the observed outcome', () => {
+  const file = tmpLog();
+  const probabilities = { home: 31, draw: 38, away: 31 };
+  appendPrediction(file, pred('veres-shakhtar', 'draw', probabilities), BEFORE);
+  appendOutcome(file, { fixtureId: 'veres-shakhtar', homeScore: 0, awayScore: 3 }, AFTER);
+
+  const { lines } = readLog(file);
+  const report = summarize(lines, 1, AFTER);
+  // Standard multiclass Brier sum: .31^2 + .38^2 + (1 - .31)^2 = .7166.
+  assert.equal(report.overall.n, 1);
+  assert.ok(Math.abs((report.overall.brier ?? NaN) - 0.7166) < 1e-10);
+  assert.equal(report.overall.accuracyPct, 0);
+});
