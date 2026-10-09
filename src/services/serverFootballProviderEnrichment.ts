@@ -854,8 +854,8 @@ export function canonicalizeProviderCompetitionName(value: unknown): string {
   // South Africa when the original label carries a South African or local
   // sponsor marker; otherwise preserve the provider's competition identity.
   const hasSouthAfricanContext =
-    /^(south africa|rsa|south african)\\b/.test(normalized) ||
-    /\\b(hollywoodbets|betway|dstv)\\b/.test(normalized);
+    /^(south africa|rsa|south african)\b/.test(normalized) ||
+    /\b(hollywoodbets|betway|dstv)\b/.test(normalized);
   if (
     /^(psl|premier soccer league|south african premiership)$/.test(compact) ||
     (compact === 'premiership' && hasSouthAfricanContext)
