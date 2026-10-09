@@ -60,6 +60,7 @@ import {
 import { evaluateAuditedPredictionPerformance, isAuditableSettledResult } from './src/services/performanceService';
 import { parseRawResults } from './src/services/resultParserService';
 import { parseResultsArrays } from './src/services/resultsLogParser';
+import { findSafeSettlementNameMatch } from './src/utils/settlementMatching';
 import { readAdminGuardConfig, decideAdminAccess } from './src/services/adminGuard';
 import { sanitizeRuntimeManifest } from './src/services/manifestSanitizer';
 import {
@@ -1604,21 +1605,20 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
     for (const [dateStr, fixturesForDate] of dateGroups.entries()) {
       if (!allowedDates.has(dateStr)) continue;
 
-      let dateSettled = false;
-
       // 1. Try SportAPI.ai settlement
       if (sportApiAiConfigured()) {
         try {
           const apiFixtures = await fetchSportApiAiFixturesByDate(dateStr);
           const byIdMap = new Map<string, any>();
-          const byNameMap = new Map<string, any>();
+          const byNameMap = new Map<string, any[]>();
 
           for (const af of apiFixtures) {
             if (af.id) byIdMap.set(String(af.id), af);
             const home = af.home_team?.name || af.homeTeam?.name || '';
             const away = af.away_team?.name || af.awayTeam?.name || '';
             if (home && away) {
-              byNameMap.set(`${normalizeTeamName(home)}_vs_${normalizeTeamName(away)}`, af);
+              const key = `${normalizeTeamName(home)}_vs_${normalizeTeamName(away)}`;
+              byNameMap.set(key, [...(byNameMap.get(key) || []), af]);
             }
           }
 
@@ -1626,7 +1626,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             let match = f.sportApiAiFixtureId ? byIdMap.get(String(f.sportApiAiFixtureId)) : undefined;
             if (!match) {
               const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
-              match = byNameMap.get(key);
+              match = findSafeSettlementNameMatch(byNameMap.get(key), f);
             }
 
             if (!match || !isSportApiAiFixtureFinished(match)) continue;
@@ -1645,18 +1645,17 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             });
             settledCount++;
           }
-          dateSettled = true;
         } catch (err) {
           console.warn(`[cron:settlement] SportAPI.ai settlement failed for ${dateStr}:`, err);
         }
       }
 
       // 2. Try TheRundown as fallback for remaining unsettled
-      if (!dateSettled && theRundownConfigured()) {
+      if (theRundownConfigured()) {
         try {
           const rundownEvents = await fetchAllTheRundownSoccerEvents(dateStr);
           const byIdMap = new Map<string, any>();
-          const byNameMap = new Map<string, any>();
+          const byNameMap = new Map<string, any[]>();
 
           for (const ev of rundownEvents) {
             if (ev.event_id) byIdMap.set(String(ev.event_id), ev);
@@ -1664,7 +1663,8 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             const home = teams.find((t: any) => t.is_home) || teams[0];
             const away = teams.find((t: any) => t.is_away) || teams[1];
             if (home?.name && away?.name) {
-              byNameMap.set(`${normalizeTeamName(home.name)}_vs_${normalizeTeamName(away.name)}`, ev);
+              const key = `${normalizeTeamName(home.name)}_vs_${normalizeTeamName(away.name)}`;
+              byNameMap.set(key, [...(byNameMap.get(key) || []), ev]);
             }
           }
 
@@ -1673,7 +1673,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             let match = f.theRundownEventId ? byIdMap.get(String(f.theRundownEventId)) : undefined;
             if (!match) {
               const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
-              match = byNameMap.get(key);
+              match = findSafeSettlementNameMatch(byNameMap.get(key), f);
             }
 
             if (!match || !isTheRundownEventFinished(match)) continue;
