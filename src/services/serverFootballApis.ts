@@ -104,9 +104,10 @@ async function requestJson(url: URL, headers: Record<string, string>, provider: 
 
 /** Call an API-Football v3 endpoint using the RapidAPI credential. */
 export async function apiFootballGet(path: string, params: Record<string, string | number | undefined> = {}): Promise<any> {
-  if (isApiFootballRateLimited()) throw new Error('API-Football is rate-limited or disabled');
+  if (isApiFootballRateLimited()) throw new Error('API-Football is rate-limited');
   const key = getApiFootballKey();
   if (!key) throw new Error('API_FOOTBALL_USE_RAPIDAPI is not configured');
+  if (key === apiFootballAuthFailedKey) throw new Error('API-Football credential was rejected; rotate the configured key before retrying');
 
   const base = getBaseUrl(process.env.API_FOOTBALL_BASE_URL, API_FOOTBALL_DEFAULT_BASE_URL);
   const url = new URL(`${base}/${path.replace(/^\/+/, '')}`);
@@ -125,7 +126,7 @@ export async function apiFootballGet(path: string, params: Record<string, string
 
 export async function fetchApiFootballFixturesByDate(date: string): Promise<any[]> {
   assertDate(date);
-  if (isApiFootballRateLimited()) return [];
+  if (!apiFootballConfigured()) return [];
   try {
     const body = await apiFootballGet('fixtures', { date });
     if (!Array.isArray(body.response)) throw new Error('API-Football fixtures response.response is not an array');
@@ -166,6 +167,7 @@ export async function sportmonksGet(path: string, params: Record<string, string 
   if (isSportmonksRateLimited()) throw new Error('Sportmonks is rate-limited');
   const key = getSportmonksKey();
   if (!key) throw new Error('SPORTMONKS_API_KEY is not configured');
+  if (key === sportmonksAuthFailedKey) throw new Error('Sportmonks credential was rejected; rotate the configured key before retrying');
 
   const base = getBaseUrl(process.env.SPORTMONKS_BASE_URL, SPORTMONKS_DEFAULT_BASE_URL);
   const url = new URL(`${base}/${path.replace(/^\\/+/, '')}`);
@@ -177,12 +179,12 @@ export async function sportmonksGet(path: string, params: Record<string, string 
 
 export async function fetchSportmonksTeamsBySearch(name: string): Promise<any[]> {
   const query = String(name || '').trim();
-  if (!query || isSportmonksRateLimited()) return [];
+  if (!query || !sportmonksConfigured()) return [];
   try {
     const body = await sportmonksGet(`teams/search/${encodeURIComponent(query)}`, { per_page: 10 });
     return Array.isArray(body.data) ? body.data : [];
   } catch (err) {
-    if (isSportmonksRateLimited()) return [];
+    if (!sportmonksConfigured()) return [];
     const msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('404') || msg.includes('not exist')) {
       return [];
