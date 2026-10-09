@@ -118,17 +118,22 @@ export async function fetchSportApiAiFixturesByDate(dateStr: string): Promise<an
  * Checks whether a fixture has reached final time / settlement status.
  */
 export function isSportApiAiFixtureFinished(f: any): boolean {
-  if (!f) return false;
-  const statusStr = String(f.status || f.state || f.status_short || '').toUpperCase();
-  const finishedStatuses = ['FINISHED', 'FT', 'AET', 'PEN', 'ENDED', 'FINAL'];
-  if (finishedStatuses.includes(statusStr)) return true;
-  if (typeof f.home_score === 'number' && typeof f.away_score === 'number' && statusStr !== 'LIVE' && statusStr !== 'IN PLAY') {
-    return true;
-  }
-  if (f.score && typeof f.score.home === 'number' && typeof f.score.away === 'number' && statusStr !== 'LIVE') {
-    return true;
-  }
-  return false;
+  if (!f || typeof f !== 'object') return false;
+
+  // Provider payloads may encode status as a string or as an object such as
+  // { short: "FT", long: "Match Finished" }. Never infer settlement from a
+  // score alone: scheduled fixtures can legitimately carry a provisional 0-0.
+  const rawStatus = f.status ?? f.state ?? f.status_short ?? f.fixture?.status;
+  const statusValue = typeof rawStatus === 'object' && rawStatus !== null
+    ? (rawStatus.short ?? rawStatus.code ?? rawStatus.name ?? rawStatus.long)
+    : rawStatus;
+  const statusStr = String(statusValue ?? '').trim().toUpperCase();
+  const finishedStatuses = new Set([
+    'FINISHED', 'FT', 'AET', 'PEN', 'ENDED', 'FINAL', 'COMPLETED',
+    'MATCH FINISHED', 'AFTER EXTRA TIME', 'AFTER PENALTIES',
+  ]);
+
+  return finishedStatuses.has(statusStr);
 }
 
 /**
