@@ -439,7 +439,7 @@ export function evaluateAuditedPredictionPerformance(
       continue;
     }
 
-    const actual = settled.actualOutcome
+    const actual = settled.actualOutcome;
     const isCorrect = pred.predicted === actual;
     if (isCorrect) correctCount++;
 
