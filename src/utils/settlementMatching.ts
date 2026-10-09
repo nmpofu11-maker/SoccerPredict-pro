@@ -9,7 +9,7 @@ export function providerSettlementKickoffMs(match: any): number {
     match?.starting_at ?? match?.date ?? match?.commence_time ??
     match?.start_time ?? match?.startTime ?? match?.fixture?.date ??
     match?.fixture?.kickoff_time ?? match?.fixture?.starting_at;
-  if (typeof raw !== 'string' || !/[T ]\\d{2}:\\d{2}/.test(raw)) return NaN;
+  if (typeof raw !== 'string' || !/[T ]\d{2}:\d{2}/.test(raw)) return NaN;
   return Date.parse(raw);
 }
 
