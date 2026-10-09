@@ -177,7 +177,8 @@ export async function sportmonksGet(path: string, params: Record<string, string 
   if (key === sportmonksAuthFailedKey) throw new Error('Sportmonks credential was rejected; rotate the configured key before retrying');
 
   const base = getBaseUrl(process.env.SPORTMONKS_BASE_URL, SPORTMONKS_DEFAULT_BASE_URL);
-  const url = new URL(`${base}/${path.replace(/^\\/+/, '')}`);
+  const normalizedPath = path.split('/').filter(Boolean).join('/');
+  const url = new URL(`${base}/${normalizedPath}`);
   for (const [name, value] of Object.entries(params)) {
     if (value !== undefined && value !== '') url.searchParams.set(name, String(value));
   }
