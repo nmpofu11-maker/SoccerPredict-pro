@@ -28,6 +28,10 @@ function getBaseUrl(value: string | undefined, fallback: string): string {
 
 let sportmonksRateLimitedUntil = 0;
 let apiFootballRateLimitedUntil = 0;
+// Pause a rejected credential without misclassifying 401/403 as rate limits.
+// Rotating the key automatically clears this block.
+let sportmonksAuthFailedKey = '';
+let apiFootballAuthFailedKey = '';
 
 export function isSportmonksRateLimited(): boolean {
   return Date.now() < sportmonksRateLimitedUntil;
@@ -54,11 +58,11 @@ export function hasSportmonksKey(): boolean {
 }
 
 export function apiFootballConfigured(): boolean {
-  return hasApiFootballKey() && !isApiFootballRateLimited();
+  return hasApiFootballKey() && !isApiFootballRateLimited() && getApiFootballKey() !== apiFootballAuthFailedKey;
 }
 
 export function sportmonksConfigured(): boolean {
-  return hasSportmonksKey() && !isSportmonksRateLimited();
+  return hasSportmonksKey() && !isSportmonksRateLimited() && getSportmonksKey() !== sportmonksAuthFailedKey;
 }
 
 function assertDate(date: string): void {
