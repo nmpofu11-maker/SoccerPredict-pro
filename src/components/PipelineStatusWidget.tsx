@@ -148,6 +148,18 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
               </span>
             </div>
             <div className="flex flex-col items-end">
+              <span className="text-[10px] text-slate-400 font-sans">Sportmonks</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.sportmonksRateLimited ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : status.sportmonksConfigured ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                {status.sportmonksRateLimited ? 'RATE LIMITED' : status.sportmonksConfigured ? 'KEY SET' : 'UNSET'}
+              </span>
+            </div>
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] text-slate-400 font-sans">API-Football</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.apiFootballRateLimited ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : status.apiFootballConfigured ? 'bg-slate-700/70 border-slate-600 text-slate-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                {status.apiFootballRateLimited ? 'RATE LIMITED' : status.apiFootballConfigured ? 'KEY SET' : 'UNSET'}
+              </span>
+            </div>
+            <div className="flex flex-col items-end">
               <span className="text-[10px] text-slate-400 font-sans">Football-Data</span>
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.footballDataConfigured ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
                 {status.footballDataConfigured ? 'CONNECTED' : 'UNSET'}
