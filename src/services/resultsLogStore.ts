@@ -14,7 +14,7 @@ export interface SettledResultRecord {
  * structurally invalid ledger fails closed so callers cannot mistake damaged
  * history for an empty ledger and overwrite it.
  */
-export function readResultsLogFile<T extends SettledResultRecord = SettledResultRecord>(filePath: string): T[] {
+export function readResultsLogFile<T = SettledResultRecord>(filePath: string): T[] {
   if (!fs.existsSync(filePath)) return [];
 
   const content = fs.readFileSync(filePath, 'utf8');
@@ -30,7 +30,7 @@ export function readResultsLogFile<T extends SettledResultRecord = SettledResult
   }
 
   for (let index = 0; index < entries.length; index++) {
-    const entry = entries[index] as SettledResultRecord | null;
+    const entry = entries[index] as unknown as SettledResultRecord | null;
     if (
       !entry ||
       typeof entry !== 'object' ||
