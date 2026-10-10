@@ -194,15 +194,18 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     return fixture.league;
   }, [fixture.league]);
 
-  const isQuickBet = prediction.modelLeaderProbabilityPct >= 50;
+  // Neutral priors are not actionable forecasts: require verified fixture-specific evidence.
+  const hasPredictionEvidence = prediction.hasEvidence;
+  const isQuickBet = hasPredictionEvidence && prediction.modelLeaderProbabilityPct >= 50;
 
   const isHomePick = prediction.predictedWinner === 'home';
   const isAwayPick = prediction.predictedWinner === 'away';
   const isDrawPick = prediction.predictedWinner === 'draw';
 
-  const safeHomePct = Number.isFinite(prediction.homeWinPct) ? prediction.homeWinPct : null;
-  const safeDrawPct = Number.isFinite(prediction.drawPct) ? prediction.drawPct : null;
-  const safeAwayPct = Number.isFinite(prediction.awayWinPct) ? prediction.awayWinPct : null;
+  // Hide neutral fallback probabilities rather than presenting identical percentages as evidence-based.
+  const safeHomePct = hasPredictionEvidence && Number.isFinite(prediction.homeWinPct) ? prediction.homeWinPct : null;
+  const safeDrawPct = hasPredictionEvidence && Number.isFinite(prediction.drawPct) ? prediction.drawPct : null;
+  const safeAwayPct = hasPredictionEvidence && Number.isFinite(prediction.awayWinPct) ? prediction.awayWinPct : null;
 
   const hasNoPick = prediction.predictedWinner === 'none';
   const pickProbability = hasNoPick
@@ -271,11 +274,13 @@ export const MatchCard: React.FC<MatchCardProps> = ({
                 : 'bg-rose-400'
             }`} />
             <span>
-              {Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
-                ? `High Lead Prob (${prediction.modelLeaderProbabilityPct}%)`
+              {!hasPredictionEvidence
+                ? 'INSUFFICIENT VERIFIED DATA'
+                : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
+                ? `High Lead Prob (${hasPredictionEvidence ? `${prediction.modelLeaderProbabilityPct}%` : '—'})`
                 : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct >= 50
-                ? `Moderate Lead Prob (${prediction.modelLeaderProbabilityPct}%)`
-                : `Low Lead Prob (${prediction.modelLeaderProbabilityPct}%)`}
+                ? `Moderate Lead Prob (${hasPredictionEvidence ? `${prediction.modelLeaderProbabilityPct}%` : '—'})`
+                : `Low Lead Prob (${hasPredictionEvidence ? `${prediction.modelLeaderProbabilityPct}%` : '—'})`}
             </span>
           </span>
 
@@ -511,7 +516,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             )}
             <span className="text-[9px] font-mono uppercase tracking-wider font-extrabold flex items-center gap-1">
               <CheckCircle2 className="w-2.5 h-2.5" />
-              <span>{hasNoPick ? 'NO PICK · NO DATA' : isHomePick ? 'HOME WIN' : isAwayPick ? 'AWAY WIN' : 'MATCH DRAW'}</span>
+              <span>{!hasPredictionEvidence ? 'WITHHELD · NO VERIFIED DATA' : hasNoPick ? 'NO PICK · NO DATA' : isHomePick ? 'HOME WIN' : isAwayPick ? 'AWAY WIN' : 'MATCH DRAW'}</span>
             </span>
             <span className="text-xl sm:text-2xl font-black font-mono leading-none my-0.5 text-white">
               {pickProbability !== null ? `${pickProbability.toFixed(0)}%` : '--'}
@@ -520,7 +525,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
               <span>Fair <strong className="text-white">{pickFairOdds}</strong></span>
               <span>•</span>
               <span className={isQuickBet ? 'text-amber-400 font-bold' : 'text-slate-400'}>
-                {prediction.modelLeaderProbabilityPct}%
+                {hasPredictionEvidence ? `${prediction.modelLeaderProbabilityPct}%` : '—'}
               </span>
             </div>
           </div>
@@ -621,7 +626,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           <div className="grid grid-cols-3 gap-1 text-center font-mono text-[11px] flex-1">
             <button
               type="button"
-              disabled={homeOdds === "--"}
+              disabled={!hasPredictionEvidence || homeOdds === "--"}
               onClick={() => onAddToBetSlip?.({
                 id: `${fixture.id}-home`,
                 matchId: fixture.id,
@@ -634,7 +639,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
                 odds: Number(homeOdds) || 0,
                 probability: safeHomePct,
               })}
-              title={homeOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Home Win to Accumulator Bet Slip"}
+              title={!hasPredictionEvidence ? "Unavailable: no verified fixture-specific evidence" : homeOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Home Win to Accumulator Bet Slip"}
               className={`py-1.5 px-1 rounded flex items-center justify-center gap-1 transition-transform hover:scale-[1.02] cursor-pointer ${
                 isHomePick ? 'bg-emerald-950/70 text-emerald-300 font-bold border border-emerald-800/60 shadow-sm' : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700'
               }`}
@@ -647,7 +652,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
             <button
               type="button"
-              disabled={drawOdds === "--"}
+              disabled={!hasPredictionEvidence || drawOdds === "--"}
               onClick={() => onAddToBetSlip?.({
                 id: `${fixture.id}-draw`,
                 matchId: fixture.id,
@@ -660,7 +665,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
                 odds: Number(drawOdds) || 0,
                 probability: safeDrawPct,
               })}
-              title={drawOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Draw to Accumulator Bet Slip"}
+              title={!hasPredictionEvidence ? "Unavailable: no verified fixture-specific evidence" : drawOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Draw to Accumulator Bet Slip"}
               className={`py-1.5 px-1 rounded flex items-center justify-center gap-1 transition-transform hover:scale-[1.02] cursor-pointer ${
                 isDrawPick ? 'bg-sky-950/70 text-sky-300 font-bold border border-sky-800/60 shadow-sm' : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700'
               }`}
@@ -673,7 +678,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
             <button
               type="button"
-              disabled={awayOdds === "--"}
+              disabled={!hasPredictionEvidence || awayOdds === "--"}
               onClick={() => onAddToBetSlip?.({
                 id: `${fixture.id}-away`,
                 matchId: fixture.id,
@@ -686,7 +691,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
                 odds: Number(awayOdds) || 0,
                 probability: safeAwayPct,
               })}
-              title={awayOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Away Win to Accumulator Bet Slip"}
+              title={!hasPredictionEvidence ? "Unavailable: no verified fixture-specific evidence" : awayOdds === "--" ? "Bookmaker odds unavailable" : "Click to add Away Win to Accumulator Bet Slip"}
               className={`py-1.5 px-1 rounded flex items-center justify-center gap-1 transition-transform hover:scale-[1.02] cursor-pointer ${
                 isAwayPick ? 'bg-rose-950/70 text-rose-300 font-bold border border-rose-800/60 shadow-sm' : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700'
               }`}
