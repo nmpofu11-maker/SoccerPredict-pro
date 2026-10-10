@@ -59,7 +59,7 @@ import {
 } from './src/services/predictionLog';
 import { evaluateAuditedPredictionPerformance, isAuditableSettledResult } from './src/services/performanceService';
 import { parseRawResults } from './src/services/resultParserService';
-import { parseResultsArrays } from './src/services/resultsLogParser';
+import { readResultsLogFile } from './src/services/resultsLogStore';
 import { findSafeSettlementNameMatch } from './src/utils/settlementMatching';
 import { readAdminGuardConfig, decideAdminAccess } from './src/services/adminGuard';
 import { sanitizeRuntimeManifest } from './src/services/manifestSanitizer';
@@ -797,18 +797,17 @@ function parseCompleteJsonValues(raw: string): unknown[] | null {
 }
 
 function readResultsLog(): SettledResultEntry[] {
-  fs.mkdirSync(path.dirname(RESULTS_LOG_PATH), { recursive: true });
-  if (!fs.existsSync(RESULTS_LOG_PATH)) return [];
-
   try {
-    const content = fs.readFileSync(RESULTS_LOG_PATH, 'utf-8');
-    return parseResultsArrays<SettledResultEntry>(content);
-  } catch (e) {
-    console.error('Results log is malformed, returning [] to allow recovery. Path:', RESULTS_LOG_PATH);
-    const content = fs.readFileSync(RESULTS_LOG_PATH, 'utf-8');
-    console.error('File content snippet:', content.slice(0, 100));
-    console.error('Original error:', e);
-    return [];
+    return readResultsLogFile<SettledResultEntry>(RESULTS_LOG_PATH);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'unknown read error';
+    // Never log raw ledger contents: they may contain sensitive fixture or user data.
+    console.error(`[results-log] Read failed safely: ${reason}`);
+    // Fail closed. Settlement and manual uploads must not interpret a damaged
+    // existing ledger as empty and overwrite previously settled history.
+    throw error instanceof Error
+      ? error
+      : new Error('Results log could not be read; settlement halted to protect existing history.');
   }
 }
 
