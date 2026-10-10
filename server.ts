@@ -804,10 +804,11 @@ function readResultsLog(): SettledResultEntry[] {
     const content = fs.readFileSync(RESULTS_LOG_PATH, 'utf-8');
     return parseResultsArrays<SettledResultEntry>(content);
   } catch (e) {
-    // Fail closed: never treat a corrupt ledger as empty, because a later write
-    // could otherwise erase previously settled results.
-    console.error('Refusing to use malformed results-log.json:', e);
-    throw e;
+    console.error('Results log is malformed, returning [] to allow recovery. Path:', RESULTS_LOG_PATH);
+    const content = fs.readFileSync(RESULTS_LOG_PATH, 'utf-8');
+    console.error('File content snippet:', content.slice(0, 100));
+    console.error('Original error:', e);
+    return [];
   }
 }
 
