@@ -743,9 +743,9 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
 // and the learning engine has real new data to train on.
 // ---------------------------------------------------------------------------
 
-const RESULTS_LOG_PATH = process.env.RESULTS_LOG_PATH?.trim()
+const RESULTS_LOG_PATH = (process.env.RESULTS_LOG_PATH && process.env.RESULTS_LOG_PATH !== '2001' ? process.env.RESULTS_LOG_PATH.trim() : null)
   || path.join(process.cwd(), 'data', 'results-log.json');
-const CRON_STATUS_PATH = process.env.CRON_STATUS_PATH?.trim()
+const CRON_STATUS_PATH = (process.env.CRON_STATUS_PATH && process.env.CRON_STATUS_PATH !== '2001' ? process.env.CRON_STATUS_PATH.trim() : null)
   || path.join(process.cwd(), 'data', 'cron-status.json');
 
 interface SettledResultEntry {
