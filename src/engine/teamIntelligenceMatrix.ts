@@ -140,11 +140,11 @@ export const CANONICAL_INITIAL_MATRICES: TeamIntelligenceMatrices = {
 function teamAliasToken(name: string): string {
   return (name || '')
     .normalize('NFKD')
-    .replace(/[\\u0300-\\u036f]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
-    .replace(/\\s+/g, ' ');
+    .replace(/\s+/g, ' ');
 }
 
 const TEAM_KEY_ALIASES: Record<string, string> = {
