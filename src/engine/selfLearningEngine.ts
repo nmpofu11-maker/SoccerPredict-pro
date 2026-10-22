@@ -534,9 +534,9 @@ export function getInitialLearningState(): LearningModelState {
     baselineWeights: { ...DEFAULT_ENGINE_WEIGHTS },
     totalEpochsTrained: 0,
     accuracyPct: baselineEval.accuracyPct,
-    baselineAccuracyPct: baselineEval.accuracyPct,
+    baselineAccuracyPct,
     brierLoss: baselineEval.brierLoss,
-    baselineBrierLoss: baselineEval.brierLoss,
+    baselineBrierLoss,
     lastTrainedAt: null,
     isAutoLearningEnabled: false,
     recentLossHistory: [baselineEval.brierLoss],
@@ -575,8 +575,23 @@ export function sanitizeLearningState(state?: Partial<LearningModelState> | null
   const evalRes = evaluateOutOfSampleValidation(HISTORICAL_MATCH_RESULTS, sanitizedWeights);
   const baselineEval = evaluateOutOfSampleValidation(HISTORICAL_MATCH_RESULTS, sanitizedBaselineWeights);
 
-  const accuracyPct = evalRes.accuracyPct;
-  const brierLoss = evalRes.brierLoss;
+  // The bundled client dataset may intentionally be empty. In that case, do not
+  // replace a previously measured imported-archive result with synthetic 0% / 0.000.
+  // Server-side historical evaluation remains the authority for the imported archive.
+  const hasBundledEvaluation = evalRes.totalCount > 0 && evalRes.evaluations.length > 0;
+  const storedAccuracy = typeof state.accuracyPct === 'number' && Number.isFinite(state.accuracyPct) && state.accuracyPct >= 0 && state.accuracyPct <= 100
+    ? state.accuracyPct : initial.accuracyPct;
+  const storedBrier = typeof state.brierLoss === 'number' && Number.isFinite(state.brierLoss) && state.brierLoss >= 0 && state.brierLoss <= 1
+    ? state.brierLoss : initial.brierLoss;
+  const accuracyPct = hasBundledEvaluation ? evalRes.accuracyPct : storedAccuracy;
+  const brierLoss = hasBundledEvaluation ? evalRes.brierLoss : storedBrier;
+
+  const storedBaselineAccuracy = typeof state.baselineAccuracyPct === 'number' && Number.isFinite(state.baselineAccuracyPct) && state.baselineAccuracyPct >= 0 && state.baselineAccuracyPct <= 100
+    ? state.baselineAccuracyPct : initial.baselineAccuracyPct;
+  const storedBaselineBrier = typeof state.baselineBrierLoss === 'number' && Number.isFinite(state.baselineBrierLoss) && state.baselineBrierLoss >= 0 && state.baselineBrierLoss <= 1
+    ? state.baselineBrierLoss : initial.baselineBrierLoss;
+  const baselineAccuracyPct = hasBundledEvaluation ? baselineEval.accuracyPct : storedBaselineAccuracy;
+  const baselineBrierLoss = hasBundledEvaluation ? baselineEval.brierLoss : storedBaselineBrier;
 
   const totalEpochsTrained = Number.isFinite(state.totalEpochsTrained)
     ? Math.max(0, Math.floor(state.totalEpochsTrained as number))
