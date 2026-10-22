@@ -155,7 +155,23 @@ export async function syncFootballDataCoUk(
       rows.push(...kept);
       outcomes.push({ label: rq.label, url: rq.url, status: 'ok', report });
     } catch (e) {
-      outcomes.push({ label: rq.label, url: rq.url, status: 'failed', detail: e instanceof Error ? e.message : 'request failed' });
+      // Node may surface DNS, TLS, socket and proxy failures as the generic "fetch failed".
+      // Preserve the nested undici cause so an operator can tell which network layer failed.
+      const describeError = (value: unknown): string => {
+        const messages: string[] = [];
+        const seen = new Set<unknown>();
+        let current: any = value;
+        for (let depth = 0; depth < 4 && current && !seen.has(current); depth++) {
+          seen.add(current);
+          if (typeof current.message === 'string' && current.message.trim()) messages.push(current.message.trim());
+          if (typeof current.code === 'string' && current.code.trim()) messages.push(current.code.trim());
+          if (typeof current.syscall === 'string' && current.syscall.trim()) messages.push(current.syscall.trim());
+          if (typeof current.hostname === 'string' && current.hostname.trim()) messages.push(current.hostname.trim());
+          current = current.cause;
+        }
+        return [...new Set(messages)].join(' — ').slice(0, 350) || 'request failed';
+      };
+      outcomes.push({ label: rq.label, url: rq.url, status: 'failed', detail: describeError(e) });
     }
   }
   return { rows, outcomes };
