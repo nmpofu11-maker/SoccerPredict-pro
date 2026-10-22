@@ -689,7 +689,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
                 Active Club Matrices
               </span>
               <div className="text-xl font-bold text-purple-300 mt-1">
-                {Object.keys(teamMatrices).length} Teams
+                {Object.values(teamMatrices).filter(entry => entry.sample_size_matches >= 3).length} Teams
               </div>
               <span className="text-[10px] text-slate-400">Observed coefficients when supported by at least three completed training-window matches</span>
             </div>
@@ -773,8 +773,10 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
                           -{(entry.learned_coefficients.fatigue_penalty_modifier * 100).toFixed(0)}%
                         </td>
                         <td className="p-2.5 text-center">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                            OBSERVED
+                          <span className={entry.sample_size_matches >= 3
+                            ? "px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                            : "px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700"}>
+                            {entry.sample_size_matches >= 3 ? 'OBSERVED' : 'BASELINE — NO SAMPLE'}
                           </span>
                         </td>
                       </tr>
