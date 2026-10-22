@@ -33,7 +33,7 @@ test('planRequests builds only whitelisted football-data.co.uk URLs', () => {
     'https://football-data.co.uk/mmz4281/2324/D1.csv',
     'https://football-data.co.uk/mmz4281/2425/D1.csv',
   ]);
-  assert.equal(planRequests(['BRA'], 2020, 2024)[0].url, 'https://www.football-data.co.uk/new/BRA.csv');
+  assert.equal(planRequests(['BRA'], 2020, 2024)[0].url, 'https://football-data.co.uk/new/BRA.csv');
 });
 
 test('planRequests rejects anything that could become an arbitrary URL or an abusive crawl', () => {
