@@ -51,12 +51,29 @@ import {
 } from 'lucide-react';
 import { runStatisticalEvaluation } from '../utils/statisticalAnalysisTool';
 
+interface HistoricalEvaluationMatch {
+  matchId: string;
+  date: string;
+  fixture: { league: string; homeTeam: { name: string }; awayTeam: { name: string } };
+  homeScore: number;
+  awayScore: number;
+  actualOutcome: 'home' | 'draw' | 'away';
+  predictedOutcome: 'home' | 'draw' | 'away';
+  isCorrect: boolean;
+  probabilities: { home: number; draw: number; away: number };
+  brierScore: number;
+}
+
 interface HistoricalEvaluationTelemetry {
   status: 'ok' | 'insufficient_data' | 'error';
   holdoutSize?: number;
   evaluatedMatches?: number;
+  correctCount?: number;
   accuracyPct?: number | null;
   brierLoss?: number | null;
+  baselineAccuracyPct?: number | null;
+  baselineBrierLoss?: number | null;
+  matches?: HistoricalEvaluationMatch[];
   activeEpochs?: number;
   storedMatches?: number;
   evaluatedAt?: string;
@@ -338,8 +355,16 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
     },
   ];
 
-  const accuracyDelta = Math.round((learningState.accuracyPct - learningState.baselineAccuracyPct) * 10) / 10;
-  const brierDelta = Math.round((learningState.brierLoss - learningState.baselineBrierLoss) * 1000) / 1000;
+  const accuracyDelta = historicalEvaluation?.status === 'ok' &&
+    typeof historicalEvaluation.accuracyPct === 'number' &&
+    typeof historicalEvaluation.baselineAccuracyPct === 'number'
+    ? Math.round((historicalEvaluation.accuracyPct - historicalEvaluation.baselineAccuracyPct) * 10) / 10
+    : null;
+  const brierDelta = historicalEvaluation?.status === 'ok' &&
+    typeof historicalEvaluation.brierLoss === 'number' &&
+    typeof historicalEvaluation.baselineBrierLoss === 'number'
+    ? Math.round((historicalEvaluation.brierLoss - historicalEvaluation.baselineBrierLoss) * 1000) / 1000
+    : null;
 
   return (
     <div className="space-y-6">
@@ -422,7 +447,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
           <div className="flex items-center justify-between text-emerald-400 text-xs font-mono mb-1 font-bold">
             <span className="flex items-center gap-1.5">
               <Target className="w-4 h-4 text-emerald-400" />
-              <span>Cumulative Success Rate</span>
+              <span>Imported Holdout Accuracy</span>
             </span>
             <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded font-mono font-bold">
               % INDICATOR
@@ -430,25 +455,35 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
           </div>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-3xl font-extrabold font-mono text-emerald-400">
-              {learningState.accuracyPct.toFixed(1)}%
+              {historicalEvaluationLoading
+                ? 'Checking…'
+                : historicalEvaluation?.status === 'ok' && typeof historicalEvaluation.accuracyPct === 'number'
+                  ? `${historicalEvaluation.accuracyPct.toFixed(1)}%`
+                  : 'Unavailable'}
             </span>
-            {accuracyDelta >= 0 ? (
-              <span className="text-xs font-mono text-emerald-400 font-semibold flex items-center">
-                +{accuracyDelta}% vs baseline
-              </span>
+            {accuracyDelta !== null ? (
+              accuracyDelta >= 0 ? (
+                <span className="text-xs font-mono text-emerald-400 font-semibold flex items-center">
+                  +{accuracyDelta}% vs default weights
+                </span>
+              ) : (
+                <span className="text-xs font-mono text-rose-400 font-semibold flex items-center">
+                  {accuracyDelta}% vs default weights
+                </span>
+              )
             ) : (
-              <span className="text-xs font-mono text-rose-400 font-semibold flex items-center">
-                {accuracyDelta}% vs baseline
-              </span>
+              <span className="text-xs font-mono text-slate-500 font-semibold">Comparison unavailable</span>
             )}
           </div>
           <p className="text-[11px] text-slate-300 mt-1">
-            <strong className="text-white font-mono">{currentEval.correctCount} / {currentEval.totalCount}</strong> historical matches predicted correctly
+            <strong className="text-white font-mono">
+              {historicalEvaluation?.status === 'ok' ? (historicalEvaluation.correctCount ?? 0).toLocaleString() : '—'} / {historicalEvaluation?.status === 'ok' ? (historicalEvaluation.evaluatedMatches ?? 0).toLocaleString() : '—'}
+            </strong> imported holdout matches predicted correctly
           </p>
           <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2.5 overflow-hidden">
             <div
               className="bg-emerald-500 h-full transition-all duration-500 rounded-full"
-              style={{ width: `${Math.min(100, learningState.accuracyPct)}%` }}
+              style={{ width: `${Math.min(100, historicalEvaluation?.status === 'ok' && typeof historicalEvaluation.accuracyPct === 'number' ? historicalEvaluation.accuracyPct : 0)}%` }}
             />
           </div>
         </div>
@@ -461,14 +496,22 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold font-mono text-white">
-              {learningState.brierLoss.toFixed(3)}
+              {historicalEvaluationLoading
+                ? 'Checking…'
+                : historicalEvaluation?.status === 'ok' && typeof historicalEvaluation.brierLoss === 'number'
+                  ? historicalEvaluation.brierLoss.toFixed(3)
+                  : 'Unavailable'}
             </span>
-            <span className={`text-[11px] font-mono font-semibold ${brierDelta <= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {brierDelta <= 0 ? `${brierDelta}` : `+${brierDelta}`}
-            </span>
+            {brierDelta !== null ? (
+              <span className={`text-[11px] font-mono font-semibold ${brierDelta <= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {brierDelta <= 0 ? `${brierDelta}` : `+${brierDelta}`}
+              </span>
+            ) : (
+              <span className="text-[11px] font-mono text-slate-500">N/A</span>
+            )}
           </div>
           <p className="text-[11px] text-slate-400 mt-1">
-            Mean squared probability error (lower is superior)
+            Imported holdout Brier loss; delta compares against default weights
           </p>
         </div>
 
@@ -546,7 +589,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
           }`}
         >
           <Award className="w-3.5 h-3.5" />
-          <span>Chronological Evaluation Match Log ({HISTORICAL_MATCH_RESULTS.length})</span>
+          <span>Chronological Holdout Match Log ({historicalEvaluation?.status === 'ok' ? historicalEvaluation.evaluatedMatches?.toLocaleString() : 'Unavailable'})</span>
         </button>
 
         <button
@@ -933,15 +976,15 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
         <div className="space-y-3">
           <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300 flex items-center justify-between">
             <span className="text-emerald-400 font-bold">
-              Historical Verification Feed ({currentEval.correctCount} Correct / {currentEval.totalCount} Matches)
+              Imported Holdout Feed ({historicalEvaluation?.status === 'ok' ? `${(historicalEvaluation.correctCount ?? 0).toLocaleString()} Correct / ${(historicalEvaluation.evaluatedMatches ?? 0).toLocaleString()} Matches` : 'Metrics unavailable'})
             </span>
             <span className="text-[11px] text-slate-400">
-              Evaluated against current calibrated weights
+              Evaluated against active server weights; shows most recent 100 scored matches
             </span>
           </div>
 
           <div className="space-y-2">
-            {currentEval.evaluations.filter((e) => Boolean(e?.fixture?.homeTeam && e?.fixture?.awayTeam)).map((evalItem, index) => (
+            {(historicalEvaluation?.status === 'ok' ? (historicalEvaluation.matches ?? []) : []).filter((e) => Boolean(e?.fixture?.homeTeam && e?.fixture?.awayTeam)).map((evalItem, index) => (
               <div
                 key={`${evalItem.matchId}-${index}`}
                 className={`p-3 rounded-xl border transition-all ${
