@@ -171,7 +171,9 @@ export function evaluateHistoricalMatches(
     });
   }
 
-  const totalCount = validMatches.length;
+  // Count only matches that actually produced a scored prediction. A candidate
+  // withheld by the engine's evidence guard must not turn into a misleading 0% / 0.000 report.
+  const totalCount = evaluations.length;
   const accuracyPct = totalCount > 0 ? (correctCount / totalCount) * 100 : 0;
   const brierLoss = totalCount > 0 ? totalBrier / totalCount : 0;
 
