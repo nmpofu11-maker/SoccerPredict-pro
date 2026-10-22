@@ -4,6 +4,7 @@ import { buildTrainingSet, type ImportedMatchRow } from '../src/services/histori
 import { evaluateHistoricalModelOnHoldout, trainOnHistoricalResults, TRAIN_LIMITS } from '../src/services/historicalTraining';
 import { trainMultipleEpochs } from '../src/engine/selfLearningEngine';
 import { DEFAULT_ENGINE_WEIGHTS } from '../src/engine/rulesEngine';
+import { CANONICAL_INITIAL_MATRICES, synthesizeTeamIntelligenceMatrices } from '../src/engine/teamIntelligenceMatrix';
 
 function synthetic(n: number): ImportedMatchRow[] {
   let seed = 11;
@@ -54,6 +55,15 @@ test('active imported-history evaluation reports scored holdout matches instead 
   assert.ok((report.brierLoss ?? 0) > 0 && (report.brierLoss ?? 0) <= 1);
   assert.ok(report.matches.length > 0 && report.matches.length <= 100);
   assert.ok(report.matches.every(match => Boolean(match.fixture.homeTeam.name && match.fixture.awayTeam.name)));
+});
+
+test('synthesizes sample-backed profiles from imported history but does not invent samples for unsupported clubs', () => {
+  const { results } = buildTrainingSet(synthetic(900));
+  const matrices = synthesizeTeamIntelligenceMatrices(results, CANONICAL_INITIAL_MATRICES);
+
+  assert.ok(matrices.T0.sample_size_matches >= 3, 'a team with sufficient imported matches should receive an observed profile');
+  assert.ok(matrices.T0.learned_coefficients.home_advantage_multiplier >= 1.02);
+  assert.equal(matrices['Mamelodi Sundowns'].sample_size_matches, 0, 'a club absent from this imported archive must remain a baseline with no sample');
 });
 
 test('active imported-history evaluation marks absent holdout evidence unavailable, not zero', () => {
