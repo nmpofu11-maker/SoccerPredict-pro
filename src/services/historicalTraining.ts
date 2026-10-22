@@ -26,7 +26,7 @@ export interface HistoricalTrainingOutcome {
 
 const NOTE =
   'Weights are PROPOSED only and have not been applied. Accuracy is measured on the most recent 20% of matches, which were never used to fit. ' +
-  'Compare against the baseline row: football outcomes are noisy and a rule model that does not clearly beat "always pick the most common result" has not learned anything useful.';
+  'Compare against the no-feature baseline: its accuracy always picks the most common training outcome, while its Brier score uses the training-set outcome frequencies as constant probabilities. A rule model that does not beat this baseline on holdout Brier loss has not demonstrated useful probabilistic skill.';
 
 // Same multi-class Brier convention as evaluateHistoricalMatches so numbers are comparable.
 const brier = (p: { home: number; draw: number; away: number }, y: 'home' | 'draw' | 'away') =>
