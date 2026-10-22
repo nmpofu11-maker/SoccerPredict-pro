@@ -83,13 +83,20 @@ dotenv.config();
 const configuredLearningStatePath = process.env.LEARNING_STATE_PATH?.trim();
 const LEARNING_STATE_PATH = configuredLearningStatePath || path.join(process.cwd(), 'data', 'persisted_learning_state.json');
 const configuredLearningBackupDir = process.env.LEARNING_BACKUP_DIR?.trim();
-const LEARNING_BACKUP_DIR = configuredLearningBackupDir || path.join(process.cwd(), 'data', 'backups');
+// If the operator customizes the state file path but not the backup path, keep snapshots
+// beside that file so the two are normally placed on the same mounted volume.
+const defaultLearningBackupDir = configuredLearningStatePath
+  ? path.join(path.dirname(LEARNING_STATE_PATH), 'backups')
+  : path.join(process.cwd(), 'data', 'backups');
+const LEARNING_BACKUP_DIR = configuredLearningBackupDir || defaultLearningBackupDir;
 if (process.env.NODE_ENV === 'production') {
   if (!configuredLearningStatePath) {
     console.warn('[learning-state] LEARNING_STATE_PATH is unset; learned weights use local ./data storage, which may be ephemeral on serverless hosts.');
   }
-  if (!configuredLearningBackupDir) {
+  if (!configuredLearningBackupDir && !configuredLearningStatePath) {
     console.warn('[learning-state] LEARNING_BACKUP_DIR is unset; learning-state backups use local ./data/backups, which may be ephemeral on serverless hosts.');
+  } else if (!configuredLearningBackupDir) {
+    console.warn('[learning-state] LEARNING_BACKUP_DIR is unset; backups are placed beside LEARNING_STATE_PATH. Confirm that the parent path is a durable mounted volume.');
   }
 }
 
