@@ -10,7 +10,7 @@ import { resolveRuntimeFilePath } from './src/services/runtimeFilePath';
 import cron from 'node-cron';
 import { verifyAndSanitizeFixtures } from './src/services/dataIntegrityValidator';
 import { parseHollywoodbetsRawText } from './src/services/hollywoodbetsParser';
-import type { DataIntegrityAuditReport } from './src/types/soccer';
+import type { DataIntegrityAuditReport, EngineWeights } from './src/types/soccer';
 import {
   sportApiAiConfigured,
   hasSportApiAiKey,
@@ -137,7 +137,7 @@ interface StoredHistoricalTrainingProposal {
   version: 1;
   createdAt: string;
   historicalDataFingerprint: string;
-  startWeights: Record<string, number>;
+  startWeights: EngineWeights;
   outcome: HistoricalTrainingOutcome;
 }
 
