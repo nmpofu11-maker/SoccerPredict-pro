@@ -146,6 +146,20 @@ test('mergeRows de-duplicates on re-upload', async () => {
   assert.equal(again.merged.length, 10);
 });
 
+test('mergeRows rejects conflicting scores for an existing match instead of silently picking one', async () => {
+  const rows = await rowsOf(csv(SEASON));
+  const existing = mergeRows([], rows).merged;
+  const changed = { ...rows[0], hg: rows[0].hg + 1, src: 'conflicting-provider.csv' };
+
+  assert.throws(
+    () => mergeRows(existing, [changed]),
+    /Conflicting full-time scores.*stored.*incoming.*No import was saved/
+  );
+  // The stored input is immutable; a rejected merge cannot mutate the prior dataset.
+  assert.equal(existing[0].hg, rows[0].hg);
+  assert.equal(existing.length, rows.length);
+});
+
 test('zip: reads csv entries, skips junk/legacy files with a reason', async () => {
   const zip = zipSync({
     'data/E0_2526.csv': strToU8(csv(SEASON)),
