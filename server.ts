@@ -925,14 +925,14 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 function currentEngineWeights() {
+  const filePath = LEARNING_STATE_PATH;
   try {
-    const f = LEARNING_STATE_PATH;
-    if (fs.existsSync(f)) {
-      const st = JSON.parse(fs.readFileSync(f, 'utf-8'));
-      if (st && st.weights) return sanitizeEngineWeights(st.weights);
-    }
-  } catch {
-    /* fall through to defaults */
+    if (!fs.existsSync(filePath)) return sanitizeEngineWeights(undefined);
+    const st = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    if (st && st.weights) return sanitizeEngineWeights(st.weights);
+    console.error('[learning-state] Persisted state exists but has no weights; default weights will be used for this prediction pass.');
+  } catch (error) {
+    console.error('[learning-state] Could not read persisted weights; default weights will be used for this prediction pass:', error instanceof Error ? error.message : 'unknown read error');
   }
   return sanitizeEngineWeights(undefined);
 }
