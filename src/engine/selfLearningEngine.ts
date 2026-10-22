@@ -185,6 +185,23 @@ export function evaluateHistoricalMatches(
 }
 
 /**
+ * Keep full precision inside the optimizer. evaluateHistoricalMatches deliberately rounds its
+ * public summary for display, but using that rounded number for coordinate search creates a
+ * 0.001-wide dead zone where real loss improvements look like ties.
+ */
+function exactEvaluationMetrics(evaluation: ReturnType<typeof evaluateHistoricalMatches>): {
+  accuracyPct: number;
+  brierLoss: number;
+} {
+  const items = evaluation.evaluations;
+  if (!items.length) return { accuracyPct: 0, brierLoss: 0 };
+  return {
+    accuracyPct: (items.filter(item => item.isCorrect).length / items.length) * 100,
+    brierLoss: items.reduce((sum, item) => sum + item.brierScore, 0) / items.length,
+  };
+}
+
+/**
  * Runs one calibration epoch on the chronological training window and reports performance on the unseen holdout.
  */
 export function trainSingleEpoch(
@@ -210,6 +227,7 @@ export function trainSingleEpoch(
     : splitHistoricalResults(results);
   const optimisationResults = training.length > 0 ? training : results;
   const baseEval = evaluateHistoricalMatches(optimisationResults, safeCurrent, teamMatrices);
+  const baseMetrics = exactEvaluationMetrics(baseEval);
   const updatedWeights: EngineWeights = { ...safeCurrent };
   const deltas: Partial<Record<keyof EngineWeights, number>> = {};
 
@@ -227,19 +245,23 @@ export function trainSingleEpoch(
     // Test positive step
     const testPlus = Math.min(bounds.max, currentVal + stepSize);
     const evalPlus = evaluateHistoricalMatches(optimisationResults, { ...updatedWeights, [key]: testPlus }, teamMatrices);
+    const evalPlusMetrics = exactEvaluationMetrics(evalPlus);
 
     // Test negative step
     const testMinus = Math.max(bounds.min, currentVal - stepSize);
     const evalMinus = evaluateHistoricalMatches(optimisationResults, { ...updatedWeights, [key]: testMinus }, teamMatrices);
+    const evalMinusMetrics = exactEvaluationMetrics(evalMinus);
 
     let bestVal = currentVal;
-    let minLoss = Number.isFinite(baseEval.brierLoss) ? baseEval.brierLoss : 0.25;
+    let minLoss = Number.isFinite(baseMetrics.brierLoss) ? baseMetrics.brierLoss : 0.25;
 
-    if (Number.isFinite(evalPlus.brierLoss) && evalPlus.brierLoss < minLoss && evalPlus.accuracyPct >= baseEval.accuracyPct - 2.5) {
-      minLoss = evalPlus.brierLoss;
+    if (Number.isFinite(evalPlusMetrics.brierLoss) && evalPlusMetrics.brierLoss < minLoss &&
+        evalPlusMetrics.accuracyPct >= baseMetrics.accuracyPct - 2.5) {
+      minLoss = evalPlusMetrics.brierLoss;
       bestVal = testPlus;
     }
-    if (Number.isFinite(evalMinus.brierLoss) && evalMinus.brierLoss < minLoss && evalMinus.accuracyPct >= baseEval.accuracyPct - 2.5) {
+    if (Number.isFinite(evalMinusMetrics.brierLoss) && evalMinusMetrics.brierLoss < minLoss &&
+        evalMinusMetrics.accuracyPct >= baseMetrics.accuracyPct - 2.5) {
       bestVal = testMinus;
     }
 
@@ -256,21 +278,20 @@ export function trainSingleEpoch(
   }
 
   const finalEval = evaluateHistoricalMatches(optimisationResults, updatedWeights, teamMatrices);
+  const finalMetrics = exactEvaluationMetrics(finalEval);
+  const oldValidationMetrics = validation.length > 0
+    ? exactEvaluationMetrics(evaluateHistoricalMatches(validation, safeCurrent, teamMatrices))
+    : baseMetrics;
+  const newValidationMetrics = validation.length > 0
+    ? exactEvaluationMetrics(evaluateHistoricalMatches(validation, updatedWeights, teamMatrices))
+    : finalMetrics;
 
   return {
     updatedWeights,
-    oldAccuracy: validation.length > 0
-      ? evaluateHistoricalMatches(validation, safeCurrent, teamMatrices).accuracyPct
-      : baseEval.accuracyPct,
-    newAccuracy: validation.length > 0
-      ? evaluateHistoricalMatches(validation, updatedWeights, teamMatrices).accuracyPct
-      : finalEval.accuracyPct,
-    oldLoss: validation.length > 0
-      ? evaluateHistoricalMatches(validation, safeCurrent, teamMatrices).brierLoss
-      : baseEval.brierLoss,
-    newLoss: validation.length > 0
-      ? evaluateHistoricalMatches(validation, updatedWeights, teamMatrices).brierLoss
-      : finalEval.brierLoss,
+    oldAccuracy: Math.round(oldValidationMetrics.accuracyPct * 10) / 10,
+    newAccuracy: Math.round(newValidationMetrics.accuracyPct * 10) / 10,
+    oldLoss: oldValidationMetrics.brierLoss,
+    newLoss: newValidationMetrics.brierLoss,
     deltas: deltas as Record<keyof EngineWeights, number>,
   };
 }
@@ -297,30 +318,31 @@ export function trainMultipleEpochs(
   const fitResults = training.length > 0 ? training : results;
   const fitMatrices = teamMatrices || synthesizeTeamIntelligenceMatrices(fitResults, CANONICAL_INITIAL_MATRICES);
   const initialEval = evaluateOutOfSampleValidation(results, currentWeights);
-  const lossHistory: number[] = [initialEval.brierLoss];
+  const initialMetrics = exactEvaluationMetrics(initialEval);
+  const lossHistory: number[] = [initialMetrics.brierLoss];
 
   for (let i = 0; i < epochs; i++) {
     const lr = Math.max(0.02, 0.06 * (1 - i / (epochs + 1)));
-    // Critical: fit on the chronological training partition only. Passing all results here
-    // leaks the validation holdout into weight updates and makes the reported holdout loss invalid.
+    // fitResults excludes the chronological holdout established above.
     const epochResult = trainSingleEpoch(currentWeights, fitResults, lr, fitMatrices, true);
     currentWeights = epochResult.updatedWeights;
     const epochEvaluation = validation.length > 0
       ? evaluateHistoricalMatches(validation, currentWeights, fitMatrices)
       : evaluateHistoricalMatches(fitResults, currentWeights, fitMatrices);
-    lossHistory.push(epochEvaluation.brierLoss);
+    lossHistory.push(exactEvaluationMetrics(epochEvaluation).brierLoss);
   }
 
   const finalEval = validation.length > 0
     ? evaluateHistoricalMatches(validation, currentWeights, fitMatrices)
     : evaluateHistoricalMatches(fitResults, currentWeights, fitMatrices);
+  const finalMetrics = exactEvaluationMetrics(finalEval);
 
   return {
     finalWeights: currentWeights,
-    initialLoss: initialEval.brierLoss,
-    finalLoss: finalEval.brierLoss,
-    initialAccuracy: initialEval.accuracyPct,
-    finalAccuracy: finalEval.accuracyPct,
+    initialLoss: initialMetrics.brierLoss,
+    finalLoss: finalMetrics.brierLoss,
+    initialAccuracy: Math.round(initialMetrics.accuracyPct * 10) / 10,
+    finalAccuracy: Math.round(finalMetrics.accuracyPct * 10) / 10,
     epochsCompleted: epochs,
     lossHistory,
   };
