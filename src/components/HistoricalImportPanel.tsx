@@ -253,7 +253,7 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
           className="text-xs text-slate-300 file:mr-3 file:px-3 file:py-1.5 file:rounded file:border-0 file:bg-sky-600 file:text-white" />
         <button onClick={train} disabled={busy !== null}
           className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-semibold">
-          {busy === 'train' ? 'Training… (can take up to a minute)' : 'Run training on imported data'}
+          {busy === 'train' ? 'Training… other requests may be delayed' : 'Run training on imported data'}
         </button>
         <button onClick={clearAll} disabled={busy !== null}
           className="px-3 py-1.5 rounded border border-red-500/40 text-red-300 hover:bg-red-950/40 disabled:opacity-50 text-xs">
