@@ -8,6 +8,11 @@ interface Props {
   onUpdateLearningState: (s: LearningModelState) => void;
 }
 
+interface ImportFailureDetails {
+  files?: { file: string; rowsAccepted: number; rowsSkipped: number; skipReasons?: Record<string, number>; note?: string }[];
+  skippedEntries?: { name: string; reason: string }[];
+}
+
 interface ImportResult {
   rowsParsed: number;
   added: number;
@@ -83,6 +88,7 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<'import' | 'train' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [importFailureDetails, setImportFailureDetails] = useState<ImportFailureDetails | null>(null);
   const [imported, setImported] = useState<ImportResult | null>(null);
   const [trained, setTrained] = useState<TrainResult | null>(null);
   const [maxMatches, setMaxMatches] = useState<number>(5_000);
@@ -125,13 +131,22 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
   };
 
   const upload = async (file: File) => {
-    setBusy('import'); setError(null); setSync(null); setTrained(null); setApplied(false);
+    setBusy('import'); setError(null); setImportFailureDetails(null); setSync(null); setTrained(null); setApplied(false);
     try {
       const fd = new FormData();
       fd.append('file', file);
       const res = await fetch('/api/admin/historical/import', { method: 'POST', headers: getAdminApiHeaders(), body: fd });
       const data = await readJson(res);
-      if (!res.ok) throw new Error(data.error || 'Import failed');
+      if (!res.ok) {
+        if (Array.isArray(data.files) || Array.isArray(data.skippedEntries)) {
+          setImportFailureDetails({
+            files: Array.isArray(data.files) ? data.files : [],
+            skippedEntries: Array.isArray(data.skippedEntries) ? data.skippedEntries : [],
+          });
+        }
+        throw new Error(data.error || 'Import failed');
+      }
+      setImportFailureDetails(null);
       setImported(data);
       void fetchStoredSummary().then(summary => { if (summary) setStoredSummary(summary); });
     } catch (e) {
@@ -324,6 +339,41 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
       </div>
 
       {error && <div className="text-xs text-red-300 bg-red-950/40 border border-red-500/30 rounded p-2">{error}</div>}
+      {importFailureDetails && (
+        <div className="rounded border border-amber-500/40 bg-amber-950/20 p-3 text-xs text-slate-300 space-y-2">
+          <div className="font-semibold text-amber-200">Import diagnostics — no history was added by this failed upload.</div>
+          {(importFailureDetails.files ?? []).length > 0 && (
+            <div>
+              <div className="font-semibold text-slate-200">Files read</div>
+              <ul className="list-disc pl-4 mt-1 space-y-1">
+                {(importFailureDetails.files ?? []).slice(0, 50).map((f, index) => (
+                  <li key={`${f.file}-${index}`}>
+                    <strong>{f.file}</strong>: accepted {f.rowsAccepted}, skipped {f.rowsSkipped}
+                    {f.note ? ` — ${f.note}` : ''}
+                    {f.skipReasons && Object.keys(f.skipReasons).length > 0
+                      ? `; reasons: ${Object.entries(f.skipReasons).map(([reason, count]) => `${reason}=${count}`).join(', ')}`
+                      : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {(importFailureDetails.skippedEntries ?? []).length > 0 && (
+            <div>
+              <div className="font-semibold text-slate-200">Files skipped</div>
+              <ul className="list-disc pl-4 mt-1 space-y-1">
+                {(importFailureDetails.skippedEntries ?? []).slice(0, 50).map((entry, index) => (
+                  <li key={`${entry.name}-${index}`}>{entry.name}: {entry.reason}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {(importFailureDetails.files ?? []).length === 0 && (importFailureDetails.skippedEntries ?? []).length === 0 && (
+            <div>The server could not extract a supported CSV/XLSX results table. Upload a .csv, .xlsx, or ZIP containing those files.</div>
+          )}
+          <div>Expected columns include Date, HomeTeam, AwayTeam, FTHG and FTAG. Rows need a valid match date and numeric full-time scores. Legacy .xls files must be resaved as .xlsx or CSV.</div>
+        </div>
+      )}
 
       {imported && (
         <div className="text-xs text-slate-300 space-y-1 bg-slate-950/60 rounded p-3 border border-slate-700">
