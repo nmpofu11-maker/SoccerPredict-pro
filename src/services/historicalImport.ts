@@ -326,12 +326,29 @@ export async function importFromBuffer(fileName: string, bytes: Uint8Array): Pro
 
 export function mergeRows(existing: ImportedMatchRow[], incoming: ImportedMatchRow[]): { merged: ImportedMatchRow[]; added: number; duplicates: number } {
   const map = new Map<string, ImportedMatchRow>();
-  for (const r of existing) map.set(r.key, r);
+  for (const row of existing) {
+    const prior = map.get(row.key);
+    if (prior && (prior.hg !== row.hg || prior.ag !== row.ag)) {
+      throw new Error(`Stored historical data already contains conflicting scores for ${row.date} ${row.home} vs ${row.away}; resolve the existing duplicate before importing more data.`);
+    }
+    if (!prior) map.set(row.key, row);
+  }
+
   let added = 0;
   let duplicates = 0;
-  for (const r of incoming) {
-    if (map.has(r.key)) duplicates++;
-    else { map.set(r.key, r); added++; }
+  for (const row of incoming) {
+    const prior = map.get(row.key);
+    if (prior) {
+      duplicates++;
+      if (prior.hg !== row.hg || prior.ag !== row.ag) {
+        throw new Error(
+          `Conflicting full-time scores for ${row.date} ${row.home} vs ${row.away}: stored ${prior.hg}-${prior.ag} (${prior.src}), incoming ${row.hg}-${row.ag} (${row.src}). No import was saved; resolve the discrepancy and retry.`
+        );
+      }
+    } else {
+      map.set(row.key, row);
+      added++;
+    }
   }
   const merged = [...map.values()].sort((a, b) => a.date.localeCompare(b.date) || a.key.localeCompare(b.key));
   return { merged, added, duplicates };
