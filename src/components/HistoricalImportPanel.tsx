@@ -39,19 +39,23 @@ interface TrainResult {
   note: string;
 }
 
-interface FdCatalog {
-  leagues: { code: string; name: string; kind: 'main' | 'extra' }[];
-  currentSeasonStart: number;
-  limits: { maxFilesPerSync: number };
-  coverageNote: string;
-}
-
-interface FdSyncResult {
-  filesRequested: number; ok: number; notPublished: number; failed: number;
-  added: number; duplicatesIgnored: number; storedTotal: number;
-  training: { usable: number; totalRows: number; leagues: number };
-  oddsColumnsIgnored: string[];
-  outcomes: { label: string; status: 'ok' | 'not_published' | 'failed'; detail?: string; accepted?: number; skipped?: number }[];
+interface SportApiHistorySyncResult {
+  provider: string;
+  fromDate: string;
+  toDate: string;
+  daysRequested: number;
+  daysFetched: number;
+  fixturesSeen: number;
+  completedFixtures: number;
+  completedWithoutUsableScore: number;
+  importedRows: number;
+  added: number;
+  duplicatesIgnored: number;
+  storedTotal: number;
+  training: { usable: number; totalRows: number; leagues: number; dateFrom?: string | null; dateTo?: string | null };
+  note?: string;
+  error?: string;
+  stoppedAt?: string;
 }
 
 interface StoredSummary {
@@ -93,86 +97,38 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
   const [trained, setTrained] = useState<TrainResult | null>(null);
   const [maxMatches, setMaxMatches] = useState<number>(5_000);
   const [applied, setApplied] = useState(false);
-  const [catalog, setCatalog] = useState<FdCatalog | null>(null);
-  const [catalogLoading, setCatalogLoading] = useState(true);
-  const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [picked, setPicked] = useState<string[]>([]);
-  const [fromSeason, setFromSeason] = useState<number>(0);
-  const [sync, setSync] = useState<FdSyncResult | null>(null);
+  const [historyFromDate, setHistoryFromDate] = useState(() => new Date(Date.now() - 364 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+  const [historyToDate, setHistoryToDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [historySync, setHistorySync] = useState<SportApiHistorySyncResult | null>(null);
   const [storedSummary, setStoredSummary] = useState<StoredSummary | null>(null);
-
-  const loadCatalog = async (isAlive: () => boolean = () => true) => {
-    if (isAlive()) { setCatalogLoading(true); setCatalogError(null); }
-    try {
-      const res = await fetch('/api/admin/historical/football-data/catalog', { headers: getAdminApiHeaders() });
-      const data = await readJson(res);
-      if (!res.ok) throw new Error(data.error || data.message || `Catalog request failed (HTTP ${res.status})`);
-      if (!data || !Array.isArray(data.leagues)) throw new Error('The server returned an invalid league catalog.');
-      if (isAlive()) {
-        const nextCatalog = data as FdCatalog;
-        setCatalog(nextCatalog);
-        setFromSeason(nextCatalog.currentSeasonStart - 4);
-        // Give the operator a ready-to-use default. They can change it before downloading.
-        setPicked(previous => previous.length > 0 ? previous : ['E0']);
-      }
-    } catch (e) {
-      if (isAlive()) {
-        setCatalog(null);
-        setCatalogError(e instanceof Error ? e.message : 'Could not load the football-data.co.uk league catalog.');
-      }
-    } finally {
-      if (isAlive()) setCatalogLoading(false);
-    }
-  };
 
   useEffect(() => {
     let alive = true;
-    void loadCatalog(() => alive);
     void fetchStoredSummary().then(summary => { if (alive && summary) setStoredSummary(summary); });
     return () => { alive = false; };
   }, []);
 
-  const toggle = (code: string) => setPicked(p => p.includes(code) ? p.filter(c => c !== code) : [...p, code]);
-
-  const downloadFromProvider = async () => {
-    setBusy('import'); setError(null); setSync(null); setImported(null); setTrained(null); setApplied(false);
+  const syncSportApiHistory = async () => {
+    setBusy('import'); setError(null); setImportFailureDetails(null); setHistorySync(null); setImported(null); setTrained(null); setApplied(false);
     try {
-      const res = await fetch('/api/admin/historical/football-data/sync', {
+      const res = await fetch('/api/admin/historical/sportapi-ai/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAdminApiHeaders() },
-        body: JSON.stringify({ leagues: picked, fromSeason }),
+        body: JSON.stringify({ fromDate: historyFromDate, toDate: historyToDate }),
       });
       const data = await readJson(res);
-      if (!res.ok) {
-        if (Array.isArray(data.outcomes)) {
-          const outcomes = data.outcomes as FdSyncResult['outcomes'];
-          setSync({
-            ...data,
-            filesRequested: outcomes.length,
-            ok: outcomes.filter(o => o.status === 'ok').length,
-            notPublished: outcomes.filter(o => o.status === 'not_published').length,
-            failed: outcomes.filter(o => o.status === 'failed').length,
-            added: 0,
-            duplicatesIgnored: 0,
-            storedTotal: 0,
-            training: { usable: 0, totalRows: 0, leagues: 0 },
-            oddsColumnsIgnored: [],
-            outcomes,
-          });
-        }
-        throw new Error(data.error || 'Download failed');
-      }
-      setSync(data);
+      if (!res.ok) throw new Error(data.error || `Historical sync failed (HTTP ${res.status})`);
+      setHistorySync(data as SportApiHistorySyncResult);
       void fetchStoredSummary().then(summary => { if (summary) setStoredSummary(summary); });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Download failed');
+      setError(e instanceof Error ? e.message : 'Could not import historical results from SportAPI.ai');
     } finally {
       setBusy(null);
     }
   };
 
   const upload = async (file: File) => {
-    setBusy('import'); setError(null); setImportFailureDetails(null); setSync(null); setTrained(null); setApplied(false);
+    setBusy('import'); setError(null); setImportFailureDetails(null); setHistorySync(null); setTrained(null); setApplied(false);
     try {
       const fd = new FormData();
       fd.append('file', file);
@@ -260,7 +216,7 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
     try {
       const res = await fetch('/api/admin/historical', { method: 'DELETE', headers: getAdminApiHeaders() });
       if (!res.ok) throw new Error((await readJson(res)).error || 'Could not clear data');
-      setImported(null); setSync(null); setTrained(null);
+      setImported(null); setHistorySync(null); setTrained(null);
       void fetchStoredSummary().then(summary => { if (summary) setStoredSummary(summary); });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not clear data');
@@ -323,74 +279,45 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
         The most recent 20% of the selected window is held out from fitting for evaluation.
       </div>
 
-      <div className="rounded border border-slate-700 p-3 space-y-2">
-        <div className="text-xs font-semibold text-slate-200">Download completed results from football-data.co.uk (free public archive)</div>
-        <div className="text-[11px] text-slate-400">Select a league below, then press the blue download button. England Premier League is selected by default.</div>
-        {!catalog ? (
-          <div className="text-xs text-slate-400 space-y-2">
-            <div>{catalogLoading ? 'Loading the league catalog…' : `Could not load the league catalog: ${catalogError || 'unknown error'}`}</div>
-            {!catalogLoading && (
-              <div className="space-y-1">
-                <div>If this says “Unauthorized” or mentions x-admin-api-key, save the same ADMIN_API_KEY in the Data Verified → Manual Upload panel, then retry here.</div>
-                <button type="button" onClick={() => { void loadCatalog(); }}
-                  className="px-3 py-1.5 rounded border border-slate-600 hover:bg-slate-800 text-slate-200">
-                  Retry loading leagues
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <>
-            <div className="flex flex-wrap gap-x-3 gap-y-1">
-              {catalog.leagues.filter(l => l.kind === 'main').map(l => (
-                <label key={l.code} className="text-xs text-slate-300 flex items-center gap-1">
-                  <input type="checkbox" checked={picked.includes(l.code)} onChange={() => toggle(l.code)} disabled={busy !== null} />
-                  {l.name}
-                </label>
-              ))}
-            </div>
-            <details className="text-xs text-slate-400">
-              <summary className="cursor-pointer">More leagues (Argentina, Brazil, USA, …)</summary>
-              <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
-                {catalog.leagues.filter(l => l.kind === 'extra').map(l => (
-                  <label key={l.code} className="flex items-center gap-1">
-                    <input type="checkbox" checked={picked.includes(l.code)} onChange={() => toggle(l.code)} disabled={busy !== null} />
-                    {l.name}
-                  </label>
-                ))}
-              </div>
-            </details>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
-              From season starting
-              <input type="number" value={fromSeason} min={1993} max={catalog.currentSeasonStart}
-                onChange={e => setFromSeason(Number(e.target.value))}
-                className="w-20 bg-slate-950 border border-slate-600 rounded px-2 py-1" />
-              <button onClick={downloadFromProvider} disabled={busy !== null || picked.length === 0}
-                className="px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-semibold">
-                Download &amp; add to training data
-              </button>
-              <span className="text-slate-500">Max {catalog.limits.maxFilesPerSync} files per run; ~1 s per file.</span>
-            </div>
-            <div className="text-[11px] text-slate-500">{catalog.coverageNote} Odds columns in these files are ignored.</div>
-          </>
-        )}
-        {sync && (
+      <div className="rounded border border-slate-700 p-3 space-y-3">
+        <div className="text-xs font-semibold text-slate-200">Import historical completed results from SportAPI.ai</div>
+        <p className="text-[11px] text-slate-400">
+          Uses the configured authenticated API key, not an automated public-archive scraper. One API request is made per calendar day.
+          Choose up to 365 days per run; provider coverage and plan limits apply. Only completed matches with valid full-time scores are stored.
+        </p>
+        <div className="flex flex-wrap items-end gap-2 text-xs text-slate-300">
+          <label className="flex flex-col gap-1">Start date
+            <input type="date" value={historyFromDate} max={historyToDate}
+              onChange={e => setHistoryFromDate(e.target.value)} disabled={busy !== null}
+              className="bg-slate-950 border border-slate-600 rounded px-2 py-1" />
+          </label>
+          <label className="flex flex-col gap-1">End date
+            <input type="date" value={historyToDate} min={historyFromDate} max={new Date().toISOString().slice(0, 10)}
+              onChange={e => setHistoryToDate(e.target.value)} disabled={busy !== null}
+              className="bg-slate-950 border border-slate-600 rounded px-2 py-1" />
+          </label>
+          <button onClick={syncSportApiHistory} disabled={busy !== null || !historyFromDate || !historyToDate || historyFromDate > historyToDate}
+            className="px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-semibold">
+            {busy === 'import' ? 'Importing historical results…' : 'Import completed results'}
+          </button>
+        </div>
+        <div className="text-[11px] text-slate-500">The last 12 months are selected initially. Requests are sequential to respect API quotas.</div>
+        {busy === 'import' && <div className="text-xs text-amber-300">Import may take a little while. Keep this page open until the result summary appears.</div>}
+        {historySync && (
           <div className="text-xs text-slate-300 space-y-1">
             <div>
-              {sync.ok}/{sync.filesRequested} files read ({sync.notPublished} not published, {sync.failed} failed).
-              Added <b>{sync.added.toLocaleString()}</b> matches ({sync.duplicatesIgnored.toLocaleString()} already present);
-              {' '}<b>{sync.training.usable.toLocaleString()}</b> of {sync.training.totalRows.toLocaleString()} stored are usable for training.
+              Queried <b>{historySync.daysFetched.toLocaleString()}</b> of {historySync.daysRequested.toLocaleString()} dates;
+              saw {historySync.fixturesSeen.toLocaleString()} fixtures and {historySync.completedFixtures.toLocaleString()} marked completed.
             </div>
-            <details className="text-slate-400" open={sync.added === 0 || sync.failed > 0 || sync.ok === 0}>
-              <summary className="cursor-pointer">Per-file results — expand to see why each download succeeded or failed</summary>
-              <ul className="mt-1 list-disc pl-4 space-y-1">
-                {sync.outcomes.map(o => <li key={o.label}>
-                  <strong>{o.label}</strong>: {o.status}
-                  {o.accepted !== undefined ? ` (${o.accepted} accepted${o.skipped !== undefined ? `, ${o.skipped} skipped` : ''})` : ''}
-                  {o.detail ? ` — ${o.detail}` : ''}
-                </li>)}
-              </ul>
-            </details>
+            <div>
+              Imported {historySync.importedRows.toLocaleString()} usable completed results; added <b>{historySync.added.toLocaleString()}</b>
+              ({historySync.duplicatesIgnored.toLocaleString()} duplicates ignored).
+              The server now stores {historySync.storedTotal.toLocaleString()} matches; {historySync.training.usable.toLocaleString()}
+              {' '}of {historySync.training.totalRows.toLocaleString()} are usable for training across {historySync.training.leagues} league(s).
+            </div>
+            {historySync.stoppedAt && <div className="text-amber-300">Stopped at {historySync.stoppedAt}.</div>}
+            {historySync.note && <div className="text-amber-300">{historySync.note}</div>}
+            {historySync.error && <div className="text-red-300">Provider error: {historySync.error}</div>}
           </div>
         )}
       </div>
