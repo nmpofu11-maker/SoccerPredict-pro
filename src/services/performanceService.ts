@@ -88,6 +88,22 @@ export interface AuditedPredictionEvaluation {
   exclusionReason?: string;
 }
 
+export interface ModelVersionPerformanceSummary {
+  /** Code revision + engine-weight fingerprint captured when these predictions were frozen. */
+  modelVersion: string;
+  evaluatedCount: number;
+  correctCount: number;
+  accuracyPct: number;
+  accuracy95CiPct: { low: number; high: number };
+  meanBrierStandardSum: number;
+  meanBrierHalfSum: number;
+  meanLogLoss: number;
+  firstFrozenAt: string;
+  lastFrozenAt: string;
+  minSample: number;
+  isSampleSufficient: boolean;
+}
+
 export interface AuditedPerformanceReport {
   evaluatedCount: number;
   correctCount: number;
@@ -102,6 +118,8 @@ export interface AuditedPerformanceReport {
   pendingCount: number;
   minSample: number;
   isSampleSufficient: boolean;
+  /** Eligible scored forecasts grouped by the frozen code+weight fingerprint. */
+  byModelVersion: ModelVersionPerformanceSummary[];
 }
 
 /**
@@ -485,6 +503,39 @@ export function evaluateAuditedPredictionPerformance(
   const ci = eligibleCount > 0 ? wilsonInterval(correctCount, eligibleCount) : null;
   const accuracy95CiPct = ci ? { low: Math.round(ci.low * 1000) / 10, high: Math.round(ci.high * 1000) / 10 } : null;
 
+  // Keep forward-looking results separated by the exact model fingerprint recorded before kickoff.
+  // Only audit-eligible, settled matches contribute; unscored or excluded rows cannot inflate a model's metrics.
+  const versionRows = new Map<string, AuditedPredictionEvaluation[]>();
+  for (const item of evaluations) {
+    if (item.status !== 'eligible') continue;
+    const key = item.modelVersion?.trim() || 'unknown';
+    const group = versionRows.get(key) || [];
+    group.push(item);
+    versionRows.set(key, group);
+  }
+  const byModelVersion: ModelVersionPerformanceSummary[] = [...versionRows.entries()]
+    .map(([modelVersion, rows]) => {
+      const n = rows.length;
+      const correct = rows.filter(row => row.isCorrect).length;
+      const interval = wilsonInterval(correct, n)!;
+      const frozenTimes = rows.map(row => row.frozenAt).sort((a, b) => Date.parse(a) - Date.parse(b));
+      return {
+        modelVersion,
+        evaluatedCount: n,
+        correctCount: correct,
+        accuracyPct: (correct / n) * 100,
+        accuracy95CiPct: { low: interval.low * 100, high: interval.high * 100 },
+        meanBrierStandardSum: rows.reduce((sum, row) => sum + row.brierStandardSum, 0) / n,
+        meanBrierHalfSum: rows.reduce((sum, row) => sum + row.brierHalfSum, 0) / n,
+        meanLogLoss: rows.reduce((sum, row) => sum + (row.logLoss || 0), 0) / n,
+        firstFrozenAt: frozenTimes[0],
+        lastFrozenAt: frozenTimes[frozenTimes.length - 1],
+        minSample,
+        isSampleSufficient: n >= minSample,
+      };
+    })
+    .sort((a, b) => b.lastFrozenAt.localeCompare(a.lastFrozenAt) || a.modelVersion.localeCompare(b.modelVersion));
+
   return {
     evaluatedCount: eligibleCount,
     correctCount,
@@ -499,6 +550,7 @@ export function evaluateAuditedPredictionPerformance(
     pendingCount,
     minSample,
     isSampleSufficient: eligibleCount >= minSample,
+    byModelVersion,
   };
 }
 
