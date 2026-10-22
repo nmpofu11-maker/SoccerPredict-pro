@@ -104,6 +104,20 @@ export interface UserCoachingAudit {
 }
 
 /**
+ * Historical cohort members must themselves have been prediction-eligible.
+ * A neutral prior for a schedule-only fixture is not a model forecast and
+ * cannot be counted as evidence of historical accuracy or calibration.
+ */
+export function filterEvidenceBackedHistoricalResults(
+  results: HistoricalMatchResult[] = []
+): HistoricalMatchResult[] {
+  if (!Array.isArray(results)) return [];
+  return results.filter((h) =>
+    Boolean(h && h.fixture && h.actualOutcome && fixtureHasEvidence(h.fixture))
+  );
+}
+
+/**
  * Computes evidence-gated accumulator candidates for the day.
  * Candidates require non-negative model EV and a sufficiently sized historical outcome cohort.
  */
@@ -317,10 +331,7 @@ export function generateOptimalValueAccumulatorReport(
   const validFixtures = activeFixtures;
 
   // Precompute historical predictions once to avoid 60,000+ redundant calculations in nested loops
-  const historicalEvaluations = (historicalResults || [])
-    // A neutral no-evidence prior is not a valid historical forecast and must not count
-    // toward cohort sample sizes or hit rates, even if its probability happens to match a value pick.
-    .filter((h) => Boolean(h && h.fixture && h.actualOutcome && fixtureHasEvidence(h.fixture)))
+  const historicalEvaluations = filterEvidenceBackedHistoricalResults(historicalResults || [])
     .map((h) => ({
       result: h,
       pred: evaluateFixturePrediction(h.fixture, 'none', weights),
