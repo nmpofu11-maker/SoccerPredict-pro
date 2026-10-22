@@ -3177,7 +3177,19 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
   app.get('/api/admin/historical/summary', requireAdmin, (_req, res) => {
     try {
       const rows = readHistoricalStore();
-      res.json({ storedTotal: rows.length, training: buildTrainingSet(rows).summary, limits: TRAIN_LIMITS });
+      res.json({
+        storedTotal: rows.length,
+        training: buildTrainingSet(rows).summary,
+        limits: TRAIN_LIMITS,
+        storage: {
+          pathConfigured: Boolean(configuredHistoricalStorePath),
+          // A configured filename alone does not prove its volume survives a redeploy.
+          persistenceVerified: false,
+          note: configuredHistoricalStorePath
+            ? 'HISTORICAL_DATA_PATH is configured, but the server cannot verify that the backing volume is durable across restarts or redeploys.'
+            : 'Using local ./data/historical-matches.json. This may be ephemeral on serverless hosts; configure HISTORICAL_DATA_PATH to a persistent mounted volume.',
+        },
+      });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to summarise historical data' });
     }
