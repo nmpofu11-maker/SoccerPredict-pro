@@ -13,15 +13,17 @@ export const ProbabilityBoard: React.FC<ProbabilityBoardProps> = ({
   homeTeamName,
   awayTeamName,
 }) => {
-  const { homeWinPct, drawPct, awayWinPct, predictedWinner, manualOverride, modelLeaderProbabilityPct } = prediction;
+  const { homeWinPct, drawPct, awayWinPct, predictedWinner, manualOverride, modelLeaderProbabilityPct, hasEvidence } = prediction;
 
   const isHomeWinner = predictedWinner === 'home';
   const isAwayWinner = predictedWinner === 'away';
   const isDraw = predictedWinner === 'draw';
 
-  const safeHome = Number.isFinite(homeWinPct) ? homeWinPct : null;
-  const safeDraw = Number.isFinite(drawPct) ? drawPct : null;
-  const safeAway = Number.isFinite(awayWinPct) ? awayWinPct : null;
+  // Neutral fallback values are safety sentinels, not calibrated forecasts.
+  // Never display them as percentages or derive fair odds without both-team evidence.
+  const safeHome = hasEvidence && Number.isFinite(homeWinPct) ? homeWinPct : null;
+  const safeDraw = hasEvidence && Number.isFinite(drawPct) ? drawPct : null;
+  const safeAway = hasEvidence && Number.isFinite(awayWinPct) ? awayWinPct : null;
 
   // Calculate implied decimal fair odds (100 / probability)
   const homeOdds = safeHome !== null && safeHome > 0 ? (100 / safeHome).toFixed(2) : '--';
@@ -47,7 +49,7 @@ export const ProbabilityBoard: React.FC<ProbabilityBoardProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 text-[11px] font-mono">
-          <span className="text-slate-400">Confidence:</span>
+          <span className="text-slate-400">{hasEvidence ? 'Model leader:' : 'Confidence:'}</span>
           <span className={`px-2 py-0.5 rounded font-bold ${
             modelLeaderProbabilityPct >= 75
               ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60'
@@ -55,10 +57,16 @@ export const ProbabilityBoard: React.FC<ProbabilityBoardProps> = ({
               ? 'bg-sky-950/80 text-sky-300 border border-sky-700/60'
               : 'bg-slate-800 text-slate-300 border border-slate-700'
           }`}>
-            {modelLeaderProbabilityPct}%
+            {hasEvidence ? `${modelLeaderProbabilityPct}%` : 'N/A'}
           </span>
         </div>
       </div>
+
+      {!hasEvidence && (
+        <div role="status" className="mb-2 rounded border border-amber-700/50 bg-amber-950/30 px-3 py-2 text-[11px] text-amber-200">
+          <strong>No verified automatic prediction.</strong> Both teams need sourced strength evidence. Percentages and fair odds are unavailable; any manual override is an explicit user choice, not a verified model forecast.
+        </div>
+      )}
 
       {/* 3-Column Percentage & Decimal Odds Matrix */}
       <div className="grid grid-cols-3 gap-2 mb-2">
