@@ -40,6 +40,15 @@ test('training reports holdout metrics AND a no-knowledge baseline, and only pro
   assert.equal(out.trainedOn + out.holdoutSize, out.usableMatches);
 });
 
+test('training loss history retains sub-mill precision for optimizer comparisons', () => {
+  const { results } = buildTrainingSet(synthetic(900));
+  const out = trainMultipleEpochs(DEFAULT_ENGINE_WEIGHTS, 2, results);
+  assert.ok(
+    out.lossHistory.some(loss => Math.abs(loss * 1000 - Math.round(loss * 1000)) > 1e-8),
+    'loss history must retain more than the three-decimal display precision',
+  );
+});
+
 test('training weights are invariant to outcome changes confined to the chronological holdout', () => {
   const { results } = buildTrainingSet(synthetic(900));
   const split = Math.max(1, results.length - Math.max(1, Math.floor(results.length * 0.2)));
