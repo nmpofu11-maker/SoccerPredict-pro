@@ -898,6 +898,8 @@ function writeResultsLog(entries: SettledResultEntry[]): void {
       // Preserve the original write error; cleanup is best-effort only.
     }
     console.error('Error writing results-log.json atomically:', e);
+    // Callers must mark settlement/manual import as failed if history was not persisted.
+    throw e;
   }
 }
 
