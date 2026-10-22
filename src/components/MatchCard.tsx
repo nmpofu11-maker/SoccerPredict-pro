@@ -244,10 +244,12 @@ export const MatchCard: React.FC<MatchCardProps> = ({
       {/* Confidence Level Heatmap Top Strip */}
       <div 
         className={`absolute top-0 left-0 w-full h-1.5 rounded-t-xl opacity-90 ${
-          Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75 
-            ? 'bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 shadow-[0_2px_10px_rgba(16,185,129,0.3)]' 
-            : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct >= 50 
-            ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 shadow-[0_2px_10px_rgba(245,158,11,0.2)]' 
+          !hasPredictionEvidence
+            ? 'bg-slate-700'
+            : prediction.modelLeaderProbabilityPct > 75
+            ? 'bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 shadow-[0_2px_10px_rgba(16,185,129,0.3)]'
+            : prediction.modelLeaderProbabilityPct >= 50
+            ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 shadow-[0_2px_10px_rgba(245,158,11,0.2)]'
             : 'bg-gradient-to-r from-rose-500 via-red-400 to-rose-500 shadow-[0_2px_10px_rgba(239,68,68,0.2)]'
         }`}
       />
@@ -258,9 +260,11 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           {/* Confidence Level Heatmap Pill */}
           <span
             className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-[9.5px] font-mono font-bold uppercase tracking-wide shadow-sm ${
-              Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
+              !hasPredictionEvidence
+                ? 'bg-slate-800/70 text-slate-300 border-slate-700'
+                : prediction.modelLeaderProbabilityPct > 75
                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct >= 50
+                : prediction.modelLeaderProbabilityPct >= 50
                 ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
                 : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
             }`}
