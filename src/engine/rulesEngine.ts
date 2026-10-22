@@ -151,9 +151,9 @@ export function evaluateFixturePrediction(
       ruleNumber: 0,
       ruleName: 'Team Data Sufficiency Guard',
       tag: 'Insufficient observed team-strength data',
-      impact: 'Directional home advantage withheld until either team has observed strength evidence',
+      impact: 'Automatic directional prediction is withheld unless both teams have observed strength evidence',
       beneficiary: 'neutral',
-      description: 'No observed rank, recent form, rating, or squad-value evidence was available for either side. The engine uses a neutral starting prior rather than inventing a directional edge.',
+      description: 'At least one team lacks sourced rank, recent form, rating, or squad-value evidence. A manual override is an explicit user choice, not evidence that the fixture is verified.',
     });
   }
 
