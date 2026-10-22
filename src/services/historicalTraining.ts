@@ -1,5 +1,6 @@
 import { fixtureHasEvidence, sanitizeEngineWeights } from '../engine/rulesEngine';
-import { trainMultipleEpochs } from '../engine/selfLearningEngine';
+import { evaluateHistoricalMatches, trainMultipleEpochs } from '../engine/selfLearningEngine';
+import { CANONICAL_INITIAL_MATRICES, synthesizeTeamIntelligenceMatrices } from '../engine/teamIntelligenceMatrix';
 import type { EngineWeights, HistoricalMatchResult } from '../types/soccer';
 
 /** The engine trains synchronously (~0.6s per epoch per 1,000 matches), so the caps keep a run to roughly 15-60s. */
@@ -22,6 +23,77 @@ export interface HistoricalTrainingOutcome {
   improvedOnHoldout?: boolean;
   lossHistory?: number[];
   note: string;
+}
+
+export interface HistoricalHoldoutEvaluation {
+  status: 'ok' | 'insufficient_data';
+  usableMatches: number;
+  windowMatches: number;
+  holdoutSize: number;
+  evaluatedMatches: number;
+  accuracyPct: number | null;
+  brierLoss: number | null;
+  note: string;
+}
+
+/**
+ * Re-evaluates the currently active weights against the recent chronological holdout
+ * from the server's imported archive. The holdout is not fitted; its team matrices
+ * are derived from the preceding fit partition only.
+ */
+export function evaluateHistoricalModelOnHoldout(
+  all: HistoricalMatchResult[],
+  weights: Partial<EngineWeights> | null | undefined,
+  maxMatches: number = TRAIN_LIMITS.maxMatches
+): HistoricalHoldoutEvaluation {
+  const usable = (all || [])
+    .filter(m => m && m.fixture && fixtureHasEvidence(m.fixture))
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const boundedMax = Math.min(TRAIN_LIMITS.maxMatches, Math.max(100, Math.floor(maxMatches)));
+  const window = usable.slice(-boundedMax);
+  const holdoutSize = window.length >= 2 ? Math.max(1, Math.floor(window.length * 0.2)) : 0;
+  const fit = window.slice(0, window.length - holdoutSize);
+  const holdout = holdoutSize > 0 ? window.slice(window.length - holdoutSize) : [];
+  if (usable.length < TRAIN_LIMITS.minUsable || holdout.length === 0) {
+    return {
+      status: 'insufficient_data',
+      usableMatches: usable.length,
+      windowMatches: window.length,
+      holdoutSize: holdout.length,
+      evaluatedMatches: 0,
+      accuracyPct: null,
+      brierLoss: null,
+      note: `Insufficient usable historical matches for a chronological holdout (need at least ${TRAIN_LIMITS.minUsable}). Metrics are unavailable, not zero.`,
+    };
+  }
+
+  const matrices = synthesizeTeamIntelligenceMatrices(fit, CANONICAL_INITIAL_MATRICES);
+  const evaluation = evaluateHistoricalMatches(holdout, sanitizeEngineWeights(weights), matrices);
+  const evaluatedMatches = evaluation.evaluations.length;
+  if (evaluatedMatches === 0) {
+    return {
+      status: 'insufficient_data',
+      usableMatches: usable.length,
+      windowMatches: window.length,
+      holdoutSize: holdout.length,
+      evaluatedMatches: 0,
+      accuracyPct: null,
+      brierLoss: null,
+      note: 'The evidence gate withheld every automatic prediction in the holdout. Accuracy and Brier loss are unavailable, not zero.',
+    };
+  }
+
+  return {
+    status: 'ok',
+    usableMatches: usable.length,
+    windowMatches: window.length,
+    holdoutSize: holdout.length,
+    evaluatedMatches,
+    accuracyPct: evaluation.accuracyPct,
+    brierLoss: evaluation.brierLoss,
+    note: 'Measured on imported historical results in the most recent chronological holdout; only prior-window team matrices were used.',
+  };
 }
 
 const NOTE =
