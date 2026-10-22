@@ -46,9 +46,14 @@ test('active imported-history evaluation reports scored holdout matches instead 
   assert.equal(report.status, 'ok');
   assert.ok(report.holdoutSize > 0);
   assert.ok(report.evaluatedMatches > 0);
+  assert.ok(report.correctCount >= 0 && report.correctCount <= report.evaluatedMatches);
   assert.notEqual(report.accuracyPct, null);
   assert.notEqual(report.brierLoss, null);
+  assert.notEqual(report.baselineAccuracyPct, null);
+  assert.notEqual(report.baselineBrierLoss, null);
   assert.ok((report.brierLoss ?? 0) > 0 && (report.brierLoss ?? 0) <= 1);
+  assert.ok(report.matches.length > 0 && report.matches.length <= 100);
+  assert.ok(report.matches.every(match => Boolean(match.fixture.homeTeam.name && match.fixture.awayTeam.name)));
 });
 
 test('active imported-history evaluation marks absent holdout evidence unavailable, not zero', () => {
