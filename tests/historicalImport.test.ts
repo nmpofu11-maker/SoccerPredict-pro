@@ -44,6 +44,24 @@ test('toIsoDate: day-first dd/mm/yy, dd/mm/yyyy, ISO, rejects impossible dates',
   assert.equal(toIsoDate('garbage'), null);
 });
 
+test('standardized aggregate dataset columns import valid completed matches', async () => {
+  const source = [
+    'Season,League,MatchDate,HomeTeam,AwayTeam,FullTimeHomeGoals,FullTimeAwayGoals,FullTimeResult,HomeShotsOnTarget,AwayShotsOnTarget',
+    '2023/24,Premier League,2023-08-11,Burnley,Manchester City,0,3,A,1,8',
+    '2023/24,Premier League,2023-08-12,Arsenal,Nottingham Forest,2,1,H,5,2',
+  ].join('\\n');
+  const result = await importFromBuffer('aggregate-results.csv', strToU8(source));
+  assert.equal(result.rows.length, 2);
+  assert.equal(result.rows[0].date, '2023-08-11');
+  assert.equal(result.rows[0].league, 'Premier League');
+  assert.equal(result.rows[0].home, 'Burnley');
+  assert.equal(result.rows[0].away, 'Manchester City');
+  assert.equal(result.rows[0].hg, 0);
+  assert.equal(result.rows[0].ag, 3);
+  assert.equal(result.rows[0].hst, 1);
+  assert.equal(result.rows[0].ast, 8);
+});
+
 test('football-data style csv: league code mapped, odds columns reported as ignored and absent from rows', async () => {
   const res = await importFromBuffer('E0.csv', strToU8(csv(SEASON)));
   assert.equal(res.rows.length, 10);
