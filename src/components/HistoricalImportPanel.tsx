@@ -232,7 +232,7 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
   return (
     <div className="p-5 rounded-xl border border-sky-500/30 bg-slate-900 space-y-4">
       <div>
-        <h3 className="text-sm font-bold text-sky-300">Train on historical results (CSV / XLSX / ZIP)</h3>
+        <h3 className="text-sm font-bold text-sky-300">Train on historical results (CSV / XLSX / ZIP or provider sync)</h3>
         <p className="text-xs text-slate-400 mt-1">
           Needs date, home team, away team and full-time goals. Rank, points, form and head-to-head are computed from the
           files themselves using only earlier matches. Bookmaker odds columns are ignored and never stored.
