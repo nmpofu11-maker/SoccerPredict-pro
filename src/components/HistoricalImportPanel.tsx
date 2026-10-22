@@ -51,7 +51,7 @@ interface FdSyncResult {
   added: number; duplicatesIgnored: number; storedTotal: number;
   training: { usable: number; totalRows: number; leagues: number };
   oddsColumnsIgnored: string[];
-  outcomes: { label: string; status: 'ok' | 'not_published' | 'failed'; detail?: string; accepted?: number }[];
+  outcomes: { label: string; status: 'ok' | 'not_published' | 'failed'; detail?: string; accepted?: number; skipped?: number }[];
 }
 
 interface StoredSummary {
@@ -143,7 +143,25 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
         body: JSON.stringify({ leagues: picked, fromSeason }),
       });
       const data = await readJson(res);
-      if (!res.ok) { if (data.outcomes) setSync({ ...data, filesRequested: data.outcomes.length, ok: 0, notPublished: 0, failed: 0, added: 0, duplicatesIgnored: 0, storedTotal: 0, training: { usable: 0, totalRows: 0, leagues: 0 }, oddsColumnsIgnored: [] }); throw new Error(data.error || 'Download failed'); }
+      if (!res.ok) {
+        if (Array.isArray(data.outcomes)) {
+          const outcomes = data.outcomes as FdSyncResult['outcomes'];
+          setSync({
+            ...data,
+            filesRequested: outcomes.length,
+            ok: outcomes.filter(o => o.status === 'ok').length,
+            notPublished: outcomes.filter(o => o.status === 'not_published').length,
+            failed: outcomes.filter(o => o.status === 'failed').length,
+            added: 0,
+            duplicatesIgnored: 0,
+            storedTotal: 0,
+            training: { usable: 0, totalRows: 0, leagues: 0 },
+            oddsColumnsIgnored: [],
+            outcomes,
+          });
+        }
+        throw new Error(data.error || 'Download failed');
+      }
       setSync(data);
       void fetchStoredSummary().then(summary => { if (summary) setStoredSummary(summary); });
     } catch (e) {
@@ -363,10 +381,14 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
               Added <b>{sync.added.toLocaleString()}</b> matches ({sync.duplicatesIgnored.toLocaleString()} already present);
               {' '}<b>{sync.training.usable.toLocaleString()}</b> of {sync.training.totalRows.toLocaleString()} stored are usable for training.
             </div>
-            <details className="text-slate-400">
-              <summary className="cursor-pointer">Per-file results</summary>
-              <ul className="mt-1 list-disc pl-4">
-                {sync.outcomes.map(o => <li key={o.label}>{o.label}: {o.status}{o.accepted !== undefined ? ` (${o.accepted} matches)` : ''}{o.detail ? ` — ${o.detail}` : ''}</li>)}
+            <details className="text-slate-400" open={sync.added === 0 || sync.failed > 0 || sync.ok === 0}>
+              <summary className="cursor-pointer">Per-file results — expand to see why each download succeeded or failed</summary>
+              <ul className="mt-1 list-disc pl-4 space-y-1">
+                {sync.outcomes.map(o => <li key={o.label}>
+                  <strong>{o.label}</strong>: {o.status}
+                  {o.accepted !== undefined ? ` (${o.accepted} accepted${o.skipped !== undefined ? `, ${o.skipped} skipped` : ''})` : ''}
+                  {o.detail ? ` — ${o.detail}` : ''}
+                </li>)}
               </ul>
             </details>
           </div>
