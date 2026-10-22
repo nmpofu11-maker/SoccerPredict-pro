@@ -49,8 +49,34 @@ interface FdSyncResult {
   outcomes: { label: string; status: 'ok' | 'not_published' | 'failed'; detail?: string; accepted?: number }[];
 }
 
+interface StoredSummary {
+  storedTotal: number;
+  training: {
+    usable: number;
+    totalRows: number;
+    leagues: number;
+    dateFrom?: string | null;
+    dateTo?: string | null;
+  };
+  storage: {
+    pathConfigured: boolean;
+    persistenceVerified: boolean;
+    note: string;
+  };
+}
+
 async function readJson(res: Response): Promise<any> {
   try { return await res.json(); } catch { return { error: `Server returned HTTP ${res.status}` }; }
+}
+
+async function fetchStoredSummary(): Promise<StoredSummary | null> {
+  try {
+    const res = await fetch('/api/admin/historical/summary', { headers: getAdminApiHeaders() });
+    if (!res.ok) return null;
+    return await res.json() as StoredSummary;
+  } catch {
+    return null;
+  }
 }
 
 export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdateLearningState }) => {
@@ -64,6 +90,7 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
   const [picked, setPicked] = useState<string[]>([]);
   const [fromSeason, setFromSeason] = useState<number>(0);
   const [sync, setSync] = useState<FdSyncResult | null>(null);
+  const [storedSummary, setStoredSummary] = useState<StoredSummary | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -71,13 +98,14 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
       .then(r => r.ok ? r.json() : null)
       .then((c: FdCatalog | null) => { if (alive && c) { setCatalog(c); setFromSeason(c.currentSeasonStart - 4); } })
       .catch(() => { /* panel still works for manual uploads */ });
+    void fetchStoredSummary().then(summary => { if (alive && summary) setStoredSummary(summary); });
     return () => { alive = false; };
   }, []);
 
   const toggle = (code: string) => setPicked(p => p.includes(code) ? p.filter(c => c !== code) : [...p, code]);
 
   const downloadFromProvider = async () => {
-    setBusy('import'); setError(null); setSync(null); setImported(null); setSync(null); setTrained(null); setApplied(false);
+    setBusy('import'); setError(null); setSync(null); setImported(null); setTrained(null); setApplied(false);
     try {
       const res = await fetch('/api/admin/historical/football-data/sync', {
         method: 'POST',
@@ -87,6 +115,7 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
       const data = await readJson(res);
       if (!res.ok) { if (data.outcomes) setSync({ ...data, filesRequested: data.outcomes.length, ok: 0, notPublished: 0, failed: 0, added: 0, duplicatesIgnored: 0, storedTotal: 0, training: { usable: 0, totalRows: 0, leagues: 0 }, oddsColumnsIgnored: [] }); throw new Error(data.error || 'Download failed'); }
       setSync(data);
+      void fetchStoredSummary().then(summary => { if (summary) setStoredSummary(summary); });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Download failed');
     } finally {
@@ -103,6 +132,7 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
       const data = await readJson(res);
       if (!res.ok) throw new Error(data.error || 'Import failed');
       setImported(data);
+      void fetchStoredSummary().then(summary => { if (summary) setStoredSummary(summary); });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Import failed');
     } finally {
@@ -173,7 +203,8 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
     try {
       const res = await fetch('/api/admin/historical', { method: 'DELETE', headers: getAdminApiHeaders() });
       if (!res.ok) throw new Error((await readJson(res)).error || 'Could not clear data');
-      setImported(null); setTrained(null);
+      setImported(null); setSync(null); setTrained(null);
+      void fetchStoredSummary().then(summary => { if (summary) setStoredSummary(summary); });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not clear data');
     } finally {
@@ -194,6 +225,15 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
           files themselves using only earlier matches. Bookmaker odds columns are ignored and never stored.
         </p>
       </div>
+      {storedSummary && (
+        <div className="rounded border border-slate-700 bg-slate-950/50 p-3 space-y-1 text-xs text-slate-300">
+          <div>
+            **Server historical store:** {storedSummary.storedTotal.toLocaleString()} matches; {storedSummary.training.usable.toLocaleString()} currently usable for training across {storedSummary.training.leagues} league(s).
+            {storedSummary.training.dateFrom && storedSummary.training.dateTo ? ` Date range: ${storedSummary.training.dateFrom} → ${storedSummary.training.dateTo}.` : ''}
+          </div>
+          <div className="text-amber-300">Persistence not independently verified. {storedSummary.storage.note}</div>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2 items-center">
         <input ref={fileRef} type="file" accept=".zip,.csv,.xlsx" disabled={busy !== null}
