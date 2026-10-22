@@ -84,6 +84,26 @@ async function fetchStoredSummary(): Promise<StoredSummary | null> {
   }
 }
 
+interface SavedTrainingProposalResponse {
+  status: 'ok' | 'not_found' | 'stale' | 'error';
+  proposal?: {
+    createdAt: string;
+    startWeights: EngineWeights;
+    outcome: TrainResult;
+  };
+  message?: string;
+}
+
+async function fetchSavedTrainingProposal(): Promise<SavedTrainingProposalResponse | null> {
+  try {
+    const res = await fetch('/api/admin/historical/proposal', { headers: getAdminApiHeaders() });
+    if (!res.ok) return null;
+    return await res.json() as SavedTrainingProposalResponse;
+  } catch {
+    return null;
+  }
+}
+
 export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdateLearningState }) => {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<'import' | 'train' | null>(null);
@@ -91,6 +111,8 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
   const [importFailureDetails, setImportFailureDetails] = useState<ImportFailureDetails | null>(null);
   const [imported, setImported] = useState<ImportResult | null>(null);
   const [trained, setTrained] = useState<TrainResult | null>(null);
+  const [trainingStartWeights, setTrainingStartWeights] = useState<EngineWeights | null>(null);
+  const [proposalRestoredAt, setProposalRestoredAt] = useState<string | null>(null);
   const [maxMatches, setMaxMatches] = useState<number>(5_000);
   const [applied, setApplied] = useState(false);
   const [catalog, setCatalog] = useState<FdCatalog | null>(null);
@@ -129,6 +151,12 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
     let alive = true;
     void loadCatalog(() => alive);
     void fetchStoredSummary().then(summary => { if (alive && summary) setStoredSummary(summary); });
+    void fetchSavedTrainingProposal().then(saved => {
+      if (!alive || saved?.status !== 'ok' || !saved.proposal?.outcome?.ok) return;
+      setTrained(saved.proposal.outcome);
+      setTrainingStartWeights(saved.proposal.startWeights);
+      setProposalRestoredAt(saved.proposal.createdAt);
+    });
     return () => { alive = false; };
   }, []);
 
@@ -199,7 +227,8 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
   };
 
   const train = async () => {
-    setBusy('train'); setError(null); setTrained(null); setApplied(false);
+    const startWeights = { ...learningState.weights };
+    setBusy('train'); setError(null); setTrained(null); setTrainingStartWeights(null); setProposalRestoredAt(null); setApplied(false);
     try {
       const res = await fetch('/api/admin/historical/train', {
         method: 'POST',
@@ -210,6 +239,7 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
       if (!res.ok && !data.reason) throw new Error(data.error || 'Training failed');
       if (!data.ok) setError(data.reason || 'Training could not run');
       setTrained(data);
+      if (data.ok && data.proposedWeights) setTrainingStartWeights(startWeights);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Training failed');
     } finally {
@@ -219,6 +249,16 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
 
   const apply = async () => {
     if (!trained?.ok || !trained.proposedWeights || !trained.after) return;
+    if (!trainingStartWeights) {
+      setError('The starting weights for this proposal are unavailable. This proposal cannot be safely applied.');
+      return;
+    }
+    const startChanged = (Object.keys(trainingStartWeights) as (keyof EngineWeights)[])
+      .some(key => trainingStartWeights[key] !== learningState.weights[key]);
+    if (startChanged) {
+      setError('The active weights have changed since this proposal was trained. This saved proposal is stale; train against the current weights before applying.');
+      return;
+    }
     const next: LearningModelState = {
       ...learningState,
       weights: trained.proposedWeights,
@@ -249,6 +289,7 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
       saveLearningState(next); // keep this browser's copy in step
       onUpdateLearningState(next);
       setApplied(true);
+      setProposalRestoredAt(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not apply weights');
     }
@@ -470,6 +511,11 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
 
       {trained?.ok && trained.before && trained.after && trained.baselines && (
         <div className="text-xs text-slate-300 space-y-2 bg-slate-950/60 rounded p-3 border border-slate-700">
+          {proposalRestoredAt && (
+            <div className="text-emerald-300">
+              Restored saved, unapplied proposal from {new Date(proposalRestoredAt).toLocaleString()}. You do not need to retrain to apply this result.
+            </div>
+          )}
           <div className="font-semibold text-slate-200">
             Result on {trained.holdoutSize.toLocaleString()} unseen recent matches (fit on {trained.trainedOn.toLocaleString()}, {trained.epochs} epochs)
           </div>
