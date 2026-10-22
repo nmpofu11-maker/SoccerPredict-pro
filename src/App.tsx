@@ -724,6 +724,7 @@ export default function App() {
                 }}
                 onOpenApkModal={() => setIsApkModalOpen(true)}
                 onOpenStatisticalModal={() => setIsStatisticalModalOpen(true)}
+                onTeamMatricesChange={setTeamMatrices}
               />
             ) : activeTab === 'yesterday' ? (
               <YesterdayPerformanceView
