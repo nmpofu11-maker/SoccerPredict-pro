@@ -2,6 +2,7 @@ import { DEFAULT_ENGINE_WEIGHTS, fixtureHasEvidence, sanitizeEngineWeights } fro
 import { evaluateHistoricalMatches, trainMultipleEpochs } from '../engine/selfLearningEngine';
 import { CANONICAL_INITIAL_MATRICES, synthesizeTeamIntelligenceMatrices } from '../engine/teamIntelligenceMatrix';
 import type { EngineWeights, HistoricalMatchResult } from '../types/soccer';
+import type { TeamIntelligenceMatrices } from '../types/superLearning';
 
 /** The engine trains synchronously (~0.6s per epoch per 1,000 matches), so the caps keep a run to roughly 15-60s. */
 export const TRAIN_LIMITS = { defaultEpochs: 5, maxEpochs: 10, defaultMatches: 5_000, maxMatches: 30_000, minUsable: 200 } as const;
@@ -63,6 +64,18 @@ export interface HistoricalHoldoutEvaluation {
  * from the server's imported archive. The holdout is not fitted; its team matrices
  * are derived from the preceding fit partition only.
  */
+/**
+ * Build team profiles for future/live predictions from the complete archive.
+ * This is intentionally separate from holdout evaluation, which derives matrices
+ * from its fit partition only to prevent evaluation leakage.
+ */
+export function buildPredictionTeamMatrices(results: HistoricalMatchResult[]): TeamIntelligenceMatrices {
+  const usable = (results || []).filter(
+    match => Boolean(match && match.fixture && fixtureHasEvidence(match.fixture))
+  );
+  return synthesizeTeamIntelligenceMatrices(usable, CANONICAL_INITIAL_MATRICES);
+}
+
 export function evaluateHistoricalModelOnHoldout(
   all: HistoricalMatchResult[],
   weights: Partial<EngineWeights> | null | undefined,
