@@ -6,6 +6,7 @@ import { createHash, timingSafeEqual } from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import { resolveRuntimeFilePath } from './src/services/runtimeFilePath';
 import cron from 'node-cron';
 import { verifyAndSanitizeFixtures } from './src/services/dataIntegrityValidator';
 import { parseHollywoodbetsRawText } from './src/services/hollywoodbetsParser';
@@ -81,7 +82,11 @@ dotenv.config();
 // Learning weights and snapshots must use the same persistent volume as the operator configures.
 // File paths are configurable because the default container filesystem may be ephemeral on serverless hosts.
 const configuredLearningStatePath = process.env.LEARNING_STATE_PATH?.trim();
-const LEARNING_STATE_PATH = configuredLearningStatePath || path.join(process.cwd(), 'data', 'persisted_learning_state.json');
+const LEARNING_STATE_PATH = resolveRuntimeFilePath(
+  configuredLearningStatePath,
+  path.join(process.cwd(), 'data', 'persisted_learning_state.json'),
+  'LEARNING_STATE_PATH',
+);
 const configuredLearningBackupDir = process.env.LEARNING_BACKUP_DIR?.trim();
 // If the operator customizes the state file path but not the backup path, keep snapshots
 // beside that file so the two are normally placed on the same mounted volume.
@@ -112,7 +117,11 @@ const uploadHistorical = multer({
 });
 
 const configuredHistoricalStorePath = process.env.HISTORICAL_DATA_PATH?.trim();
-const HISTORICAL_STORE_PATH = configuredHistoricalStorePath || path.join(process.cwd(), 'data', 'historical-matches.json');
+const HISTORICAL_STORE_PATH = resolveRuntimeFilePath(
+  configuredHistoricalStorePath,
+  path.join(process.cwd(), 'data', 'historical-matches.json'),
+  'HISTORICAL_DATA_PATH',
+);
 if (process.env.NODE_ENV === 'production' && !configuredHistoricalStorePath) {
   console.warn('[historical-store] HISTORICAL_DATA_PATH is unset; historical match imports use local ./data storage, which may be ephemeral on serverless hosts. Configure a persistent mounted volume before relying on imports across redeploys.');
 }
@@ -817,10 +826,16 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
 // and the learning engine has real new data to train on.
 // ---------------------------------------------------------------------------
 
-const RESULTS_LOG_PATH = (process.env.RESULTS_LOG_PATH && process.env.RESULTS_LOG_PATH !== '2001' ? process.env.RESULTS_LOG_PATH.trim() : null)
-  || path.join(process.cwd(), 'data', 'results-log.json');
-const CRON_STATUS_PATH = (process.env.CRON_STATUS_PATH && process.env.CRON_STATUS_PATH !== '2001' ? process.env.CRON_STATUS_PATH.trim() : null)
-  || path.join(process.cwd(), 'data', 'cron-status.json');
+const RESULTS_LOG_PATH = resolveRuntimeFilePath(
+  process.env.RESULTS_LOG_PATH,
+  path.join(process.cwd(), 'data', 'results-log.json'),
+  'RESULTS_LOG_PATH',
+);
+const CRON_STATUS_PATH = resolveRuntimeFilePath(
+  process.env.CRON_STATUS_PATH,
+  path.join(process.cwd(), 'data', 'cron-status.json'),
+  'CRON_STATUS_PATH',
+);
 
 interface SettledResultEntry {
   id: string;
@@ -908,8 +923,11 @@ function writeResultsLog(entries: SettledResultEntry[]): void {
 // See src/services/predictionLog.ts for the rules (append-only, hash-chained).
 // Set PREDICTION_LOG_PATH to a persistent volume if the app's disk is ephemeral.
 // ---------------------------------------------------------------------------
-const PREDICTION_LOG_PATH = process.env.PREDICTION_LOG_PATH?.trim()
-  || path.join(process.cwd(), 'data', 'prediction-log.jsonl');
+const PREDICTION_LOG_PATH = resolveRuntimeFilePath(
+  process.env.PREDICTION_LOG_PATH,
+  path.join(process.cwd(), 'data', 'prediction-log.jsonl'),
+  'PREDICTION_LOG_PATH',
+);
 const PREDICTION_MIN_SAMPLE = Math.max(1, Number(process.env.PREDICTION_MIN_SAMPLE || 30));
 const PREDICTION_HORIZON_HOURS = Math.max(1, Number(process.env.PREDICTION_HORIZON_HOURS || 72));
 
