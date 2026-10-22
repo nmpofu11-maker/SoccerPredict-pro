@@ -74,6 +74,8 @@ interface HistoricalEvaluationTelemetry {
   baselineAccuracyPct?: number | null;
   baselineBrierLoss?: number | null;
   matches?: HistoricalEvaluationMatch[];
+  /** Team profiles derived server-side from the full imported archive for use in live predictions. */
+  predictionTeamMatrices?: TeamIntelligenceMatrices;
   activeEpochs?: number;
   storedMatches?: number;
   evaluatedAt?: string;
@@ -121,6 +123,22 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
       })
       .then((report) => {
         if (!active) return;
+        // Hydrate live prediction profiles from the imported-history archive. Keep existing
+        // custom profiles when the archive has no qualifying sample for that team.
+        if (report.status === 'ok' && report.predictionTeamMatrices) {
+          const currentMatrices = loadTeamIntelligenceMatrices();
+          const mergedMatrices: TeamIntelligenceMatrices = { ...currentMatrices };
+          for (const [teamName, importedEntry] of Object.entries(report.predictionTeamMatrices)) {
+            const existingEntry = mergedMatrices[teamName];
+            if (importedEntry.sample_size_matches >= 3 || !existingEntry || existingEntry.sample_size_matches < 3) {
+              mergedMatrices[teamName] = importedEntry;
+            }
+          }
+          if (JSON.stringify(mergedMatrices) !== JSON.stringify(currentMatrices)) {
+            saveTeamIntelligenceMatrices(mergedMatrices);
+          }
+          setTeamMatrices(mergedMatrices);
+        }
         setHistoricalEvaluation(report);
         setHistoricalEvaluationError(null);
       })
