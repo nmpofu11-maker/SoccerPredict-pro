@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildTrainingSet, type ImportedMatchRow } from '../src/services/historicalImport';
-import { evaluateHistoricalModelOnHoldout, trainOnHistoricalResults, TRAIN_LIMITS } from '../src/services/historicalTraining';
+import { buildPredictionTeamMatrices, evaluateHistoricalModelOnHoldout, trainOnHistoricalResults, TRAIN_LIMITS } from '../src/services/historicalTraining';
 import { trainMultipleEpochs } from '../src/engine/selfLearningEngine';
 import { DEFAULT_ENGINE_WEIGHTS } from '../src/engine/rulesEngine';
-import { CANONICAL_INITIAL_MATRICES, normalizeTeamKey, synthesizeTeamIntelligenceMatrices } from '../src/engine/teamIntelligenceMatrix';
+import { normalizeTeamKey } from '../src/engine/teamIntelligenceMatrix';
 
 function synthetic(n: number): ImportedMatchRow[] {
   let seed = 11;
@@ -67,7 +67,7 @@ test('normalizes common archive/provider team aliases without fuzzy matching', (
 
 test('synthesizes sample-backed profiles from imported history but does not invent samples for unsupported clubs', () => {
   const { results } = buildTrainingSet(synthetic(900));
-  const matrices = synthesizeTeamIntelligenceMatrices(results, CANONICAL_INITIAL_MATRICES);
+  const matrices = buildPredictionTeamMatrices(results);
 
   assert.ok(matrices.T0.sample_size_matches >= 3, 'a team with sufficient imported matches should receive an observed profile');
   assert.ok(matrices.T0.learned_coefficients.home_advantage_multiplier >= 1.02);
