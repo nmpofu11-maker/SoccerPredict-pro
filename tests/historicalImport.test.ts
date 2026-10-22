@@ -49,7 +49,7 @@ test('standardized aggregate dataset columns import valid completed matches', as
     'Season,League,MatchDate,HomeTeam,AwayTeam,FullTimeHomeGoals,FullTimeAwayGoals,FullTimeResult,HomeShotsOnTarget,AwayShotsOnTarget',
     '2023/24,Premier League,2023-08-11,Burnley,Manchester City,0,3,A,1,8',
     '2023/24,Premier League,2023-08-12,Arsenal,Nottingham Forest,2,1,H,5,2',
-  ].join('\\n');
+  ].join('\n');
   const result = await importFromBuffer('aggregate-results.csv', strToU8(source));
   assert.equal(result.rows.length, 2);
   assert.equal(result.rows[0].date, '2023-08-11');
