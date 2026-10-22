@@ -47,7 +47,7 @@ test('training weights are invariant to outcome changes confined to the chronolo
 
   const changedHoldout = results.map((match, index) => {
     if (index < split) return match;
-    const reversed = match.actualOutcome === 'home'
+    const reversed: 'home' | 'draw' | 'away' = match.actualOutcome === 'home'
       ? 'away'
       : match.actualOutcome === 'away'
       ? 'home'
