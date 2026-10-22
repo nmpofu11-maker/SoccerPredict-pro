@@ -318,7 +318,9 @@ export function generateOptimalValueAccumulatorReport(
 
   // Precompute historical predictions once to avoid 60,000+ redundant calculations in nested loops
   const historicalEvaluations = (historicalResults || [])
-    .filter((h) => Boolean(h && h.fixture && h.actualOutcome))
+    // A neutral no-evidence prior is not a valid historical forecast and must not count
+    // toward cohort sample sizes or hit rates, even if its probability happens to match a value pick.
+    .filter((h) => Boolean(h && h.fixture && h.actualOutcome && fixtureHasEvidence(h.fixture)))
     .map((h) => ({
       result: h,
       pred: evaluateFixturePrediction(h.fixture, 'none', weights),
