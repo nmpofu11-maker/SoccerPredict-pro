@@ -111,8 +111,19 @@ export function evaluateFixturePrediction(
       tag: 'Insufficient verified strength on both teams',
       impact: 'Automatic prediction withheld; both teams require independent sourced strength evidence',
       beneficiary: 'neutral',
-      description: 'At least one team lacks verified rank, recent form, or sourced advanced-strength data. Odds, favourite status, and one-sided team data cannot replace the missing evidence.',
+      description: 'At least one team lacks verified rank, recent form, or sourced advanced-strength data. Market prices, favourite status, and one-sided team data cannot replace missing team evidence.',
     });
+    // Favourite classification is display-only and must not alter neutral probabilities.
+    if (isFavouriteMatch) {
+      appliedRules.push({
+        ruleNumber: 8,
+        ruleName: 'Priority Favourite Tag',
+        tag: 'Rule 8: Favourite Classification Only',
+        impact: 'No probability adjustment applied; favourite status is not match evidence',
+        beneficiary: 'neutral',
+        description: `Fixture tagged for the Favourites tab: ${favouriteTeams.join(' / ')}. Probabilities remain neutral until both teams have sourced strength evidence.`,
+      });
+    }
     return {
       matchId: fixture.id,
       homeWinPct: 34.8,
