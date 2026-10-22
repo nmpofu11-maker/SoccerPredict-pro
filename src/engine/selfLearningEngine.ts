@@ -295,7 +295,9 @@ export function trainMultipleEpochs(
 
   for (let i = 0; i < epochs; i++) {
     const lr = Math.max(0.02, 0.06 * (1 - i / (epochs + 1)));
-    const epochResult = trainSingleEpoch(currentWeights, results, lr, fitMatrices);
+    // Critical: fit on the chronological training partition only. Passing all results here
+    // leaks the validation holdout into weight updates and makes the reported holdout loss invalid.
+    const epochResult = trainSingleEpoch(currentWeights, fitResults, lr, fitMatrices);
     currentWeights = epochResult.updatedWeights;
     lossHistory.push(epochResult.newLoss);
   }
