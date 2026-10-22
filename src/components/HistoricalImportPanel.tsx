@@ -314,7 +314,7 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
             <tbody>
               <tr><td>Current weights</td><td>{trained.before.accuracyPct}%</td><td>{trained.before.brierLoss}</td></tr>
               <tr><td>Proposed weights</td><td>{trained.after.accuracyPct}%</td><td>{trained.after.brierLoss}</td></tr>
-              <tr className="text-slate-400"><td>Baseline: always "{trained.baselines.alwaysMostCommonOutcome.outcome}"</td>
+              <tr className="text-slate-400"><td>Baseline: training frequencies (most common: "{trained.baselines.alwaysMostCommonOutcome.outcome}")</td>
                 <td>{trained.baselines.alwaysMostCommonOutcome.accuracyPct}%</td><td>{trained.baselines.alwaysMostCommonOutcome.brierLoss}</td></tr>
             </tbody>
           </table>
