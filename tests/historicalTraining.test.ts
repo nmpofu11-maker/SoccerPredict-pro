@@ -4,7 +4,7 @@ import { buildTrainingSet, type ImportedMatchRow } from '../src/services/histori
 import { evaluateHistoricalModelOnHoldout, trainOnHistoricalResults, TRAIN_LIMITS } from '../src/services/historicalTraining';
 import { trainMultipleEpochs } from '../src/engine/selfLearningEngine';
 import { DEFAULT_ENGINE_WEIGHTS } from '../src/engine/rulesEngine';
-import { CANONICAL_INITIAL_MATRICES, synthesizeTeamIntelligenceMatrices } from '../src/engine/teamIntelligenceMatrix';
+import { CANONICAL_INITIAL_MATRICES, normalizeTeamKey, synthesizeTeamIntelligenceMatrices } from '../src/engine/teamIntelligenceMatrix';
 
 function synthetic(n: number): ImportedMatchRow[] {
   let seed = 11;
@@ -55,6 +55,14 @@ test('active imported-history evaluation reports scored holdout matches instead 
   assert.ok((report.brierLoss ?? 0) > 0 && (report.brierLoss ?? 0) <= 1);
   assert.ok(report.matches.length > 0 && report.matches.length <= 100);
   assert.ok(report.matches.every(match => Boolean(match.fixture.homeTeam.name && match.fixture.awayTeam.name)));
+});
+
+test('normalizes common archive/provider team aliases without fuzzy matching', () => {
+  assert.equal(normalizeTeamKey('Man City'), 'Manchester City');
+  assert.equal(normalizeTeamKey('Manchester City'), 'Manchester City');
+  assert.equal(normalizeTeamKey('Paris SG'), 'Paris Saint-Germain');
+  assert.equal(normalizeTeamKey('FC Nantes'), 'Nantes');
+  assert.equal(normalizeTeamKey('Mamelodi Sundowns'), 'Mamelodi Sundowns');
 });
 
 test('synthesizes sample-backed profiles from imported history but does not invent samples for unsupported clubs', () => {
