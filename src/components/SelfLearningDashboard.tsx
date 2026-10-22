@@ -88,6 +88,8 @@ interface SelfLearningDashboardProps {
   onUpdateLearningState: (newState: LearningModelState) => void;
   onOpenApkModal?: () => void;
   onOpenStatisticalModal?: () => void;
+  /** Notify the parent prediction engine when the imported archive hydrates team profiles. */
+  onTeamMatricesChange?: (matrices: TeamIntelligenceMatrices) => void;
 }
 
 export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
@@ -95,6 +97,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
   onUpdateLearningState,
   onOpenApkModal,
   onOpenStatisticalModal,
+  onTeamMatricesChange,
 }) => {
   const [isTraining, setIsTraining] = useState(false);
   const [isRequestingAI, setIsRequestingAI] = useState(false);
@@ -138,6 +141,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
             saveTeamIntelligenceMatrices(mergedMatrices);
           }
           setTeamMatrices(mergedMatrices);
+          onTeamMatricesChange?.(mergedMatrices);
         }
         setHistoricalEvaluation(report);
         setHistoricalEvaluationError(null);
@@ -151,7 +155,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
         if (active) setHistoricalEvaluationLoading(false);
       });
     return () => { active = false; };
-  }, [learningState.weights, learningState.totalEpochsTrained, learningState.lastTrainedAt]);
+  }, [learningState.weights, learningState.totalEpochsTrained, learningState.lastTrainedAt, onTeamMatricesChange]);
 
   // Re-evaluate current evaluations
   const currentEval = evaluateOutOfSampleValidation(HISTORICAL_MATCH_RESULTS, learningState.weights);
