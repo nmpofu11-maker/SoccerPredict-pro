@@ -1,4 +1,4 @@
-import { fixtureHasEvidence, sanitizeEngineWeights } from '../engine/rulesEngine';
+import { DEFAULT_ENGINE_WEIGHTS, fixtureHasEvidence, sanitizeEngineWeights } from '../engine/rulesEngine';
 import { evaluateHistoricalMatches, trainMultipleEpochs } from '../engine/selfLearningEngine';
 import { CANONICAL_INITIAL_MATRICES, synthesizeTeamIntelligenceMatrices } from '../engine/teamIntelligenceMatrix';
 import type { EngineWeights, HistoricalMatchResult } from '../types/soccer';
@@ -25,14 +25,36 @@ export interface HistoricalTrainingOutcome {
   note: string;
 }
 
+export interface HistoricalHoldoutMatch {
+  matchId: string;
+  date: string;
+  fixture: {
+    league: string;
+    homeTeam: { name: string };
+    awayTeam: { name: string };
+  };
+  homeScore: number;
+  awayScore: number;
+  actualOutcome: 'home' | 'draw' | 'away';
+  predictedOutcome: 'home' | 'draw' | 'away';
+  isCorrect: boolean;
+  probabilities: { home: number; draw: number; away: number };
+  brierScore: number;
+}
+
 export interface HistoricalHoldoutEvaluation {
   status: 'ok' | 'insufficient_data';
   usableMatches: number;
   windowMatches: number;
   holdoutSize: number;
   evaluatedMatches: number;
+  correctCount: number;
   accuracyPct: number | null;
   brierLoss: number | null;
+  baselineAccuracyPct: number | null;
+  baselineBrierLoss: number | null;
+  /** Most recent scored matches only, to keep the dashboard payload and rendering bounded. */
+  matches: HistoricalHoldoutMatch[];
   note: string;
 }
 
@@ -62,15 +84,20 @@ export function evaluateHistoricalModelOnHoldout(
       windowMatches: window.length,
       holdoutSize: holdout.length,
       evaluatedMatches: 0,
+      correctCount: 0,
       accuracyPct: null,
       brierLoss: null,
+      baselineAccuracyPct: null,
+      baselineBrierLoss: null,
+      matches: [],
       note: `Insufficient usable historical matches for a chronological holdout (need at least ${TRAIN_LIMITS.minUsable}). Metrics are unavailable, not zero.`,
     };
   }
 
   const matrices = synthesizeTeamIntelligenceMatrices(fit, CANONICAL_INITIAL_MATRICES);
-  const evaluation = evaluateHistoricalMatches(holdout, sanitizeEngineWeights(weights), matrices);
-  const evaluatedMatches = evaluation.evaluations.length;
+  const activeEvaluation = evaluateHistoricalMatches(holdout, sanitizeEngineWeights(weights), matrices);
+  const baselineEvaluation = evaluateHistoricalMatches(holdout, DEFAULT_ENGINE_WEIGHTS, matrices);
+  const evaluatedMatches = activeEvaluation.evaluations.length;
   if (evaluatedMatches === 0) {
     return {
       status: 'insufficient_data',
@@ -78,11 +105,32 @@ export function evaluateHistoricalModelOnHoldout(
       windowMatches: window.length,
       holdoutSize: holdout.length,
       evaluatedMatches: 0,
+      correctCount: 0,
       accuracyPct: null,
       brierLoss: null,
+      baselineAccuracyPct: null,
+      baselineBrierLoss: null,
+      matches: [],
       note: 'The evidence gate withheld every automatic prediction in the holdout. Accuracy and Brier loss are unavailable, not zero.',
     };
   }
+
+  const matches: HistoricalHoldoutMatch[] = activeEvaluation.evaluations.slice(-100).map(item => ({
+    matchId: item.matchId,
+    date: item.fixture.kickoffTime.slice(0, 10) || item.fixture.kickoffTime,
+    fixture: {
+      league: item.fixture.league,
+      homeTeam: { name: item.fixture.homeTeam.name },
+      awayTeam: { name: item.fixture.awayTeam.name },
+    },
+    homeScore: item.homeScore,
+    awayScore: item.awayScore,
+    actualOutcome: item.actualOutcome,
+    predictedOutcome: item.predictedOutcome,
+    isCorrect: item.isCorrect,
+    probabilities: item.probabilities,
+    brierScore: item.brierScore,
+  }));
 
   return {
     status: 'ok',
@@ -90,9 +138,13 @@ export function evaluateHistoricalModelOnHoldout(
     windowMatches: window.length,
     holdoutSize: holdout.length,
     evaluatedMatches,
-    accuracyPct: evaluation.accuracyPct,
-    brierLoss: evaluation.brierLoss,
-    note: 'Measured on imported historical results in the most recent chronological holdout; only prior-window team matrices were used.',
+    correctCount: activeEvaluation.correctCount,
+    accuracyPct: activeEvaluation.accuracyPct,
+    brierLoss: activeEvaluation.brierLoss,
+    baselineAccuracyPct: baselineEvaluation.accuracyPct,
+    baselineBrierLoss: baselineEvaluation.brierLoss,
+    matches,
+    note: 'Measured on imported historical results in the most recent chronological holdout; only prior-window team matrices were used. Default-weight baseline is scored on the same holdout and matrices.',
   };
 }
 
