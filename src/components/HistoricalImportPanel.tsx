@@ -77,7 +77,7 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
   const toggle = (code: string) => setPicked(p => p.includes(code) ? p.filter(c => c !== code) : [...p, code]);
 
   const downloadFromProvider = async () => {
-    setBusy('import'); setError(null); setSync(null); setTrained(null); setApplied(false);
+    setBusy('import'); setError(null); setSync(null); setImported(null); setSync(null); setTrained(null); setApplied(false);
     try {
       const res = await fetch('/api/admin/historical/football-data/sync', {
         method: 'POST',
@@ -95,7 +95,7 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
   };
 
   const upload = async (file: File) => {
-    setBusy('import'); setError(null); setTrained(null); setApplied(false);
+    setBusy('import'); setError(null); setSync(null); setTrained(null); setApplied(false);
     try {
       const fd = new FormData();
       fd.append('file', file);
