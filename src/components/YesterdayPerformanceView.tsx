@@ -446,6 +446,60 @@ export const YesterdayPerformanceView: React.FC<YesterdayPerformanceViewProps> =
             </div>
           </div>
 
+          {/* Prospective results stay separated by the exact code + weights fingerprint captured before kickoff. */}
+          {report?.byModelVersion && report.byModelVersion.length > 0 && (
+            <div className="bg-slate-900/70 border border-sky-500/25 rounded-xl overflow-hidden" id="prospective-model-version-performance">
+              <div className="p-4 border-b border-slate-800">
+                <h3 className="text-sm font-bold text-sky-300">Prospective Results by Model Version</h3>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Only audited, settled forecasts are scored. Model versions are identified by the code revision and weight fingerprint frozen before kickoff; lower Brier and log-loss are better.
+                </p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-950 text-slate-400 uppercase text-[10px]">
+                    <tr>
+                      <th className="p-3">Model fingerprint</th>
+                      <th className="p-3 text-right">Scored</th>
+                      <th className="p-3 text-right">Accuracy (95% CI)</th>
+                      <th className="p-3 text-right">Brier half-sum</th>
+                      <th className="p-3 text-right">Log-loss</th>
+                      <th className="p-3">Forecast freeze window</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/70">
+                    {report.byModelVersion.map(model => (
+                      <tr key={model.modelVersion} className="align-top hover:bg-slate-800/30">
+                        <td className="p-3 max-w-xs">
+                          <div className="font-mono text-slate-200 break-all">{model.modelVersion}</div>
+                          <div className={`mt-1 text-[10px] ${model.isSampleSufficient ? 'text-emerald-400' : 'text-amber-300'}`}>
+                            {model.isSampleSufficient ? `Minimum sample met (N ≥ ${model.minSample})` : `Provisional — needs ${Math.max(0, model.minSample - model.evaluatedCount)} more settled forecasts`}
+                          </div>
+                        </td>
+                        <td className="p-3 text-right font-mono text-slate-200">{model.evaluatedCount}</td>
+                        <td className="p-3 text-right">
+                          <div className="font-mono text-white">{model.accuracyPct.toFixed(1)}%</div>
+                          <div className="mt-1 text-[10px] text-slate-400 font-mono">
+                            [{model.accuracy95CiPct.low.toFixed(1)}%, {model.accuracy95CiPct.high.toFixed(1)}%]
+                          </div>
+                        </td>
+                        <td className="p-3 text-right font-mono text-emerald-300">{model.meanBrierHalfSum.toFixed(4)}</td>
+                        <td className="p-3 text-right font-mono text-sky-300">{model.meanLogLoss.toFixed(4)}</td>
+                        <td className="p-3 text-[10px] font-mono text-slate-400 whitespace-nowrap">
+                          {new Date(model.firstFrozenAt).toLocaleString()}<br />
+                          to {new Date(model.lastFrozenAt).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-4 py-3 border-t border-slate-800 text-[11px] text-slate-400">
+                Do not judge a new version from a handful of games. Its row becomes reportable only after the configured minimum number of eligible results has settled.
+              </div>
+            </div>
+          )}
+
           {/* 7-Point Audit Protocol Checklist Toggle */}
           <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
             <button
