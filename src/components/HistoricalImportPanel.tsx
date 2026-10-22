@@ -228,7 +228,7 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
       {storedSummary && (
         <div className="rounded border border-slate-700 bg-slate-950/50 p-3 space-y-1 text-xs text-slate-300">
           <div>
-            **Server historical store:** {storedSummary.storedTotal.toLocaleString()} matches; {storedSummary.training.usable.toLocaleString()} currently usable for training across {storedSummary.training.leagues} league(s).
+            <strong>Server historical store:</strong> {storedSummary.storedTotal.toLocaleString()} matches; {storedSummary.training.usable.toLocaleString()} currently usable for training across {storedSummary.training.leagues} league(s).
             {storedSummary.training.dateFrom && storedSummary.training.dateTo ? ` Date range: ${storedSummary.training.dateFrom} → ${storedSummary.training.dateTo}.` : ''}
           </div>
           <div className="text-amber-300">Persistence not independently verified. {storedSummary.storage.note}</div>
