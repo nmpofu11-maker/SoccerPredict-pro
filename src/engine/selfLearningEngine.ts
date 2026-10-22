@@ -234,12 +234,16 @@ export function trainSingleEpoch(
   const keys = Object.keys(BOUNDS_ENGINE_WEIGHTS) as (keyof EngineWeights)[];
 
   for (const key of keys) {
-    const rawVal = safeCurrent[key];
+    // Coordinate descent must compare each candidate with the weights already accepted
+    // for earlier coordinates in this epoch, not only with the epoch's starting weights.
+    const rawVal = updatedWeights[key];
     const bounds = BOUNDS_ENGINE_WEIGHTS[key];
     const currentVal = (typeof rawVal === 'number' && Number.isFinite(rawVal) && !isNaN(rawVal))
       ? Math.min(bounds.max, Math.max(bounds.min, rawVal))
       : DEFAULT_ENGINE_WEIGHTS[key];
 
+    const coordinateEval = evaluateHistoricalMatches(optimisationResults, updatedWeights, teamMatrices);
+    const coordinateMetrics = exactEvaluationMetrics(coordinateEval);
     const stepSize = Math.max((bounds.max - bounds.min) * learningRate * 0.45, 0.01);
 
     // Test positive step
@@ -253,15 +257,15 @@ export function trainSingleEpoch(
     const evalMinusMetrics = exactEvaluationMetrics(evalMinus);
 
     let bestVal = currentVal;
-    let minLoss = Number.isFinite(baseMetrics.brierLoss) ? baseMetrics.brierLoss : 0.25;
+    let minLoss = Number.isFinite(coordinateMetrics.brierLoss) ? coordinateMetrics.brierLoss : 0.25;
 
     if (Number.isFinite(evalPlusMetrics.brierLoss) && evalPlusMetrics.brierLoss < minLoss &&
-        evalPlusMetrics.accuracyPct >= baseMetrics.accuracyPct - 2.5) {
+        evalPlusMetrics.accuracyPct >= coordinateMetrics.accuracyPct - 2.5) {
       minLoss = evalPlusMetrics.brierLoss;
       bestVal = testPlus;
     }
     if (Number.isFinite(evalMinusMetrics.brierLoss) && evalMinusMetrics.brierLoss < minLoss &&
-        evalMinusMetrics.accuracyPct >= baseMetrics.accuracyPct - 2.5) {
+        evalMinusMetrics.accuracyPct >= coordinateMetrics.accuracyPct - 2.5) {
       bestVal = testMinus;
     }
 
