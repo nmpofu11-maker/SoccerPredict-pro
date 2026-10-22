@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluateFixturePrediction } from '../src/engine/rulesEngine';
-import { generateSmartAccumulator, generateOptimalValueAccumulatorReport } from '../src/utils/smartAccumulatorEngine';
+import { generateSmartAccumulator, generateOptimalValueAccumulatorReport, filterEvidenceBackedHistoricalResults } from '../src/utils/smartAccumulatorEngine';
 import type { MatchFixture } from '../src/types/soccer';
 
 function makeBaseFixture(overrides: Partial<MatchFixture> = {}): MatchFixture {
@@ -157,7 +157,43 @@ test('(4) one-sided team evidence plus bookmaker odds is insufficient for automa
   assert.equal(valueReport.combinedOdds, null);
 });
 
-test('(4) manualOverride force_home on an evidence-free fixture still returns home', () => {
+test('(5) evidence-free historical fixtures are excluded from accumulator validation cohorts', () => {
+  const scheduleOnly = {
+    id: 'schedule-only-history',
+    actualOutcome: 'home',
+    fixture: makeBaseFixture({ id: 'schedule-only-history' }),
+  };
+  const base = makeBaseFixture();
+  const supportedFixture = makeBaseFixture({
+    id: 'evidence-backed-history',
+    homeTeam: {
+      ...base.homeTeam,
+      leagueRank: 3,
+      points: 24,
+      standingsSource: 'FOOTBALL_DATA_ORG',
+      form: ['W', 'W', 'D'],
+      formSource: 'FOOTBALL_DATA_ORG',
+    },
+    awayTeam: {
+      ...base.awayTeam,
+      leagueRank: 14,
+      points: 11,
+      standingsSource: 'FOOTBALL_DATA_ORG',
+      form: ['L', 'D', 'L'],
+      formSource: 'FOOTBALL_DATA_ORG',
+    },
+  });
+  const supported = {
+    id: 'evidence-backed-history',
+    actualOutcome: 'home',
+    fixture: supportedFixture,
+  };
+
+  const filtered = filterEvidenceBackedHistoricalResults([scheduleOnly, supported] as any[]);
+  assert.deepEqual(filtered.map((row) => row.id), ['evidence-backed-history']);
+});
+
+test('(6) manualOverride force_home on an evidence-free fixture still returns home', () => {
   const fixture = makeBaseFixture();
   const result = evaluateFixturePrediction(fixture, 'force_home');
   assert.equal(result.predictedWinner, 'home');
