@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluateFixturePrediction } from '../src/engine/rulesEngine';
+import { generateSmartAccumulator } from '../src/utils/smartAccumulatorEngine';
 import type { MatchFixture } from '../src/types/soccer';
 
 function makeBaseFixture(overrides: Partial<MatchFixture> = {}): MatchFixture {
@@ -122,6 +123,34 @@ test('(3) whenever the pick is draw, drawPct >= max(homeWinPct, awayWinPct)', ()
       );
     }
   }
+});
+
+test('(4) one-sided team evidence plus bookmaker odds is insufficient for automatic prediction or accumulator ranking', () => {
+  const base = makeBaseFixture();
+  const oneSided = makeBaseFixture({
+    homeTeam: {
+      ...base.homeTeam,
+      leagueRank: 2,
+      points: 24,
+      standingsSource: 'FOOTBALL_DATA_ORG',
+      form: ['W', 'W', 'W'],
+      formSource: 'FOOTBALL_DATA_ORG',
+    },
+    // Odds and implied probabilities must never make up for the away team's missing evidence.
+    odds: { home: 3.40, draw: 3.20, away: 2.10, provider: 'test-market' },
+    impliedProbabilities: { home: 29, draw: 30, away: 41, marginPercent: 5 },
+  });
+
+  const prediction = evaluateFixturePrediction(oneSided, 'none');
+  assert.equal(prediction.hasEvidence, false);
+  assert.equal(prediction.predictedWinner, 'none');
+  assert.equal(prediction.homeWinPct, 34.8);
+  assert.equal(prediction.drawPct, 30.4);
+  assert.equal(prediction.awayWinPct, 34.8);
+
+  const accumulator = generateSmartAccumulator([oneSided], {}, {});
+  assert.equal(accumulator.legs.length, 0);
+  assert.equal(accumulator.combinedOdds, null);
 });
 
 test('(4) manualOverride force_home on an evidence-free fixture still returns home', () => {
