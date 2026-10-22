@@ -659,9 +659,13 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
                 Chronological Holdout Accuracy
               </span>
               <div className="text-xl font-bold text-emerald-300 mt-1">
-                {learningState.accuracyPct.toFixed(1)}%
+                {historicalEvaluationLoading
+                  ? 'Checking…'
+                  : historicalEvaluation?.status === 'ok' && typeof historicalEvaluation.accuracyPct === 'number'
+                    ? `${historicalEvaluation.accuracyPct.toFixed(1)}%`
+                    : 'Unavailable'}
               </div>
-              <span className="text-[10px] text-slate-400">Against the unseen validation window</span>
+              <span className="text-[10px] text-slate-400">Server-evaluated imported-history holdout</span>
             </div>
 
             <div className="p-3.5 rounded-xl border border-sky-500/30 bg-slate-900/90 shadow-md">
@@ -670,9 +674,13 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
                 Holdout Brier Loss
               </span>
               <div className="text-xl font-bold text-sky-300 mt-1">
-                {learningState.brierLoss.toFixed(3)}
+                {historicalEvaluationLoading
+                  ? 'Checking…'
+                  : historicalEvaluation?.status === 'ok' && typeof historicalEvaluation.brierLoss === 'number'
+                    ? historicalEvaluation.brierLoss.toFixed(3)
+                    : 'Unavailable'}
               </div>
-              <span className="text-[10px] text-slate-400">Lower indicates smaller probability error; no target is claimed</span>
+              <span className="text-[10px] text-slate-400">Measured multi-class Brier loss; lower is better</span>
             </div>
 
             <div className="p-3.5 rounded-xl border border-purple-500/30 bg-slate-900/90 shadow-md">
@@ -685,6 +693,22 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
               </div>
               <span className="text-[10px] text-slate-400">Observed coefficients when supported by at least three completed training-window matches</span>
             </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3 text-xs text-slate-300">
+            {historicalEvaluationLoading ? (
+              <span>Evaluating active server weights against the imported archive&apos;s chronological holdout…</span>
+            ) : historicalEvaluation?.status === 'ok' ? (
+              <span>
+                Scored <strong>{(historicalEvaluation.evaluatedMatches ?? 0).toLocaleString()}</strong> of {(historicalEvaluation.holdoutSize ?? 0).toLocaleString()} holdout matches
+                from {(historicalEvaluation.storedMatches ?? 0).toLocaleString()} stored results; active model epoch count: {historicalEvaluation.activeEpochs ?? 0}.
+                {historicalEvaluation.evaluatedAt ? ` Evaluated ${new Date(historicalEvaluation.evaluatedAt).toLocaleString()}.` : ''}
+              </span>
+            ) : (
+              <span className="text-amber-300">
+                {historicalEvaluation?.note || historicalEvaluationError || 'Measured historical performance is unavailable. The former 0% / 0.000 values were not evidence of model performance.'}
+              </span>
+            )}
           </div>
 
           {/* Team Intelligence Matrices Interactive Table */}
