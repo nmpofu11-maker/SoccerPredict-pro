@@ -325,9 +325,10 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
             <div className="text-amber-300">Improved, but still not better than the no-knowledge baseline on Brier score.</div>
           )}
           <div className="text-slate-500">{trained.note}</div>
-          <button onClick={() => void apply()} disabled={applied}
-            className={`px-3 py-1.5 rounded text-white text-xs font-semibold disabled:opacity-50 ${trained.improvedOnHoldout ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-slate-600 hover:bg-slate-500'}`}>
-            {applied ? 'Applied' : trained.improvedOnHoldout ? 'Apply proposed weights' : 'Apply anyway'}
+          <button onClick={() => void apply()} disabled={applied || !trained.improvedOnHoldout || !beatsBaseline}
+            title={!trained.improvedOnHoldout ? 'Cannot apply: the proposal did not improve holdout performance.' : !beatsBaseline ? 'Cannot apply: the proposal did not beat the no-knowledge baseline on Brier score.' : undefined}
+            className={`px-3 py-1.5 rounded text-white text-xs font-semibold disabled:opacity-50 ${beatsBaseline && trained.improvedOnHoldout ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-slate-600 cursor-not-allowed'}`}>
+            {applied ? 'Applied' : beatsBaseline && trained.improvedOnHoldout ? 'Apply verified improvement' : 'Apply blocked — validation failed'}
           </button>
         </div>
       )}
