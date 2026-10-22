@@ -268,12 +268,16 @@ export const MatchCard: React.FC<MatchCardProps> = ({
                 ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
                 : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
             }`}
-            title={`Leading Model Probability: ${Number.isFinite(prediction.modelLeaderProbabilityPct) ? prediction.modelLeaderProbabilityPct : 'N/A'}%`}
+            title={hasPredictionEvidence
+              ? `Leading Model Probability: ${prediction.modelLeaderProbabilityPct}%`
+              : 'No verified prediction: both teams need sourced strength evidence.'}
           >
             <span className={`w-1.5 h-1.5 rounded-full ${
-              Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct > 75
+              !hasPredictionEvidence
+                ? 'bg-slate-500'
+                : prediction.modelLeaderProbabilityPct > 75
                 ? 'bg-emerald-400 animate-pulse'
-                : Number.isFinite(prediction.modelLeaderProbabilityPct) && prediction.modelLeaderProbabilityPct >= 50
+                : prediction.modelLeaderProbabilityPct >= 50
                 ? 'bg-amber-400 animate-pulse'
                 : 'bg-rose-400'
             }`} />
