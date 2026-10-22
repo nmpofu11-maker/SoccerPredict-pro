@@ -15,7 +15,7 @@
  */
 import { decodeText, tableToRows, parseCsv, type ImportedMatchRow, type ImportFileReport } from './historicalImport';
 
-export const FD_BASE = 'https://www.football-data.co.uk';
+export const FD_BASE = 'https://football-data.co.uk';
 
 export interface FdLeague { code: string; name: string; kind: 'main' | 'extra' }
 
