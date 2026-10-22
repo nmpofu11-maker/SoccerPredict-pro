@@ -1,5 +1,5 @@
 import { MatchFixture, PredictionResult, HistoricalMatchResult } from '../types/soccer';
-import { evaluateFixturePrediction } from '../engine/rulesEngine';
+import { evaluateFixturePrediction, fixtureHasEvidence } from '../engine/rulesEngine';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
 import { getTodayDateString, getFixtureLocalDateString } from './dateFilterUtils';
 
@@ -137,18 +137,9 @@ export function generateSmartAccumulator(
   for (const fixture of activeFixtures) {
     if (!fixture || !fixture.id || !fixture.homeTeam || !fixture.awayTeam) continue;
 
-    // DATA-QUALITY GATE: Evidence-gated qualification (standings, form, ratings, or authentic bookmaker odds)
-    const hasQualifyingEvidence = Boolean(
-      fixture.isStandingsVerified ||
-      fixture.authenticity?.source === 'OFFICIAL_ESPN_STANDINGS' ||
-      fixture.homeTeam?.standingsSource ||
-      fixture.awayTeam?.standingsSource ||
-      fixture.homeTeam?.formSource ||
-      fixture.awayTeam?.formSource ||
-      fixture.impliedProbabilities ||
-      (fixture.odds?.home && Number(fixture.odds.home) > 1.05)
-    );
-    if (!hasQualifyingEvidence) continue;
+    // DATA-QUALITY GATE: both teams need independent sourced strength evidence.
+    // Odds/implied probabilities and fixture-level labels are market/metadata, not team-strength evidence.
+    if (!fixtureHasEvidence(fixture)) continue;
 
     // AUTHENTIC ODDS GATE: Exclude any fixture without genuine market odds
     if (!fixture.odds?.home || !fixture.odds?.away || Number(fixture.odds.home) <= 1.05 || Number(fixture.odds.away) <= 1.05) {
@@ -334,18 +325,9 @@ export function generateOptimalValueAccumulatorReport(
     }));
 
   for (const fixture of validFixtures) {
-    // DATA-QUALITY GATE: Evidence-gated qualification (standings, form, ratings, or authentic bookmaker odds)
-    const hasQualifyingEvidence = Boolean(
-      fixture.isStandingsVerified ||
-      fixture.authenticity?.source === 'OFFICIAL_ESPN_STANDINGS' ||
-      fixture.homeTeam?.standingsSource ||
-      fixture.awayTeam?.standingsSource ||
-      fixture.homeTeam?.formSource ||
-      fixture.awayTeam?.formSource ||
-      fixture.impliedProbabilities ||
-      (fixture.odds?.home && Number(fixture.odds.home) > 1.05)
-    );
-    if (!hasQualifyingEvidence) continue;
+    // DATA-QUALITY GATE: both teams need independent sourced strength evidence.
+    // Odds/implied probabilities and fixture-level labels are market/metadata, not team-strength evidence.
+    if (!fixtureHasEvidence(fixture)) continue;
 
     // AUTHENTIC ODDS GATE: Exclude any fixture without genuine market odds (no synthetic fallbacks)
     if (!fixture.odds?.home || !fixture.odds?.away || Number(fixture.odds.home) <= 1.05 || Number(fixture.odds.away) <= 1.05) {
