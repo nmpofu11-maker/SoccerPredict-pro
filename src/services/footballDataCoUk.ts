@@ -10,8 +10,8 @@
  *
  * Layout (confirmed by several independent client libraries; not checkable from the build sandbox, so
  * the first live sync is the real test and every file reports its own outcome):
- *   main leagues : https://www.football-data.co.uk/mmz4281/<yyzz>/<DIV>.csv       one file per season
- *   extra leagues: https://www.football-data.co.uk/new/<CODE>.csv                 one file, all seasons
+ *   main leagues : https://football-data.co.uk/mmz4281/<yyzz>/<DIV>.csv       one file per season
+ *   extra leagues: https://football-data.co.uk/new/<CODE>.csv                 one file, all seasons
  */
 import { decodeText, tableToRows, parseCsv, type ImportedMatchRow, type ImportFileReport } from './historicalImport';
 
