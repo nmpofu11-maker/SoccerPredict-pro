@@ -100,6 +100,9 @@ export async function importSportApiAiHistoricalResults(
       result.fixturesSeen += fixtures.length;
 
       if (rateLimited()) {
+        // The provider helper returns [] on HTTP 429; do not count that attempted date as fetched.
+        result.daysFetched = Math.max(0, result.daysFetched - 1);
+        result.fixturesSeen = Math.max(0, result.fixturesSeen - fixtures.length);
         result.note = 'SportAPI.ai rate limit reached. Completed results fetched so far were retained; wait for the provider quota to reset before retrying.';
         result.stoppedAt = day;
         break;
