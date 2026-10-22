@@ -911,6 +911,17 @@ const PREDICTION_LOG_PATH = process.env.PREDICTION_LOG_PATH?.trim()
 const PREDICTION_MIN_SAMPLE = Math.max(1, Number(process.env.PREDICTION_MIN_SAMPLE || 30));
 const PREDICTION_HORIZON_HOURS = Math.max(1, Number(process.env.PREDICTION_HORIZON_HOURS || 72));
 
+if (process.env.NODE_ENV === 'production') {
+  const unconfiguredLedgerPaths = [
+    !process.env.PREDICTION_LOG_PATH?.trim() ? 'PREDICTION_LOG_PATH' : null,
+    (!process.env.RESULTS_LOG_PATH?.trim() || process.env.RESULTS_LOG_PATH.trim() === '2001') ? 'RESULTS_LOG_PATH' : null,
+    (!process.env.CRON_STATUS_PATH?.trim() || process.env.CRON_STATUS_PATH.trim() === '2001') ? 'CRON_STATUS_PATH' : null,
+  ].filter((name): name is string => name !== null);
+  if (unconfiguredLedgerPaths.length) {
+    console.warn(`[runtime-storage] ${unconfiguredLedgerPaths.join(', ')} ${unconfiguredLedgerPaths.length === 1 ? 'is' : 'are'} unset; prediction audit, settled results, and/or cron status use local ./data defaults, which may be ephemeral on serverless hosts. Configure these paths on persistent mounted storage.`);
+  }
+}
+
 function currentEngineWeights() {
   try {
     const f = LEARNING_STATE_PATH;
