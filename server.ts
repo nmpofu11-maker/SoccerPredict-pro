@@ -3111,8 +3111,17 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
   // ---- Historical training data: import zip/csv/xlsx, summarise, clear, and propose trained weights ----
   // Imported rows are stored compactly (date/teams/score/shots-on-target only; odds columns are dropped).
   // Rank/points/form/H2H are recomputed point-in-time from those rows whenever a training set is built.
+  // Serialize every historical-store mutation. Parsing/downloading awaits can otherwise let two requests
+  // read the same old file and the last writer silently discard the first import's additions.
+  let historicalStoreMutationRunning = false;
+
   app.post('/api/admin/historical/import', requireAdmin, uploadHistorical.single('file') as unknown as express.RequestHandler, async (req, res) => {
     const uploadedPath = req.file?.path;
+    if (historicalStoreMutationRunning) {
+      if (uploadedPath) { try { fs.unlinkSync(uploadedPath); } catch {} }
+      return res.status(409).json({ error: 'Historical data is being updated by another request. No import was saved; retry after the current update finishes.' });
+    }
+    historicalStoreMutationRunning = true;
     try {
       if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
       const bytes = new Uint8Array(fs.readFileSync(req.file.path));
@@ -3157,10 +3166,11 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
     });
   });
 
-  let footballDataSyncRunning = false;
   app.post('/api/admin/historical/football-data/sync', requireAdmin, async (req, res) => {
-    if (footballDataSyncRunning) return res.status(409).json({ error: 'A football-data.co.uk sync is already running' });
-    footballDataSyncRunning = true;
+    if (historicalStoreMutationRunning) {
+      return res.status(409).json({ error: 'Historical data is being updated by another request. No sync was saved; retry after the current update finishes.' });
+    }
+    historicalStoreMutationRunning = true;
     try {
       const { leagues, fromSeason, toSeason } = req.body || {};
       if (!Array.isArray(leagues)) return res.status(400).json({ error: '"leagues" must be an array of league codes' });
@@ -3188,7 +3198,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       console.error('football-data.co.uk sync failed:', error);
       res.status(400).json({ error: msg });
     } finally {
-      footballDataSyncRunning = false;
+      historicalStoreMutationRunning = false;
     }
   });
 
@@ -3214,11 +3224,17 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
   });
 
   app.delete('/api/admin/historical', requireAdmin, (_req, res) => {
+    if (historicalStoreMutationRunning) {
+      return res.status(409).json({ error: 'Historical data is being updated by another request. Nothing was cleared; retry after the current update finishes.' });
+    }
+    historicalStoreMutationRunning = true;
     try {
       writeHistoricalStore([]);
       res.json({ success: true, storedTotal: 0 });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to clear historical data' });
+    } finally {
+      historicalStoreMutationRunning = false;
     }
   });
 
