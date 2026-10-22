@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   LearningModelState,
   HistoricalEvaluation,
@@ -51,6 +51,19 @@ import {
 } from 'lucide-react';
 import { runStatisticalEvaluation } from '../utils/statisticalAnalysisTool';
 
+interface HistoricalEvaluationTelemetry {
+  status: 'ok' | 'insufficient_data' | 'error';
+  holdoutSize?: number;
+  evaluatedMatches?: number;
+  accuracyPct?: number | null;
+  brierLoss?: number | null;
+  activeEpochs?: number;
+  storedMatches?: number;
+  evaluatedAt?: string;
+  note?: string;
+  message?: string;
+}
+
 interface SelfLearningDashboardProps {
   learningState: LearningModelState;
   onUpdateLearningState: (newState: LearningModelState) => void;
@@ -75,6 +88,35 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
   const [telemetry, setTelemetry] = useState<SuperLearningTelemetry>(() => loadSuperLearningTelemetry());
   const [showJsonSchemaModal, setShowJsonSchemaModal] = useState(false);
   const [isSyncingServer, setIsSyncingServer] = useState(false);
+  const [historicalEvaluation, setHistoricalEvaluation] = useState<HistoricalEvaluationTelemetry | null>(null);
+  const [historicalEvaluationLoading, setHistoricalEvaluationLoading] = useState(false);
+  const [historicalEvaluationError, setHistoricalEvaluationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setHistoricalEvaluationLoading(true);
+    setHistoricalEvaluationError(null);
+    fetch('/api/admin/historical/evaluation', { headers: getAdminApiHeaders() })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || data.error || `Historical evaluation failed (HTTP ${res.status})`);
+        return data as HistoricalEvaluationTelemetry;
+      })
+      .then((report) => {
+        if (!active) return;
+        setHistoricalEvaluation(report);
+        setHistoricalEvaluationError(null);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setHistoricalEvaluation(null);
+        setHistoricalEvaluationError(error instanceof Error ? error.message : 'Server-side historical evaluation is unavailable.');
+      })
+      .finally(() => {
+        if (active) setHistoricalEvaluationLoading(false);
+      });
+    return () => { active = false; };
+  }, [learningState.weights, learningState.totalEpochsTrained, learningState.lastTrainedAt]);
 
   // Re-evaluate current evaluations
   const currentEval = evaluateOutOfSampleValidation(HISTORICAL_MATCH_RESULTS, learningState.weights);
