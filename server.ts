@@ -2137,7 +2137,15 @@ async function startServer() {
         !disk ||
         diskEpochs !== incomingEpochs ||
         JSON.stringify(disk.weights) !== JSON.stringify(state.weights);
-      if (changed) snapshotLearningState('client_post');
+      if (changed && fs.existsSync(LEARNING_STATE_PATH)) {
+        const snapshot = snapshotLearningState('client_post');
+        if (!snapshot) {
+          return res.status(500).json({
+            status: 'error',
+            message: 'Learning-state backup failed; the existing state was left unchanged.',
+          });
+        }
+      }
       writeLearningStateAtomic(state);
 
       return res.json({
@@ -2235,7 +2243,15 @@ async function startServer() {
       stateToRestore.baselineWeights = sanitizeServerWeights(stateToRestore.baselineWeights);
       if (process.env.ALLOW_LEARNING_TRAINING !== '1') stateToRestore.isAutoLearningEnabled = false;
 
-      snapshotLearningState('pre_restore');
+      if (fs.existsSync(LEARNING_STATE_PATH)) {
+        const snapshot = snapshotLearningState('pre_restore');
+        if (!snapshot) {
+          return res.status(500).json({
+            status: 'error',
+            message: 'Pre-restore backup failed; the existing learning state was left unchanged.',
+          });
+        }
+      }
       writeLearningStateAtomic(stateToRestore);
 
       return res.json({
