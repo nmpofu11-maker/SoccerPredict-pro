@@ -64,7 +64,7 @@ import { readResultsLogFile } from './src/services/resultsLogStore';
 import { findSafeSettlementNameMatch } from './src/utils/settlementMatching';
 import { readAdminGuardConfig, decideAdminAccess } from './src/services/adminGuard';
 import { importFromBuffer, mergeRows, buildTrainingSet, IMPORT_LIMITS, type ImportedMatchRow } from './src/services/historicalImport';
-import { trainOnHistoricalResults, TRAIN_LIMITS } from './src/services/historicalTraining';
+import { trainOnHistoricalResults, TRAIN_LIMITS, type HistoricalTrainingOutcome } from './src/services/historicalTraining';
 import { FD_MAIN_LEAGUES, FD_EXTRA_LEAGUES, FD_LIMITS, planRequests, syncFootballDataCoUk, currentSeasonStart } from './src/services/footballDataCoUk';
 import { sanitizeRuntimeManifest } from './src/services/manifestSanitizer';
 import {
@@ -122,6 +122,65 @@ const HISTORICAL_STORE_PATH = resolveRuntimeFilePath(
   path.join(process.cwd(), 'data', 'historical-matches.json'),
   'HISTORICAL_DATA_PATH',
 );
+
+/**
+ * Keep the most recent training proposal on disk, separate from the active model state.
+ * A proposal is not active until the operator applies it, but it survives browser/server restarts.
+ * It is tied to a fingerprint of the imported rows so stale proposals are never silently reused.
+ */
+const HISTORICAL_TRAINING_PROPOSAL_PATH = path.join(
+  path.dirname(HISTORICAL_STORE_PATH),
+  'pending-historical-training-proposal.json',
+);
+
+interface StoredHistoricalTrainingProposal {
+  version: 1;
+  createdAt: string;
+  historicalDataFingerprint: string;
+  startWeights: Record<string, number>;
+  outcome: HistoricalTrainingOutcome;
+}
+
+function historicalRowsFingerprint(rows: ImportedMatchRow[]): string {
+  return createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+}
+
+function writeStoredHistoricalTrainingProposal(proposal: StoredHistoricalTrainingProposal): void {
+  fs.mkdirSync(path.dirname(HISTORICAL_TRAINING_PROPOSAL_PATH), { recursive: true });
+  const tmp = `${HISTORICAL_TRAINING_PROPOSAL_PATH}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(proposal, null, 2), 'utf-8');
+  fs.renameSync(tmp, HISTORICAL_TRAINING_PROPOSAL_PATH);
+}
+
+function readStoredHistoricalTrainingProposal(): StoredHistoricalTrainingProposal | null {
+  if (!fs.existsSync(HISTORICAL_TRAINING_PROPOSAL_PATH)) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(HISTORICAL_TRAINING_PROPOSAL_PATH, 'utf-8')) as Partial<StoredHistoricalTrainingProposal>;
+    if (
+      parsed.version !== 1 ||
+      typeof parsed.createdAt !== 'string' ||
+      typeof parsed.historicalDataFingerprint !== 'string' ||
+      !parsed.startWeights ||
+      typeof parsed.startWeights !== 'object' ||
+      !parsed.outcome ||
+      typeof parsed.outcome !== 'object'
+    ) {
+      throw new Error('invalid saved-proposal schema');
+    }
+    return parsed as StoredHistoricalTrainingProposal;
+  } catch (error) {
+    console.error('[historical-training] Saved proposal is unreadable; it will not be restored:', error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+function removeStoredHistoricalTrainingProposal(): void {
+  try {
+    if (fs.existsSync(HISTORICAL_TRAINING_PROPOSAL_PATH)) fs.unlinkSync(HISTORICAL_TRAINING_PROPOSAL_PATH);
+  } catch (error) {
+    console.warn('[historical-training] Could not remove applied proposal:', error instanceof Error ? error.message : error);
+  }
+}
 if (process.env.NODE_ENV === 'production' && !configuredHistoricalStorePath) {
   console.warn('[historical-store] HISTORICAL_DATA_PATH is unset; historical match imports use local ./data storage, which may be ephemeral on serverless hosts. Configure a persistent mounted volume before relying on imports across redeploys.');
 }
@@ -2175,6 +2234,14 @@ async function startServer() {
         }
       }
       writeLearningStateAtomic(state);
+      // A proposal is consumed only when the persisted weights exactly match its candidate.
+      const pendingProposal = readStoredHistoricalTrainingProposal();
+      if (pendingProposal?.outcome.proposedWeights) {
+        const appliedWeights = sanitizeServerWeights(state.weights);
+        const proposedWeights = sanitizeServerWeights(pendingProposal.outcome.proposedWeights);
+        const isAppliedProposal = Object.keys(DEFAULT_SERVER_WEIGHTS).every(key => appliedWeights[key] === proposedWeights[key]);
+        if (isAppliedProposal) removeStoredHistoricalTrainingProposal();
+      }
 
       return res.json({
         status: 'saved',
@@ -3249,6 +3316,23 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
     }
   });
 
+  // Restore the last proposed training result after a page or server restart.
+  // The stored candidate is only valid for the exact historical rows it was trained on.
+  app.get('/api/admin/historical/proposal', requireAdmin, (_req, res) => {
+    try {
+      const proposal = readStoredHistoricalTrainingProposal();
+      if (!proposal) return res.json({ status: 'not_found' });
+      const rows = readHistoricalStore();
+      if (proposal.historicalDataFingerprint !== historicalRowsFingerprint(rows)) {
+        removeStoredHistoricalTrainingProposal();
+        return res.json({ status: 'stale', message: 'The imported history changed after this proposal was generated. Run training again to create a matching proposal.' });
+      }
+      return res.json({ status: 'ok', proposal });
+    } catch (error) {
+      return res.status(500).json({ status: 'error', message: error instanceof Error ? error.message : 'Could not restore saved training proposal' });
+    }
+  });
+
   app.get('/api/admin/historical/summary', requireAdmin, (_req, res) => {
     try {
       const rows = readHistoricalStore();
@@ -3290,12 +3374,23 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
   app.post('/api/admin/historical/train', requireAdmin, (req, res) => {
     try {
       const { epochs, maxMatches, weights } = req.body || {};
-      const { results } = buildTrainingSet(readHistoricalStore());
+      const historicalRows = readHistoricalStore();
+      const { results } = buildTrainingSet(historicalRows);
+      const startWeights = sanitizeEngineWeights(weights && typeof weights === 'object' ? weights : null);
       const outcome = trainOnHistoricalResults(results, {
         epochs: typeof epochs === 'number' ? epochs : undefined,
         maxMatches: typeof maxMatches === 'number' ? maxMatches : undefined,
-        startWeights: weights && typeof weights === 'object' ? weights : null,
+        startWeights,
       });
+      if (outcome.ok) {
+        writeStoredHistoricalTrainingProposal({
+          version: 1,
+          createdAt: new Date().toISOString(),
+          historicalDataFingerprint: historicalRowsFingerprint(historicalRows),
+          startWeights,
+          outcome,
+        });
+      }
       res.status(outcome.ok ? 200 : 400).json(outcome);
     } catch (error) {
       console.error('Historical training failed:', error);
