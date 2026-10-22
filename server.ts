@@ -78,6 +78,21 @@ import {
 
 dotenv.config();
 
+// Learning weights and snapshots must use the same persistent volume as the operator configures.
+// File paths are configurable because the default container filesystem may be ephemeral on serverless hosts.
+const configuredLearningStatePath = process.env.LEARNING_STATE_PATH?.trim();
+const LEARNING_STATE_PATH = configuredLearningStatePath || path.join(process.cwd(), 'data', 'persisted_learning_state.json');
+const configuredLearningBackupDir = process.env.LEARNING_BACKUP_DIR?.trim();
+const LEARNING_BACKUP_DIR = configuredLearningBackupDir || path.join(process.cwd(), 'data', 'backups');
+if (process.env.NODE_ENV === 'production') {
+  if (!configuredLearningStatePath) {
+    console.warn('[learning-state] LEARNING_STATE_PATH is unset; learned weights use local ./data storage, which may be ephemeral on serverless hosts.');
+  }
+  if (!configuredLearningBackupDir) {
+    console.warn('[learning-state] LEARNING_BACKUP_DIR is unset; learning-state backups use local ./data/backups, which may be ephemeral on serverless hosts.');
+  }
+}
+
 const upload = multer({
   dest: 'uploads/',
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
@@ -891,7 +906,7 @@ const PREDICTION_HORIZON_HOURS = Math.max(1, Number(process.env.PREDICTION_HORIZ
 
 function currentEngineWeights() {
   try {
-    const f = path.join(process.cwd(), 'data', 'persisted_learning_state.json');
+    const f = LEARNING_STATE_PATH;
     if (fs.existsSync(f)) {
       const st = JSON.parse(fs.readFileSync(f, 'utf-8'));
       if (st && st.weights) return sanitizeEngineWeights(st.weights);
@@ -2005,9 +2020,6 @@ async function startServer() {
   // The server is the sole authority over persisted_learning_state.json.
   // Clients may not raise the epoch count (i.e. train) unless the operator
   // has explicitly started the server with ALLOW_LEARNING_TRAINING=1.
-  const LEARNING_STATE_PATH = path.join(process.cwd(), 'data', 'persisted_learning_state.json');
-  const LEARNING_BACKUP_DIR = path.join(process.cwd(), 'data', 'backups');
-
   function readDiskLearningState(): any | null {
     try {
       if (!fs.existsSync(LEARNING_STATE_PATH)) return null;
@@ -2045,7 +2057,7 @@ async function startServer() {
   // Durable Persistence: Get Learned Model State
   app.get('/api/learning-state', (_req, res) => {
     try {
-      const filePath = path.join(process.cwd(), 'data', 'persisted_learning_state.json');
+      const filePath = LEARNING_STATE_PATH;
       if (fs.existsSync(filePath)) {
         const raw = fs.readFileSync(filePath, 'utf-8');
         const state = JSON.parse(raw);
@@ -2124,7 +2136,7 @@ async function startServer() {
   app.post('/api/learning-state/backup', requireAdmin, (req, res) => {
     try {
       const { state, tag } = req.body;
-      const backupDir = path.join(process.cwd(), 'data', 'backups');
+      const backupDir = LEARNING_BACKUP_DIR;
       if (!fs.existsSync(backupDir)) {
         fs.mkdirSync(backupDir, { recursive: true });
       }
@@ -2155,7 +2167,7 @@ async function startServer() {
   // Durable Persistence: List Available Backups
   app.get('/api/learning-state/backups', (_req, res) => {
     try {
-      const backupDir = path.join(process.cwd(), 'data', 'backups');
+      const backupDir = LEARNING_BACKUP_DIR;
       if (!fs.existsSync(backupDir)) {
         return res.json({ status: 'ok', backups: [] });
       }
@@ -2185,7 +2197,7 @@ async function startServer() {
         return res.status(400).json({ status: 'error', message: 'Filename required' });
       }
 
-      const backupDir = path.join(process.cwd(), 'data', 'backups');
+      const backupDir = LEARNING_BACKUP_DIR;
       const backupPath = path.join(backupDir, path.basename(filename));
 
       if (!fs.existsSync(backupPath)) {
