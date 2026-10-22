@@ -64,7 +64,7 @@ import { readResultsLogFile } from './src/services/resultsLogStore';
 import { findSafeSettlementNameMatch } from './src/utils/settlementMatching';
 import { readAdminGuardConfig, decideAdminAccess } from './src/services/adminGuard';
 import { importFromBuffer, mergeRows, buildTrainingSet, IMPORT_LIMITS, type ImportedMatchRow } from './src/services/historicalImport';
-import { trainOnHistoricalResults, TRAIN_LIMITS, type HistoricalTrainingOutcome } from './src/services/historicalTraining';
+import { evaluateHistoricalModelOnHoldout, trainOnHistoricalResults, TRAIN_LIMITS, type HistoricalTrainingOutcome } from './src/services/historicalTraining';
 import { FD_MAIN_LEAGUES, FD_EXTRA_LEAGUES, FD_LIMITS, planRequests, syncFootballDataCoUk, currentSeasonStart } from './src/services/footballDataCoUk';
 import { sanitizeRuntimeManifest } from './src/services/manifestSanitizer';
 import {
@@ -3351,6 +3351,31 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to summarise historical data' });
+    }
+  });
+
+  // Evaluate the currently active server weights against the imported archive's chronological holdout.
+  // This avoids the client bundle's intentionally empty static dataset being mistaken for a measured 0% / 0.000.
+  app.get('/api/admin/historical/evaluation', requireAdmin, (_req, res) => {
+    try {
+      const rows = readHistoricalStore();
+      const { results } = buildTrainingSet(rows);
+      const diskState = readDiskLearningState();
+      const report = evaluateHistoricalModelOnHoldout(
+        results,
+        sanitizeEngineWeights(diskState?.weights ?? null),
+        TRAIN_LIMITS.maxMatches,
+      );
+      return res.json({
+        ...report,
+        storedMatches: rows.length,
+        activeEpochs: Number.isFinite(diskState?.totalEpochsTrained) ? diskState.totalEpochsTrained : 0,
+        evaluatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Historical evaluation failed';
+      console.error('[historical-evaluation] failed:', message);
+      return res.status(500).json({ status: 'error', message: 'Could not evaluate the active model against imported historical data.' });
     }
   });
 
