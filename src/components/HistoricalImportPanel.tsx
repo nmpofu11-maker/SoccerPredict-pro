@@ -94,17 +94,40 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
   const [maxMatches, setMaxMatches] = useState<number>(5_000);
   const [applied, setApplied] = useState(false);
   const [catalog, setCatalog] = useState<FdCatalog | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [fromSeason, setFromSeason] = useState<number>(0);
   const [sync, setSync] = useState<FdSyncResult | null>(null);
   const [storedSummary, setStoredSummary] = useState<StoredSummary | null>(null);
 
+  const loadCatalog = async (isAlive: () => boolean = () => true) => {
+    if (isAlive()) { setCatalogLoading(true); setCatalogError(null); }
+    try {
+      const res = await fetch('/api/admin/historical/football-data/catalog', { headers: getAdminApiHeaders() });
+      const data = await readJson(res);
+      if (!res.ok) throw new Error(data.error || data.message || `Catalog request failed (HTTP ${res.status})`);
+      if (!data || !Array.isArray(data.leagues)) throw new Error('The server returned an invalid league catalog.');
+      if (isAlive()) {
+        const nextCatalog = data as FdCatalog;
+        setCatalog(nextCatalog);
+        setFromSeason(nextCatalog.currentSeasonStart - 4);
+        // Give the operator a ready-to-use default. They can change it before downloading.
+        setPicked(previous => previous.length > 0 ? previous : ['E0']);
+      }
+    } catch (e) {
+      if (isAlive()) {
+        setCatalog(null);
+        setCatalogError(e instanceof Error ? e.message : 'Could not load the football-data.co.uk league catalog.');
+      }
+    } finally {
+      if (isAlive()) setCatalogLoading(false);
+    }
+  };
+
   useEffect(() => {
     let alive = true;
-    fetch('/api/admin/historical/football-data/catalog', { headers: getAdminApiHeaders() })
-      .then(r => r.ok ? r.json() : null)
-      .then((c: FdCatalog | null) => { if (alive && c) { setCatalog(c); setFromSeason(c.currentSeasonStart - 4); } })
-      .catch(() => { /* panel still works for manual uploads */ });
+    void loadCatalog(() => alive);
     void fetchStoredSummary().then(summary => { if (alive && summary) setStoredSummary(summary); });
     return () => { alive = false; };
   }, []);
@@ -283,9 +306,21 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
       </div>
 
       <div className="rounded border border-slate-700 p-3 space-y-2">
-        <div className="text-xs font-semibold text-slate-200">Or download from football-data.co.uk (free public archive)</div>
+        <div className="text-xs font-semibold text-slate-200">Download completed results from football-data.co.uk (free public archive)</div>
+        <div className="text-[11px] text-slate-400">Select a league below, then press the blue download button. England Premier League is selected by default.</div>
         {!catalog ? (
-          <div className="text-xs text-slate-500">Catalog unavailable (admin key needed). Manual upload above still works.</div>
+          <div className="text-xs text-slate-400 space-y-2">
+            <div>{catalogLoading ? 'Loading the league catalog…' : `Could not load the league catalog: ${catalogError || 'unknown error'}`}</div>
+            {!catalogLoading && (
+              <div className="space-y-1">
+                <div>If this says “Unauthorized” or mentions x-admin-api-key, save the same ADMIN_API_KEY in the Data Verified → Manual Upload panel, then retry here.</div>
+                <button type="button" onClick={() => { void loadCatalog(); }}
+                  className="px-3 py-1.5 rounded border border-slate-600 hover:bg-slate-800 text-slate-200">
+                  Retry loading leagues
+                </button>
+              </div>
+            )}
+          </div>
         ) : (
           <>
             <div className="flex flex-wrap gap-x-3 gap-y-1">
