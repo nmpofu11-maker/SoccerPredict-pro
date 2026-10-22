@@ -85,6 +85,7 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
   const [error, setError] = useState<string | null>(null);
   const [imported, setImported] = useState<ImportResult | null>(null);
   const [trained, setTrained] = useState<TrainResult | null>(null);
+  const [maxMatches, setMaxMatches] = useState<number>(5_000);
   const [applied, setApplied] = useState(false);
   const [catalog, setCatalog] = useState<FdCatalog | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
@@ -147,7 +148,7 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
       const res = await fetch('/api/admin/historical/train', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAdminApiHeaders() },
-        body: JSON.stringify({ weights: learningState.weights }),
+        body: JSON.stringify({ weights: learningState.weights, maxMatches }),
       });
       const data = await readJson(res);
       if (!res.ok && !data.reason) throw new Error(data.error || 'Training failed');
@@ -223,6 +224,7 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
         <p className="text-xs text-slate-400 mt-1">
           Needs date, home team, away team and full-time goals. Rank, points, form and head-to-head are computed from the
           files themselves using only earlier matches. Bookmaker odds columns are ignored and never stored.
+          The full archive stays stored; each training run fits the selected most-recent window (up to 30,000 matches).
         </p>
       </div>
       {storedSummary && (
@@ -236,6 +238,16 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
       )}
 
       <div className="flex flex-wrap gap-2 items-center">
+        <label className="flex items-center gap-2 text-xs text-slate-300">
+          Training window
+          <select value={maxMatches} onChange={e => setMaxMatches(Number(e.target.value))} disabled={busy !== null}
+            className="bg-slate-950 border border-slate-600 rounded px-2 py-1">
+            <option value={5000}>5,000 (fast)</option>
+            <option value={10000}>10,000</option>
+            <option value={20000}>20,000</option>
+            <option value={30000}>30,000 (maximum)</option>
+          </select>
+        </label>
         <input ref={fileRef} type="file" accept=".zip,.csv,.xlsx" disabled={busy !== null}
           onChange={e => { const f = e.target.files?.[0]; if (f) void upload(f); }}
           className="text-xs text-slate-300 file:mr-3 file:px-3 file:py-1.5 file:rounded file:border-0 file:bg-sky-600 file:text-white" />
@@ -248,6 +260,11 @@ export const HistoricalImportPanel: React.FC<Props> = ({ learningState, onUpdate
           Clear imported data
         </button>
         {busy === 'import' && <span className="text-xs text-slate-400">Working…</span>}
+      </div>
+
+      <div className="text-[11px] text-amber-300">
+        Only the selected recent window is used to fit weights; older imported results remain available for point-in-time history/features.
+        The most recent 20% of the selected window is held out from fitting for evaluation.
       </div>
 
       <div className="rounded border border-slate-700 p-3 space-y-2">
