@@ -64,8 +64,7 @@ import { readResultsLogFile } from './src/services/resultsLogStore';
 import { findSafeSettlementNameMatch } from './src/utils/settlementMatching';
 import { readAdminGuardConfig, decideAdminAccess } from './src/services/adminGuard';
 import { importFromBuffer, mergeRows, buildTrainingSet, IMPORT_LIMITS, type ImportedMatchRow } from './src/services/historicalImport';
-import { evaluateHistoricalModelOnHoldout, trainOnHistoricalResults, TRAIN_LIMITS, type HistoricalTrainingOutcome } from './src/services/historicalTraining';
-import { CANONICAL_INITIAL_MATRICES, synthesizeTeamIntelligenceMatrices } from './src/engine/teamIntelligenceMatrix';
+import { buildPredictionTeamMatrices, evaluateHistoricalModelOnHoldout, trainOnHistoricalResults, TRAIN_LIMITS, type HistoricalTrainingOutcome } from './src/services/historicalTraining';
 import { FD_MAIN_LEAGUES, FD_EXTRA_LEAGUES, FD_LIMITS, planRequests, syncFootballDataCoUk, currentSeasonStart } from './src/services/footballDataCoUk';
 import { sanitizeRuntimeManifest } from './src/services/manifestSanitizer';
 import {
@@ -1015,10 +1014,38 @@ function currentEngineWeights() {
   return sanitizeEngineWeights(undefined);
 }
 
+let cachedPredictionTeamMatrices: ReturnType<typeof buildPredictionTeamMatrices> | null = null;
+let cachedHistoricalStoreSignature = '';
+
+function currentHistoricalTeamMatrices(): ReturnType<typeof buildPredictionTeamMatrices> {
+  let signature = 'missing';
+  try {
+    const stat = fs.statSync(HISTORICAL_STORE_PATH);
+    signature = `${stat.size}:${stat.mtimeMs}`;
+  } catch {
+    // An absent archive means the prediction engine uses the neutral baseline matrices.
+  }
+
+  if (cachedPredictionTeamMatrices && cachedHistoricalStoreSignature === signature) {
+    return cachedPredictionTeamMatrices;
+  }
+
+  try {
+    const { results } = buildTrainingSet(readHistoricalStore());
+    cachedPredictionTeamMatrices = buildPredictionTeamMatrices(results);
+    cachedHistoricalStoreSignature = signature;
+    return cachedPredictionTeamMatrices;
+  } catch (error) {
+    console.error('[team-matrices] Unable to derive profiles from imported history; using neutral baselines:', error instanceof Error ? error.message : 'unknown error');
+    return buildPredictionTeamMatrices([]);
+  }
+}
+
 function runPredictionFreezeJob(now: number = Date.now()) {
   const summary = { appended: 0, duplicate: 0, late: 0, invalid: 0, errors: 0, considered: 0, noEvidence: 0 };
   try {
     const weights = currentEngineWeights();
+    const teamMatrices = currentHistoricalTeamMatrices();
     const modelVersion =
       `${process.env.GIT_SHA?.slice(0, 12) || 'local'}+w${createHash('sha256').update(JSON.stringify(weights)).digest('hex').slice(0, 10)}`;
     const horizonMs = PREDICTION_HORIZON_HOURS * 3_600_000;
@@ -1029,7 +1056,7 @@ function runPredictionFreezeJob(now: number = Date.now()) {
       if (!f?.id || !Number.isFinite(kickoff) || kickoff <= now || kickoff > now + horizonMs) continue;
       summary.considered++;
       try {
-        const p = evaluateFixturePrediction(f, 'none', weights);
+        const p = evaluateFixturePrediction(f, 'none', weights, teamMatrices);
         if (!p) { summary.invalid++; continue; }
         if (p.predictedWinner === 'none') { summary.noEvidence++; continue; }
         const r = appendPrediction(PREDICTION_LOG_PATH, {
@@ -3371,7 +3398,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
         ...report,
         // Profiles for live predictions are derived from the complete imported archive.
         // Holdout evaluation continues to use its own pre-holdout-only matrices inside `report`.
-        predictionTeamMatrices: synthesizeTeamIntelligenceMatrices(results, CANONICAL_INITIAL_MATRICES),
+        predictionTeamMatrices: buildPredictionTeamMatrices(results),
         storedMatches: rows.length,
         activeEpochs: Number.isFinite(diskState?.totalEpochsTrained) ? diskState.totalEpochsTrained : 0,
         evaluatedAt: new Date().toISOString(),
