@@ -171,8 +171,8 @@ test('Rule 4 H2H: null h2h cleanly skips Rule 4; populated 4+ home wins triggers
     venue: 'Test Ground',
     isHighStakes: false,
     motivation: 'regular',
-    homeTeam: { id: 'h1', name: 'Home Team', shortName: 'HOM', leagueRank: 10, points: 20, form: ['D'], avgPossession: null, avgShotsOnTarget: null, isHomeDominant: false, hasTopTierAwayForm: false },
-    awayTeam: { id: 'a1', name: 'Away Team', shortName: 'AWA', leagueRank: 11, points: 19, form: ['D'], avgPossession: null, avgShotsOnTarget: null, isHomeDominant: false, hasTopTierAwayForm: false },
+    homeTeam: { id: 'h1', name: 'Home Team', shortName: 'HOM', leagueRank: 10, points: 20, standingsSource: 'FOOTBALL_DATA_ORG', form: ['D'], formSource: 'FOOTBALL_DATA_ORG', avgPossession: null, avgShotsOnTarget: null, isHomeDominant: false, hasTopTierAwayForm: false },
+    awayTeam: { id: 'a1', name: 'Away Team', shortName: 'AWA', leagueRank: 11, points: 19, standingsSource: 'FOOTBALL_DATA_ORG', form: ['D'], formSource: 'FOOTBALL_DATA_ORG', avgPossession: null, avgShotsOnTarget: null, isHomeDominant: false, hasTopTierAwayForm: false },
     h2h: null,
   };
 
