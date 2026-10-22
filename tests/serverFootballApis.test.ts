@@ -1,4 +1,4 @@
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   apiFootballConfigured,
@@ -6,6 +6,10 @@ import {
   fetchApiFootballFixturesByDate,
   fetchSportmonksFixturesByDate,
 } from '../src/services/serverFootballApis';
+
+// These tests use fixed October 2026 kickoffs, and production code rejects fixtures that kicked off >3h ago.
+// Pin the clock so the suite does not rot as real time moves on.
+mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-10T12:00:00Z') });
 
 const originalFetch = globalThis.fetch;
 const originalEnv = {

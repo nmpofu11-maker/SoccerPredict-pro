@@ -21,6 +21,7 @@ import {
 import { TeamIntelligenceMatrices, SuperLearningTelemetry } from '../types/superLearning';
 import { DEFAULT_ENGINE_WEIGHTS } from '../engine/rulesEngine';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
+import { HistoricalImportPanel } from './HistoricalImportPanel';
 import { getLeagueMeta } from '../constants/leagues';
 import { requestAITacticalSynthesis } from '../services/aiLearningService';
 import { getAdminApiHeaders } from '../services/adminAuthService';
@@ -549,6 +550,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
       {/* Sub-Tab 0: Model Calibration & Team Intelligence Matrices */}
       {activeSubTab === 'superlearning' && (
         <div className="space-y-5 animate-fadeIn">
+          <HistoricalImportPanel learningState={learningState} onUpdateLearningState={onUpdateLearningState} />
           {/* Hero Protocol Banner */}
           <div className="p-5 rounded-xl border border-amber-500/40 bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950/40 shadow-xl relative overflow-hidden">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

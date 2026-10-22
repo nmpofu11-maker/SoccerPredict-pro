@@ -9,11 +9,11 @@ export interface TeamStats {
   leagueRank: number | null;
   points: number | null;
   form: ('W' | 'D' | 'L')[];
-  formSource?: 'API_FOOTBALL' | 'FOOTBALL_DATA_ORG' | 'ESPN' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB';
-  standingsSource?: 'API_FOOTBALL' | 'FOOTBALL_DATA_ORG' | 'ESPN' | 'SPORTMONKS' | 'SPORTAPI_AI';
-  matchStatsSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'ESPN';
-  advancedStatsSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'FOOTBALL_DATA_ORG';
-  homeAwayFormSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'FOOTBALL_DATA_ORG';
+  formSource?: 'HISTORICAL_IMPORT' | 'API_FOOTBALL' | 'FOOTBALL_DATA_ORG' | 'ESPN' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB';
+  standingsSource?: 'HISTORICAL_IMPORT' | 'API_FOOTBALL' | 'FOOTBALL_DATA_ORG' | 'ESPN' | 'SPORTMONKS' | 'SPORTAPI_AI';
+  matchStatsSource?: 'HISTORICAL_IMPORT' | 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'ESPN';
+  advancedStatsSource?: 'HISTORICAL_IMPORT' | 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'FOOTBALL_DATA_ORG';
+  homeAwayFormSource?: 'HISTORICAL_IMPORT' | 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'FOOTBALL_DATA_ORG';
   scheduleSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'ESPN';
   formScores?: string[]; // FT scores for last 5 matches e.g. ["2-1", "3-0", "1-1", "2-0", "1-0"]
   formDetails?: {
@@ -48,7 +48,7 @@ export interface H2HRecord {
   awayWins: number | null;
   totalLast5: number | null;
   scoresLast5?: string[]; // e.g. ["2-1", "3-0", "1-1", "2-0", "4-1"]
-  source?: 'FOOTBALL_DATA_ORG' | 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI';
+  source?: 'HISTORICAL_IMPORT' | 'FOOTBALL_DATA_ORG' | 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI';
 }
 
 export interface MatchFixture {

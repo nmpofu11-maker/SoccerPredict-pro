@@ -62,6 +62,9 @@ import { parseRawResults } from './src/services/resultParserService';
 import { readResultsLogFile } from './src/services/resultsLogStore';
 import { findSafeSettlementNameMatch } from './src/utils/settlementMatching';
 import { readAdminGuardConfig, decideAdminAccess } from './src/services/adminGuard';
+import { importFromBuffer, mergeRows, buildTrainingSet, IMPORT_LIMITS, type ImportedMatchRow } from './src/services/historicalImport';
+import { trainOnHistoricalResults, TRAIN_LIMITS } from './src/services/historicalTraining';
+import { FD_MAIN_LEAGUES, FD_EXTRA_LEAGUES, FD_LIMITS, planRequests, syncFootballDataCoUk, currentSeasonStart } from './src/services/footballDataCoUk';
 import { sanitizeRuntimeManifest } from './src/services/manifestSanitizer';
 import {
   type CronStatus,
@@ -79,6 +82,32 @@ const upload = multer({
   dest: 'uploads/',
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
 });
+
+// Historical training data (zip/csv/xlsx). Larger limit than fixture uploads; the importer enforces its own zip-bomb limits.
+const uploadHistorical = multer({
+  dest: 'uploads/',
+  limits: { fileSize: 200 * 1024 * 1024, files: 1 },
+});
+
+const HISTORICAL_STORE_PATH = process.env.HISTORICAL_DATA_PATH?.trim() || path.join(process.cwd(), 'data', 'historical-matches.json');
+
+function readHistoricalStore(): ImportedMatchRow[] {
+  try {
+    if (!fs.existsSync(HISTORICAL_STORE_PATH)) return [];
+    const parsed = JSON.parse(fs.readFileSync(HISTORICAL_STORE_PATH, 'utf-8'));
+    return Array.isArray(parsed?.rows) ? parsed.rows : [];
+  } catch (e) {
+    console.error('Historical store unreadable, treating as empty (file left untouched):', e);
+    return [];
+  }
+}
+
+function writeHistoricalStore(rows: ImportedMatchRow[]): void {
+  fs.mkdirSync(path.dirname(HISTORICAL_STORE_PATH), { recursive: true });
+  const tmp = `${HISTORICAL_STORE_PATH}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), rows }));
+  fs.renameSync(tmp, HISTORICAL_STORE_PATH);
+}
 
 function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction): void {
   const cfg = readAdminGuardConfig(process.env);
@@ -643,7 +672,6 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
                 },
               };
 
-              fixture.awayTeam.avgPossession = 100 - fixture.homeTeam.avgPossession;
               allFixtures.push(fixture);
             }
           } catch (leagueErr: unknown) {
@@ -3023,6 +3051,126 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
     } catch (error) {
       console.error('Error fetching fixture link:', error);
       res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to fetch fixture link' });
+    }
+  });
+
+  // ---- Historical training data: import zip/csv/xlsx, summarise, clear, and propose trained weights ----
+  // Imported rows are stored compactly (date/teams/score/shots-on-target only; odds columns are dropped).
+  // Rank/points/form/H2H are recomputed point-in-time from those rows whenever a training set is built.
+  app.post('/api/admin/historical/import', requireAdmin, uploadHistorical.single('file') as unknown as express.RequestHandler, async (req, res) => {
+    const uploadedPath = req.file?.path;
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      const bytes = new Uint8Array(fs.readFileSync(req.file.path));
+      const report = await importFromBuffer(req.file.originalname || 'upload', bytes);
+      if (report.rows.length === 0) {
+        return res.status(400).json({
+          error: 'No usable completed matches found in this upload.',
+          files: report.files.slice(0, 200),
+          skippedEntries: report.skippedEntries.slice(0, 200),
+        });
+      }
+      const { merged, added, duplicates } = mergeRows(readHistoricalStore(), report.rows);
+      writeHistoricalStore(merged);
+      const { summary } = buildTrainingSet(merged);
+      res.json({
+        success: true,
+        rowsParsed: report.rows.length,
+        added,
+        duplicatesIgnored: duplicates,
+        storedTotal: merged.length,
+        training: summary,
+        files: report.files.slice(0, 200),
+        skippedEntries: report.skippedEntries.slice(0, 200),
+        oddsColumnsIgnored: [...new Set(report.files.flatMap(f => f.oddsColumnsIgnored))],
+        limits: IMPORT_LIMITS,
+      });
+    } catch (error) {
+      console.error('Historical import failed:', error);
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Historical import failed' });
+    } finally {
+      if (uploadedPath) { try { fs.unlinkSync(uploadedPath); } catch {} }
+    }
+  });
+
+  // football-data.co.uk: free public CSV archives. Server downloads, throttled, whitelisted codes only.
+  app.get('/api/admin/historical/football-data/catalog', requireAdmin, (_req, res) => {
+    res.json({
+      leagues: [...FD_MAIN_LEAGUES, ...FD_EXTRA_LEAGUES],
+      currentSeasonStart: currentSeasonStart(),
+      limits: FD_LIMITS,
+      coverageNote: 'Europe-heavy plus selected extra leagues. South Africa (PSL) is not covered by this provider.',
+    });
+  });
+
+  let footballDataSyncRunning = false;
+  app.post('/api/admin/historical/football-data/sync', requireAdmin, async (req, res) => {
+    if (footballDataSyncRunning) return res.status(409).json({ error: 'A football-data.co.uk sync is already running' });
+    footballDataSyncRunning = true;
+    try {
+      const { leagues, fromSeason, toSeason } = req.body || {};
+      if (!Array.isArray(leagues)) return res.status(400).json({ error: '"leagues" must be an array of league codes' });
+      const to = Number.isInteger(toSeason) ? toSeason : currentSeasonStart();
+      const plan = planRequests(leagues.map(String), Number(fromSeason), to); // throws a readable error on bad input
+      const { rows, outcomes } = await syncFootballDataCoUk(plan);
+      if (rows.length === 0) {
+        return res.status(502).json({ error: 'No matches could be downloaded. See per-file outcomes.', outcomes });
+      }
+      const { merged, added, duplicates } = mergeRows(readHistoricalStore(), rows);
+      writeHistoricalStore(merged);
+      res.json({
+        success: true,
+        filesRequested: plan.length,
+        ok: outcomes.filter(o => o.status === 'ok').length,
+        notPublished: outcomes.filter(o => o.status === 'not_published').length,
+        failed: outcomes.filter(o => o.status === 'failed').length,
+        added, duplicatesIgnored: duplicates, storedTotal: merged.length,
+        training: buildTrainingSet(merged).summary,
+        oddsColumnsIgnored: [...new Set(outcomes.flatMap(o => o.report?.oddsColumnsIgnored ?? []))],
+        outcomes: outcomes.map(o => ({ label: o.label, status: o.status, detail: o.detail, accepted: o.report?.rowsAccepted, skipped: o.report?.rowsSkipped })),
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'football-data.co.uk sync failed';
+      console.error('football-data.co.uk sync failed:', error);
+      res.status(400).json({ error: msg });
+    } finally {
+      footballDataSyncRunning = false;
+    }
+  });
+
+  app.get('/api/admin/historical/summary', requireAdmin, (_req, res) => {
+    try {
+      const rows = readHistoricalStore();
+      res.json({ storedTotal: rows.length, training: buildTrainingSet(rows).summary, limits: TRAIN_LIMITS });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to summarise historical data' });
+    }
+  });
+
+  app.delete('/api/admin/historical', requireAdmin, (_req, res) => {
+    try {
+      writeHistoricalStore([]);
+      res.json({ success: true, storedTotal: 0 });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to clear historical data' });
+    }
+  });
+
+  // Runs the existing weight-calibration on imported history and RETURNS proposed weights. Nothing is applied or
+  // persisted here; the client decides. Runs synchronously, so epochs/matches are capped (see TRAIN_LIMITS).
+  app.post('/api/admin/historical/train', requireAdmin, (req, res) => {
+    try {
+      const { epochs, maxMatches, weights } = req.body || {};
+      const { results } = buildTrainingSet(readHistoricalStore());
+      const outcome = trainOnHistoricalResults(results, {
+        epochs: typeof epochs === 'number' ? epochs : undefined,
+        maxMatches: typeof maxMatches === 'number' ? maxMatches : undefined,
+        startWeights: weights && typeof weights === 'object' ? weights : null,
+      });
+      res.status(outcome.ok ? 200 : 400).json(outcome);
+    } catch (error) {
+      console.error('Historical training failed:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Historical training failed' });
     }
   });
 

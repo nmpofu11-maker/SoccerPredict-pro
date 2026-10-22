@@ -12,3 +12,7 @@ data/api-football-quota.json
 data/cron-status.json
 data/fixtures-manifest.json
 data/results-log.json
+
+# User-imported historical training data (can be large; re-importable)
+data/historical-matches.json
+uploads/

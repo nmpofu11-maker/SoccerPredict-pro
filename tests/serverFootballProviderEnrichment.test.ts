@@ -1,6 +1,10 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { enrichFixturesWithFootballApis, canonicalizeProviderCompetitionName, areCompetitionsCompatible } from '../src/services/serverFootballProviderEnrichment';
+
+// These tests use fixed October 2026 kickoffs, and production code rejects fixtures that kicked off >3h ago.
+// Pin the clock so the suite does not rot as real time moves on.
+mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-10T12:00:00Z') });
 
 test('competition aliases never map an unqualified Premiership to South Africa', () => {
   assert.equal(canonicalizeProviderCompetitionName('Premiership'), 'premiership');
