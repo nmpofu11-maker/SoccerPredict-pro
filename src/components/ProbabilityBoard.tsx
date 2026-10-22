@@ -38,7 +38,7 @@ export const ProbabilityBoard: React.FC<ProbabilityBoardProps> = ({
           {manualOverride !== 'none' ? (
             <span className="inline-flex items-center gap-1 text-purple-300 bg-purple-950/60 border border-purple-800/60 px-2 py-0.5 rounded text-[11px] font-mono font-semibold whitespace-nowrap">
               <Zap className="w-3 h-3 text-purple-400" />
-              <span>MANUAL OVERRIDE APPLIED</span>
+              <span>{hasEvidence ? 'MANUAL OVERRIDE APPLIED' : 'MANUAL OVERRIDE — UNVERIFIED'}</span>
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 text-slate-300 text-[11px] font-mono font-medium whitespace-nowrap">
@@ -51,9 +51,9 @@ export const ProbabilityBoard: React.FC<ProbabilityBoardProps> = ({
         <div className="flex items-center gap-1.5 text-[11px] font-mono">
           <span className="text-slate-400">{hasEvidence ? 'Model leader:' : 'Confidence:'}</span>
           <span className={`px-2 py-0.5 rounded font-bold ${
-            modelLeaderProbabilityPct >= 75
+            hasEvidence && modelLeaderProbabilityPct >= 75
               ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60'
-              : modelLeaderProbabilityPct >= 55
+              : hasEvidence && modelLeaderProbabilityPct >= 55
               ? 'bg-sky-950/80 text-sky-300 border border-sky-700/60'
               : 'bg-slate-800 text-slate-300 border border-slate-700'
           }`}>
