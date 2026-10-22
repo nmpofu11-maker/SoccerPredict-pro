@@ -357,3 +357,65 @@ test('audited performance excludes settled results with untrusted provenance, sc
   assert.match(report.evaluations.find((e) => e.fixtureId === 'score_mismatch')?.exclusionReason || '', /conflicts with the final score/);
   assert.match(report.evaluations.find((e) => e.fixtureId === 'duplicate_result')?.exclusionReason || '', /Multiple settled result records/);
 });
+
+
+test('audited performance separates prospective results by frozen model version', () => {
+  const prediction = (
+    fixtureId: string,
+    modelVersion: string,
+    predicted: 'home' | 'draw' | 'away',
+    probabilities: { home: number; draw: number; away: number },
+    frozenAt: string,
+  ): PredictionRecord => ({
+    type: 'prediction',
+    fixtureId,
+    kickoffTime: '2026-10-10T15:00:00.000Z',
+    league: 'Test League',
+    homeTeam: 'Team A',
+    awayTeam: 'Team B',
+    frozenAt,
+    probabilities,
+    predicted,
+    modelVersion,
+    inputCoverage: 0.8,
+  });
+  const result = (id: string, homeScore: number, awayScore: number): HistoricalMatchResult => ({
+    id,
+    fixture: {} as any,
+    homeScore,
+    awayScore,
+    actualOutcome: homeScore > awayScore ? 'home' : homeScore < awayScore ? 'away' : 'draw',
+    date: '2026-10-10',
+    notes: 'Settled via SportAPI.ai',
+  });
+
+  const predictions = [
+    prediction('old-correct', 'old-code+w-old', 'home', { home: 60, draw: 25, away: 15 }, '2026-10-10T12:00:00.000Z'),
+    prediction('old-wrong', 'old-code+w-old', 'home', { home: 60, draw: 25, away: 15 }, '2026-10-10T12:10:00.000Z'),
+    prediction('new-draw', 'new-code+w-new', 'draw', { home: 30, draw: 40, away: 30 }, '2026-10-10T13:00:00.000Z'),
+    prediction('new-away', 'new-code+w-new', 'away', { home: 20, draw: 20, away: 60 }, '2026-10-10T13:10:00.000Z'),
+  ];
+  const settled = [
+    result('old-correct', 2, 1),
+    result('old-wrong', 0, 1),
+    result('new-draw', 1, 1),
+    result('new-away', 0, 2),
+  ];
+
+  const report = evaluateAuditedPredictionPerformance(predictions, settled, 2);
+  assert.equal(report.evaluatedCount, 4);
+  assert.equal(report.byModelVersion.length, 2);
+
+  const oldModel = report.byModelVersion.find(row => row.modelVersion === 'old-code+w-old')!;
+  const newModel = report.byModelVersion.find(row => row.modelVersion === 'new-code+w-new')!;
+  assert.equal(oldModel.evaluatedCount, 2);
+  assert.equal(oldModel.correctCount, 1);
+  assert.equal(oldModel.accuracyPct, 50);
+  assert.equal(oldModel.isSampleSufficient, true);
+  assert.equal(newModel.evaluatedCount, 2);
+  assert.equal(newModel.correctCount, 2);
+  assert.equal(newModel.accuracyPct, 100);
+  assert.equal(newModel.isSampleSufficient, true);
+  assert.ok(newModel.meanBrierHalfSum < oldModel.meanBrierHalfSum);
+  assert.equal(report.byModelVersion[0].modelVersion, 'new-code+w-new');
+});
