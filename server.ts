@@ -3153,6 +3153,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       res.status(400).json({ error: error instanceof Error ? error.message : 'Historical import failed' });
     } finally {
       if (uploadedPath) { try { fs.unlinkSync(uploadedPath); } catch {} }
+      historicalStoreMutationRunning = false;
     }
   });
 
