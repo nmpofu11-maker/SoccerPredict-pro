@@ -61,8 +61,13 @@ const teamHasVerifiedStrength = (t: MatchFixture['homeTeam']): boolean =>
   (Array.isArray(t.form) && t.form.length > 0 && Boolean(t.formSource)) ||
   (Boolean(t.advancedStatsSource) && (Number.isFinite(t.avgMatchRating) || Number.isFinite(t.totalSquadValueEur)));
 
+/**
+ * A fixture is prediction-ready only when BOTH sides have independent, sourced
+ * team-strength evidence. One profiled team plus an unprofiled opponent is not
+ * enough to justify a directional prediction or an EV/value ranking.
+ */
 export function fixtureHasEvidence(fixture: MatchFixture): boolean {
-  return teamHasVerifiedStrength(fixture.homeTeam) || teamHasVerifiedStrength(fixture.awayTeam);
+  return teamHasVerifiedStrength(fixture.homeTeam) && teamHasVerifiedStrength(fixture.awayTeam);
 }
 
 /**
@@ -95,6 +100,36 @@ export function evaluateFixturePrediction(
   // International/youth fixtures with no verified strength evidence must not receive
   // an invented home-team advantage. A schedule-only feed cannot justify it.
   const insufficientTeamData = !fixtureHasEvidence(fixture);
+
+  // Fail closed before any one-sided form, H2H, league archetype, favourite label,
+  // or other downstream rule can leak a directional edge into an unqualified fixture.
+  // Explicit user overrides remain available, but automatic predictions stay neutral.
+  if (insufficientTeamData && manualOverride === 'none') {
+    appliedRules.push({
+      ruleNumber: 0,
+      ruleName: 'Team Data Sufficiency Guard',
+      tag: 'Insufficient verified strength on both teams',
+      impact: 'Automatic prediction withheld; both teams require independent sourced strength evidence',
+      beneficiary: 'neutral',
+      description: 'At least one team lacks verified rank, recent form, or sourced advanced-strength data. Odds, favourite status, and one-sided team data cannot replace the missing evidence.',
+    });
+    return {
+      matchId: fixture.id,
+      homeWinPct: 34.8,
+      drawPct: 30.4,
+      awayWinPct: 34.8,
+      predictedWinner: 'none',
+      hasEvidence: false,
+      modelLeaderProbabilityPct: 35,
+      appliedRules,
+      rawPoints: { home: 8.0, away: 8.0, draw: 7.0 },
+      finalPoints: { home: 8.0, away: 8.0, draw: 7.0 },
+      isFavouriteMatch,
+      favouriteTeams,
+      manualOverride,
+      isVolatilityCompressed: false,
+    };
+  }
 
   let homePoints = insufficientTeamData ? 8.0 : w.homeAdvantageBaseline * homeLearned.home_advantage_multiplier;
   let awayPoints = insufficientTeamData ? 8.0 : w.awayAdvantageBaseline;
