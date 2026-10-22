@@ -191,7 +191,8 @@ export function trainSingleEpoch(
   currentWeights: EngineWeights,
   results: HistoricalMatchResult[] = HISTORICAL_MATCH_RESULTS,
   learningRate: number = 0.05,
-  teamMatrices?: TeamIntelligenceMatrices
+  teamMatrices?: TeamIntelligenceMatrices,
+  useAllProvidedResultsForFit: boolean = false
 ): {
   updatedWeights: EngineWeights;
   oldAccuracy: number;
@@ -201,7 +202,12 @@ export function trainSingleEpoch(
   deltas: Record<keyof EngineWeights, number>;
 } {
   const safeCurrent = sanitizeEngineWeights(currentWeights);
-  const { training, validation } = splitHistoricalResults(results);
+  // Outer calibration protocols already establish a chronological holdout before calling this
+  // helper. When explicitly requested, fit the entire supplied training partition instead of
+  // discarding a second inner 20%; callers outside those protocols retain the safe split default.
+  const { training, validation } = useAllProvidedResultsForFit
+    ? { training: results, validation: [] as HistoricalMatchResult[] }
+    : splitHistoricalResults(results);
   const optimisationResults = training.length > 0 ? training : results;
   const baseEval = evaluateHistoricalMatches(optimisationResults, safeCurrent, teamMatrices);
   const updatedWeights: EngineWeights = { ...safeCurrent };
@@ -297,9 +303,12 @@ export function trainMultipleEpochs(
     const lr = Math.max(0.02, 0.06 * (1 - i / (epochs + 1)));
     // Critical: fit on the chronological training partition only. Passing all results here
     // leaks the validation holdout into weight updates and makes the reported holdout loss invalid.
-    const epochResult = trainSingleEpoch(currentWeights, fitResults, lr, fitMatrices);
+    const epochResult = trainSingleEpoch(currentWeights, fitResults, lr, fitMatrices, true);
     currentWeights = epochResult.updatedWeights;
-    lossHistory.push(epochResult.newLoss);
+    const epochEvaluation = validation.length > 0
+      ? evaluateHistoricalMatches(validation, currentWeights, fitMatrices)
+      : evaluateHistoricalMatches(fitResults, currentWeights, fitMatrices);
+    lossHistory.push(epochEvaluation.brierLoss);
   }
 
   const finalEval = validation.length > 0
@@ -357,17 +366,20 @@ export function runAggressiveSuperLearningProtocol(
     const cyclePos = (epoch % 8) / 8;
     const lr = 0.025 + 0.055 * Math.sin(cyclePos * Math.PI);
 
-    const stepResult = trainSingleEpoch(currentWeights, fitResults, lr, matrices);
+    const stepResult = trainSingleEpoch(currentWeights, fitResults, lr, matrices, true);
     currentWeights = stepResult.updatedWeights;
-    lossHistory.push(stepResult.newLoss);
+    const epochEvaluation = validation.length > 0
+      ? evaluateHistoricalMatches(validation, currentWeights, matrices)
+      : evaluateHistoricalMatches(fitResults, currentWeights, matrices);
+    lossHistory.push(epochEvaluation.brierLoss);
 
-    if (stepResult.newLoss < bestLoss) {
-      bestLoss = stepResult.newLoss;
+    if (epochEvaluation.brierLoss < bestLoss) {
+      bestLoss = epochEvaluation.brierLoss;
       convergencesCount++;
     }
 
     if (onEpochProgress) {
-      onEpochProgress(epoch, stepResult.newLoss, stepResult.newAccuracy);
+      onEpochProgress(epoch, epochEvaluation.brierLoss, epochEvaluation.accuracyPct);
     }
   }
 
