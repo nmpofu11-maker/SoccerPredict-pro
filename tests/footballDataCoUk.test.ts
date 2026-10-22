@@ -28,10 +28,10 @@ test('seasonCode and currentSeasonStart', () => {
 test('planRequests builds only whitelisted football-data.co.uk URLs', () => {
   const plan = planRequests(['e0', 'D1'], 2023, 2024);
   assert.deepEqual(plan.map(p => p.url), [
-    'https://www.football-data.co.uk/mmz4281/2324/E0.csv',
-    'https://www.football-data.co.uk/mmz4281/2425/E0.csv',
-    'https://www.football-data.co.uk/mmz4281/2324/D1.csv',
-    'https://www.football-data.co.uk/mmz4281/2425/D1.csv',
+    'https://football-data.co.uk/mmz4281/2324/E0.csv',
+    'https://football-data.co.uk/mmz4281/2425/E0.csv',
+    'https://football-data.co.uk/mmz4281/2324/D1.csv',
+    'https://football-data.co.uk/mmz4281/2425/D1.csv',
   ]);
   assert.equal(planRequests(['BRA'], 2020, 2024)[0].url, 'https://www.football-data.co.uk/new/BRA.csv');
 });
