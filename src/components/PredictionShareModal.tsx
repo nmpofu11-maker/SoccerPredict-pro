@@ -53,7 +53,7 @@ export const PredictionShareModal: React.FC<PredictionShareModalProps> = ({
     : '--';
 
   const cardText = [
-    `🔥 FOOTBALL PULSE AI PREDICTION CARD 🔥`,
+    hasEvidence ? `🔥 FOOTBALL PULSE AI PREDICTION CARD 🔥` : `⚽ FOOTBALL PULSE MATCH CARD — NO VERIFIED PREDICTION ⚽`,
     `----------------------------------------`,
     `🏆 ${fixture.league}`,
     `⚽ ${fixture.homeTeam.name} vs ${fixture.awayTeam.name}`,
@@ -65,7 +65,7 @@ export const PredictionShareModal: React.FC<PredictionShareModalProps> = ({
     `   • Away Win (${fixture.awayTeam.name}): ${safeAway !== null ? `${safeAway}%` : 'Unavailable'}`,
     ...(!hasEvidence ? ['⚠️ No verified automatic prediction; both teams need sourced strength evidence.'] : []),
     `----------------------------------------`,
-    `${hasEvidence ? '⭐ AI Predicted Pick' : prediction.manualOverride !== 'none' ? '⚠️ Explicit Manual Override (Unverified)' : '⭐ Automatic Pick'}: ${pickName}`,
+    `${hasEvidence ? '⭐ AI Predicted Pick' : prediction.manualOverride !== 'none' ? '⚠️ Explicit Manual Override (Unverified)' : '⚠️ No Automatic Pick'}: ${pickName}`,
     `💡 Fair Value Odds: @${fairOdds}`,
     `🛡️ Leading Model Probability: ${hasEvidence ? `${prediction.modelLeaderProbabilityPct}%` : 'N/A'}`,
     `----------------------------------------`,
