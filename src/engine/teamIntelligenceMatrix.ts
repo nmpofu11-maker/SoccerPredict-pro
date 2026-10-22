@@ -134,8 +134,109 @@ export const CANONICAL_INITIAL_MATRICES: TeamIntelligenceMatrices = {
 /**
  * Normalizes team name for dictionary key lookup
  */
+// Conservative aliases align common football-data.co.uk names with names returned by
+// fixture providers. This is deliberately an explicit map, not fuzzy matching: similar
+// club names must never be merged automatically.
+function teamAliasToken(name: string): string {
+  return (name || '')
+    .normalize('NFKD')
+    .replace(/[\\u0300-\\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\\s+/g, ' ');
+}
+
+const TEAM_KEY_ALIASES: Record<string, string> = {
+  'man city': 'Manchester City',
+  'manchester city': 'Manchester City',
+  'man united': 'Manchester United',
+  'man utd': 'Manchester United',
+  'manchester utd': 'Manchester United',
+  'manchester united': 'Manchester United',
+  'spurs': 'Tottenham Hotspur',
+  'tottenham': 'Tottenham Hotspur',
+  'tottenham hotspur': 'Tottenham Hotspur',
+  'wolves': 'Wolverhampton Wanderers',
+  'wolverhampton': 'Wolverhampton Wanderers',
+  'wolverhampton wanderers': 'Wolverhampton Wanderers',
+  'nott m forest': 'Nottingham Forest',
+  'nottingham forest': 'Nottingham Forest',
+  'newcastle': 'Newcastle United',
+  'newcastle united': 'Newcastle United',
+  'west ham': 'West Ham United',
+  'west ham united': 'West Ham United',
+  'west brom': 'West Bromwich Albion',
+  'west bromwich albion': 'West Bromwich Albion',
+  'brighton': 'Brighton and Hove Albion',
+  'brighton and hove albion': 'Brighton and Hove Albion',
+  'leicester': 'Leicester City',
+  'leicester city': 'Leicester City',
+  'sheffield utd': 'Sheffield United',
+  'sheffield united': 'Sheffield United',
+  'sheffield wed': 'Sheffield Wednesday',
+  'sheffield wednesday': 'Sheffield Wednesday',
+  'bournemouth': 'AFC Bournemouth',
+  'afc bournemouth': 'AFC Bournemouth',
+  'ipswich': 'Ipswich Town',
+  'ipswich town': 'Ipswich Town',
+  'norwich': 'Norwich City',
+  'norwich city': 'Norwich City',
+  'leverkusen': 'Bayer Leverkusen',
+  'bayer 04 leverkusen': 'Bayer Leverkusen',
+  'bayer leverkusen': 'Bayer Leverkusen',
+  'bayern': 'Bayern Munich',
+  'bayern munich': 'Bayern Munich',
+  'bayern munchen': 'Bayern Munich',
+  'dortmund': 'Borussia Dortmund',
+  'borussia dortmund': 'Borussia Dortmund',
+  'gladbach': 'Borussia Monchengladbach',
+  'm gladbach': 'Borussia Monchengladbach',
+  'borussia monchengladbach': 'Borussia Monchengladbach',
+  'ein frankfurt': 'Eintracht Frankfurt',
+  'frankfurt': 'Eintracht Frankfurt',
+  'eintracht frankfurt': 'Eintracht Frankfurt',
+  'ath bilbao': 'Athletic Bilbao',
+  'athletic bilbao': 'Athletic Bilbao',
+  'ath madrid': 'Atletico Madrid',
+  'atletico madrid': 'Atletico Madrid',
+  'sociedad': 'Real Sociedad',
+  'real sociedad': 'Real Sociedad',
+  'betis': 'Real Betis',
+  'real betis': 'Real Betis',
+  'celta': 'Celta Vigo',
+  'celta vigo': 'Celta Vigo',
+  'espanol': 'Espanyol',
+  'espanyol': 'Espanyol',
+  'inter': 'Inter Milan',
+  'internazionale': 'Inter Milan',
+  'inter milan': 'Inter Milan',
+  'milan': 'AC Milan',
+  'ac milan': 'AC Milan',
+  'as roma': 'Roma',
+  'roma': 'Roma',
+  'paris sg': 'Paris Saint-Germain',
+  'psg': 'Paris Saint-Germain',
+  'paris saint germain': 'Paris Saint-Germain',
+  'nantes': 'Nantes',
+  'fc nantes': 'Nantes',
+  'st etienne': 'Saint-Etienne',
+  'saint etienne': 'Saint-Etienne',
+  'saint-etienne': 'Saint-Etienne',
+  'mainz': 'Mainz 05',
+  'mainz 05': 'Mainz 05',
+  'freiburg': 'SC Freiburg',
+  'sc freiburg': 'SC Freiburg',
+  'wolfsburg': 'VfL Wolfsburg',
+  'vfl wolfsburg': 'VfL Wolfsburg',
+  'hoffenheim': 'TSG Hoffenheim',
+  'tsg hoffenheim': 'TSG Hoffenheim',
+};
+
 export function normalizeTeamKey(name: string): string {
-  return (name || '').trim();
+  const trimmed = (name || '').trim();
+  if (!trimmed) return '';
+  return TEAM_KEY_ALIASES[teamAliasToken(trimmed)] || trimmed;
 }
 
 /**
