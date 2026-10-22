@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildTrainingSet, type ImportedMatchRow } from '../src/services/historicalImport';
-import { trainOnHistoricalResults, TRAIN_LIMITS } from '../src/services/historicalTraining';
+import { evaluateHistoricalModelOnHoldout, trainOnHistoricalResults, TRAIN_LIMITS } from '../src/services/historicalTraining';
 import { trainMultipleEpochs } from '../src/engine/selfLearningEngine';
 import { DEFAULT_ENGINE_WEIGHTS } from '../src/engine/rulesEngine';
 
@@ -38,6 +38,26 @@ test('training reports holdout metrics AND a no-knowledge baseline, and only pro
   assert.match(out.note, /PROPOSED only/);
   // holdout is strictly the most recent matches
   assert.equal(out.trainedOn + out.holdoutSize, out.usableMatches);
+});
+
+test('active imported-history evaluation reports scored holdout matches instead of fake zero metrics', () => {
+  const { results } = buildTrainingSet(synthetic(900));
+  const report = evaluateHistoricalModelOnHoldout(results, DEFAULT_ENGINE_WEIGHTS);
+  assert.equal(report.status, 'ok');
+  assert.ok(report.holdoutSize > 0);
+  assert.ok(report.evaluatedMatches > 0);
+  assert.notEqual(report.accuracyPct, null);
+  assert.notEqual(report.brierLoss, null);
+  assert.ok((report.brierLoss ?? 0) > 0 && (report.brierLoss ?? 0) <= 1);
+});
+
+test('active imported-history evaluation marks absent holdout evidence unavailable, not zero', () => {
+  const report = evaluateHistoricalModelOnHoldout([], DEFAULT_ENGINE_WEIGHTS);
+  assert.equal(report.status, 'insufficient_data');
+  assert.equal(report.accuracyPct, null);
+  assert.equal(report.brierLoss, null);
+  assert.equal(report.evaluatedMatches, 0);
+  assert.match(report.note, /unavailable, not zero/);
 });
 
 test('training loss history retains sub-mill precision for optimizer comparisons', () => {
