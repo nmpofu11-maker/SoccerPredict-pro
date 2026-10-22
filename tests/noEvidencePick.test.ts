@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluateFixturePrediction } from '../src/engine/rulesEngine';
-import { generateSmartAccumulator } from '../src/utils/smartAccumulatorEngine';
+import { generateSmartAccumulator, generateOptimalValueAccumulatorReport } from '../src/utils/smartAccumulatorEngine';
 import type { MatchFixture } from '../src/types/soccer';
 
 function makeBaseFixture(overrides: Partial<MatchFixture> = {}): MatchFixture {
@@ -151,6 +151,10 @@ test('(4) one-sided team evidence plus bookmaker odds is insufficient for automa
   const accumulator = generateSmartAccumulator([oneSided], {}, {});
   assert.equal(accumulator.legs.length, 0);
   assert.equal(accumulator.combinedOdds, null);
+
+  const valueReport = generateOptimalValueAccumulatorReport([oneSided], {}, {}, [], 'balanced');
+  assert.equal(valueReport.legs.length, 0);
+  assert.equal(valueReport.combinedOdds, null);
 });
 
 test('(4) manualOverride force_home on an evidence-free fixture still returns home', () => {
