@@ -65,6 +65,7 @@ import { findSafeSettlementNameMatch } from './src/utils/settlementMatching';
 import { readAdminGuardConfig, decideAdminAccess } from './src/services/adminGuard';
 import { importFromBuffer, mergeRows, buildTrainingSet, IMPORT_LIMITS, type ImportedMatchRow } from './src/services/historicalImport';
 import { evaluateHistoricalModelOnHoldout, trainOnHistoricalResults, TRAIN_LIMITS, type HistoricalTrainingOutcome } from './src/services/historicalTraining';
+import { CANONICAL_INITIAL_MATRICES, synthesizeTeamIntelligenceMatrices } from './src/engine/teamIntelligenceMatrix';
 import { FD_MAIN_LEAGUES, FD_EXTRA_LEAGUES, FD_LIMITS, planRequests, syncFootballDataCoUk, currentSeasonStart } from './src/services/footballDataCoUk';
 import { sanitizeRuntimeManifest } from './src/services/manifestSanitizer';
 import {
@@ -3368,6 +3369,9 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       );
       return res.json({
         ...report,
+        // Profiles for live predictions are derived from the complete imported archive.
+        // Holdout evaluation continues to use its own pre-holdout-only matrices inside `report`.
+        predictionTeamMatrices: synthesizeTeamIntelligenceMatrices(results, CANONICAL_INITIAL_MATRICES),
         storedMatches: rows.length,
         activeEpochs: Number.isFinite(diskState?.totalEpochsTrained) ? diskState.totalEpochsTrained : 0,
         evaluatedAt: new Date().toISOString(),
