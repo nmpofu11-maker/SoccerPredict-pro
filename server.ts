@@ -65,7 +65,7 @@ import { findSafeSettlementNameMatch } from './src/utils/settlementMatching';
 import { readAdminGuardConfig, decideAdminAccess } from './src/services/adminGuard';
 import { importFromBuffer, mergeRows, buildTrainingSet, IMPORT_LIMITS, type ImportedMatchRow } from './src/services/historicalImport';
 import { trainOnHistoricalResults, TRAIN_LIMITS } from './src/services/historicalTraining';
-import { FD_MAIN_LEAGUES, FD_EXTRA_LEAGUES, FD_LIMITS, planRequests, syncFootballDataCoUk, currentSeasonStart } from './src/services/footballDataCoUk';
+import { importSportApiAiHistoricalResults } from './src/services/sportApiAiHistoricalImport';
 import { sanitizeRuntimeManifest } from './src/services/manifestSanitizer';
 import {
   type CronStatus,
@@ -3203,46 +3203,52 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
     }
   });
 
-  // football-data.co.uk: free public CSV archives. Server downloads, throttled, whitelisted codes only.
-  app.get('/api/admin/historical/football-data/catalog', requireAdmin, (_req, res) => {
-    res.json({
-      leagues: [...FD_MAIN_LEAGUES, ...FD_EXTRA_LEAGUES],
-      currentSeasonStart: currentSeasonStart(),
-      limits: FD_LIMITS,
-      coverageNote: 'Europe-heavy plus selected extra leagues. South Africa (PSL) is not covered by this provider.',
-    });
-  });
-
-  app.post('/api/admin/historical/football-data/sync', requireAdmin, async (req, res) => {
+  // Historical results are imported through the configured, authenticated SportAPI.ai provider.
+  // This avoids automated downloads from public archives whose terms exclude AI/commercial training use.
+  app.post('/api/admin/historical/sportapi-ai/sync', requireAdmin, async (req, res) => {
     if (historicalStoreMutationRunning) {
       return res.status(409).json({ error: 'Historical data is being updated by another request. No sync was saved; retry after the current update finishes.' });
     }
+    if (!hasSportApiAiKey()) {
+      return res.status(503).json({ error: 'SPORTAPI_AI_KEY is not configured on this server. Configure the provider key in .env and restart the app.' });
+    }
+    if (!sportApiAiConfigured()) {
+      return res.status(429).json({ error: 'SportAPI.ai is currently rate-limited. Wait for the provider quota to reset before importing history.' });
+    }
+
     historicalStoreMutationRunning = true;
     try {
-      const { leagues, fromSeason, toSeason } = req.body || {};
-      if (!Array.isArray(leagues)) return res.status(400).json({ error: '"leagues" must be an array of league codes' });
-      const to = Number.isInteger(toSeason) ? toSeason : currentSeasonStart();
-      const plan = planRequests(leagues.map(String), Number(fromSeason), to); // throws a readable error on bad input
-      const { rows, outcomes } = await syncFootballDataCoUk(plan);
-      if (rows.length === 0) {
-        return res.status(502).json({ error: 'No matches could be downloaded. See per-file outcomes.', outcomes });
-      }
-      const { merged, added, duplicates } = mergeRows(readHistoricalStore(), rows);
-      writeHistoricalStore(merged);
+      const fromDate = String(req.body?.fromDate ?? '');
+      const toDate = String(req.body?.toDate ?? '');
+      const report = await importSportApiAiHistoricalResults(fromDate, toDate);
+      const existing = readHistoricalStore();
+      const { merged, added, duplicates } = mergeRows(existing, report.rows);
+      // Preserve any partial import if the provider reports a rate limit or network failure mid-range.
+      if (report.rows.length > 0 || existing.length === 0) writeHistoricalStore(merged);
+      const summary = buildTrainingSet(merged).summary;
+
       res.json({
-        success: true,
-        filesRequested: plan.length,
-        ok: outcomes.filter(o => o.status === 'ok').length,
-        notPublished: outcomes.filter(o => o.status === 'not_published').length,
-        failed: outcomes.filter(o => o.status === 'failed').length,
-        added, duplicatesIgnored: duplicates, storedTotal: merged.length,
-        training: buildTrainingSet(merged).summary,
-        oddsColumnsIgnored: [...new Set(outcomes.flatMap(o => o.report?.oddsColumnsIgnored ?? []))],
-        outcomes: outcomes.map(o => ({ label: o.label, status: o.status, detail: o.detail, accepted: o.report?.rowsAccepted, skipped: o.report?.rowsSkipped })),
+        success: report.rows.length > 0,
+        provider: 'SportAPI.ai',
+        fromDate: report.fromDate,
+        toDate: report.toDate,
+        daysRequested: report.daysRequested,
+        daysFetched: report.daysFetched,
+        fixturesSeen: report.fixturesSeen,
+        completedFixtures: report.completedFixtures,
+        completedWithoutUsableScore: report.completedWithoutUsableScore,
+        importedRows: report.rows.length,
+        added,
+        duplicatesIgnored: duplicates,
+        storedTotal: merged.length,
+        training: summary,
+        note: report.note,
+        error: report.error,
+        stoppedAt: report.stoppedAt,
       });
     } catch (error) {
-      const msg = error instanceof Error ? error.message : 'football-data.co.uk sync failed';
-      console.error('football-data.co.uk sync failed:', error);
+      const msg = error instanceof Error ? error.message : 'SportAPI.ai historical sync failed';
+      console.error('SportAPI.ai historical sync failed:', error);
       res.status(400).json({ error: msg });
     } finally {
       historicalStoreMutationRunning = false;
