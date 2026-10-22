@@ -2041,12 +2041,22 @@ async function startServer() {
   // Clients may not raise the epoch count (i.e. train) unless the operator
   // has explicitly started the server with ALLOW_LEARNING_TRAINING=1.
   function readDiskLearningState(): any | null {
+    if (!fs.existsSync(LEARNING_STATE_PATH)) return null;
+
+    let parsed: unknown;
     try {
-      if (!fs.existsSync(LEARNING_STATE_PATH)) return null;
-      return JSON.parse(fs.readFileSync(LEARNING_STATE_PATH, 'utf-8'));
-    } catch {
-      return null;
+      parsed = JSON.parse(fs.readFileSync(LEARNING_STATE_PATH, 'utf-8'));
+    } catch (error) {
+      console.error('[learning-state] Existing state is unreadable; refusing to overwrite it:', error instanceof Error ? error.message : 'unknown read error');
+      throw new Error('Existing learning state is unreadable; repair or restore it before saving new weights.');
     }
+
+    if (!parsed || typeof parsed !== 'object' || !('weights' in parsed) || !(parsed as { weights?: unknown }).weights || typeof (parsed as { weights?: unknown }).weights !== 'object') {
+      console.error('[learning-state] Existing state has an invalid schema; refusing to overwrite it.');
+      throw new Error('Existing learning state has an invalid schema; repair or restore it before saving new weights.');
+    }
+
+    return parsed;
   }
 
   // Copy the current file aside BEFORE any overwrite, so nothing under
