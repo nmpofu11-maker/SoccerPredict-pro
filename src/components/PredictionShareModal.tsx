@@ -25,19 +25,26 @@ export const PredictionShareModal: React.FC<PredictionShareModalProps> = ({
   const timeStr = kickoffDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const dateStr = kickoffDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 
-  const safeHome = Number.isFinite(prediction.homeWinPct) ? prediction.homeWinPct : null;
-  const safeDraw = Number.isFinite(prediction.drawPct) ? prediction.drawPct : null;
-  const safeAway = Number.isFinite(prediction.awayWinPct) ? prediction.awayWinPct : null;
+  const hasEvidence = prediction.hasEvidence === true;
+  // Neutral fallback values are safety sentinels, not forecasts. Never share them as calibrated probabilities.
+  const safeHome = hasEvidence && Number.isFinite(prediction.homeWinPct) ? prediction.homeWinPct : null;
+  const safeDraw = hasEvidence && Number.isFinite(prediction.drawPct) ? prediction.drawPct : null;
+  const safeAway = hasEvidence && Number.isFinite(prediction.awayWinPct) ? prediction.awayWinPct : null;
 
-  const pickName = prediction.predictedWinner === 'home'
+  const selectedPick = prediction.predictedWinner === 'home'
     ? `${fixture.homeTeam.name} (Home Win)`
     : prediction.predictedWinner === 'away'
     ? `${fixture.awayTeam.name} (Away Win)`
     : prediction.predictedWinner === 'draw'
-    ? `Draw (Parity)`
-    : `No pick (insufficient data)`;
+    ? 'Draw (Parity)'
+    : 'No pick (insufficient verified data)';
+  const pickName = !hasEvidence && prediction.manualOverride !== 'none'
+    ? `Manual override (unverified): ${selectedPick}`
+    : !hasEvidence
+    ? 'No pick (insufficient verified data)'
+    : selectedPick;
 
-  const pickProbability =
+  const pickProbability = !hasEvidence ? null :
     prediction.predictedWinner === 'home' ? safeHome :
     prediction.predictedWinner === 'away' ? safeAway :
     prediction.predictedWinner === 'draw' ? safeDraw : null;
@@ -52,14 +59,15 @@ export const PredictionShareModal: React.FC<PredictionShareModalProps> = ({
     `⚽ ${fixture.homeTeam.name} vs ${fixture.awayTeam.name}`,
     `📅 Kickoff: ${dateStr} at ${timeStr}`,
     `----------------------------------------`,
-    `📊 AI Probabilities:`,
-    `   • Home Win (${fixture.homeTeam.name}): ${safeHome !== null ? `${safeHome !== null ? `${safeHome}%` : 'Unavailable'}` : 'Unavailable'}`,
-    `   • Draw: ${safeDraw !== null ? `${safeDraw !== null ? `${safeDraw}%` : 'Unavailable'}` : 'Unavailable'}`,
-    `   • Away Win (${fixture.awayTeam.name}): ${safeAway !== null ? `${safeAway !== null ? `${safeAway}%` : 'Unavailable'}` : 'Unavailable'}`,
+    `📊 Model Probabilities: `,
+    `   • Home Win (${fixture.homeTeam.name}): ${safeHome !== null ? `${safeHome}%` : 'Unavailable'}`,
+    `   • Draw: ${safeDraw !== null ? `${safeDraw}%` : 'Unavailable'}`,
+    `   • Away Win (${fixture.awayTeam.name}): ${safeAway !== null ? `${safeAway}%` : 'Unavailable'}`,
+    ...(!hasEvidence ? ['⚠️ No verified automatic prediction; both teams need sourced strength evidence.'] : []),
     `----------------------------------------`,
-    `⭐ AI Predicted Pick: ${pickName}`,
+    `${hasEvidence ? '⭐ AI Predicted Pick' : prediction.manualOverride !== 'none' ? '⚠️ Explicit Manual Override (Unverified)' : '⭐ Automatic Pick'}: ${pickName}`,
     `💡 Fair Value Odds: @${fairOdds}`,
-    `🛡️ Leading Model Probability: ${prediction.modelLeaderProbabilityPct}%`,
+    `🛡️ Leading Model Probability: ${hasEvidence ? `${prediction.modelLeaderProbabilityPct}%` : 'N/A'}`,
     `----------------------------------------`,
     `Powered by Football Pulse Neural Engine`,
   ].join('\n');
@@ -106,6 +114,13 @@ export const PredictionShareModal: React.FC<PredictionShareModalProps> = ({
               <div className="text-xs text-slate-400">Venue: {fixture.venue || 'Stadium'}</div>
             </div>
 
+            {!hasEvidence && (
+              <div role="status" className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-3 py-2 text-[11px] text-amber-200">
+                <strong>No verified automatic prediction.</strong> Both teams need sourced strength evidence. Probabilities and fair odds are unavailable.
+                {prediction.manualOverride !== 'none' ? ' The displayed selection is an explicit manual override, not a verified model forecast.' : ''}
+              </div>
+            )}
+
             {/* Probabilities Bar */}
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs font-semibold">
@@ -114,16 +129,16 @@ export const PredictionShareModal: React.FC<PredictionShareModalProps> = ({
                 <span className="text-blue-400">Away: {safeAway !== null ? `${safeAway}%` : 'Unavailable'}</span>
               </div>
               <div className="h-2.5 w-full bg-slate-950 rounded-full overflow-hidden flex border border-slate-800">
-                <div style={{ width: `${safeHome !== null ? `${safeHome !== null ? `${safeHome}%` : 'Unavailable'}` : 'Unavailable'}` }} className="bg-emerald-500 h-full transition-all" />
-                <div style={{ width: `${safeDraw !== null ? `${safeDraw !== null ? `${safeDraw}%` : 'Unavailable'}` : 'Unavailable'}` }} className="bg-amber-500 h-full transition-all" />
-                <div style={{ width: `${safeAway !== null ? `${safeAway !== null ? `${safeAway}%` : 'Unavailable'}` : 'Unavailable'}` }} className="bg-blue-500 h-full transition-all" />
+                <div style={{ width: `${safeHome ?? 0}%` }} className="bg-emerald-500 h-full transition-all" />
+                <div style={{ width: `${safeDraw ?? 0}%` }} className="bg-amber-500 h-full transition-all" />
+                <div style={{ width: `${safeAway ?? 0}%` }} className="bg-blue-500 h-full transition-all" />
               </div>
             </div>
 
             {/* AI Pick Highlight */}
             <div className="bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 flex items-center justify-between">
               <div>
-                <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">AI Recommended Pick</div>
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">{hasEvidence ? 'AI Recommended Pick' : prediction.manualOverride !== 'none' ? 'Manual Override (Unverified)' : 'No Automatic Pick'}</div>
                 <div className="text-sm font-extrabold text-amber-300 mt-0.5">{pickName}</div>
               </div>
               <div className="text-right">
@@ -136,7 +151,7 @@ export const PredictionShareModal: React.FC<PredictionShareModalProps> = ({
             <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[11px] text-slate-400">
               <span className="flex items-center gap-1 font-semibold text-amber-400">
                 <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-                Leading Probability: {prediction.modelLeaderProbabilityPct}%
+                Leading Probability: {hasEvidence ? `${prediction.modelLeaderProbabilityPct}%` : 'N/A'}
               </span>
               <span className="font-mono text-[10px]">Football Pulse AI v2.4</span>
             </div>
