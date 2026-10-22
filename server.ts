@@ -89,17 +89,41 @@ const uploadHistorical = multer({
   limits: { fileSize: 200 * 1024 * 1024, files: 1 },
 });
 
-const HISTORICAL_STORE_PATH = process.env.HISTORICAL_DATA_PATH?.trim() || path.join(process.cwd(), 'data', 'historical-matches.json');
+const configuredHistoricalStorePath = process.env.HISTORICAL_DATA_PATH?.trim();
+const HISTORICAL_STORE_PATH = configuredHistoricalStorePath || path.join(process.cwd(), 'data', 'historical-matches.json');
+if (process.env.NODE_ENV === 'production' && !configuredHistoricalStorePath) {
+  console.warn('[historical-store] HISTORICAL_DATA_PATH is unset; historical match imports use local ./data storage, which may be ephemeral on serverless hosts. Configure a persistent mounted volume before relying on imports across redeploys.');
+}
 
 function readHistoricalStore(): ImportedMatchRow[] {
+  if (!fs.existsSync(HISTORICAL_STORE_PATH)) return [];
+
+  let parsed: unknown;
   try {
-    if (!fs.existsSync(HISTORICAL_STORE_PATH)) return [];
-    const parsed = JSON.parse(fs.readFileSync(HISTORICAL_STORE_PATH, 'utf-8'));
-    return Array.isArray(parsed?.rows) ? parsed.rows : [];
+    parsed = JSON.parse(fs.readFileSync(HISTORICAL_STORE_PATH, 'utf-8'));
   } catch (e) {
-    console.error('Historical store unreadable, treating as empty (file left untouched):', e);
-    return [];
+    console.error('Historical store unreadable; refusing to overwrite it:', e);
+    throw new Error(`Historical results store is unreadable at ${HISTORICAL_STORE_PATH}; refusing to overwrite existing data.`);
   }
+
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as { rows?: unknown }).rows)) {
+    throw new Error(`Historical results store has an invalid schema at ${HISTORICAL_STORE_PATH}; refusing to overwrite existing data.`);
+  }
+
+  const rows = (parsed as { rows: unknown[] }).rows;
+  const valid = rows.every((row) => {
+    if (!row || typeof row !== 'object') return false;
+    const match = row as Partial<ImportedMatchRow>;
+    return typeof match.key === 'string' && typeof match.date === 'string' &&
+      typeof match.league === 'string' && typeof match.home === 'string' &&
+      typeof match.away === 'string' && Number.isInteger(match.hg) &&
+      Number.isInteger(match.ag) && (match.hg as number) >= 0 && (match.ag as number) >= 0;
+  });
+  if (!valid) {
+    throw new Error(`Historical results store contains invalid rows at ${HISTORICAL_STORE_PATH}; refusing to overwrite existing data.`);
+  }
+
+  return rows as ImportedMatchRow[];
 }
 
 function writeHistoricalStore(rows: ImportedMatchRow[]): void {
