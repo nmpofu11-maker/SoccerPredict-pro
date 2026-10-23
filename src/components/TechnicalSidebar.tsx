@@ -6,7 +6,7 @@ interface TechnicalSidebarProps {
   onOpenFavourites: () => void;
   onOpenVerification?: () => void;
   onOpenCoverage?: () => void;
-  authenticityScore?: number;
+  authenticityScore?: number | null;
   favouritesCount: number;
   autoScrapeEnabled?: boolean;
   secondsUntilNextScrape?: number;
@@ -32,7 +32,7 @@ export const TechnicalSidebar: React.FC<TechnicalSidebarProps> = ({
   onOpenFavourites,
   onOpenVerification,
   onOpenCoverage,
-  authenticityScore = 100,
+  authenticityScore = null,
   favouritesCount,
   autoScrapeEnabled = true,
   secondsUntilNextScrape = 30,
@@ -214,7 +214,7 @@ export const TechnicalSidebar: React.FC<TechnicalSidebarProps> = ({
         onClick={onOpenVerification}
         className="mb-3 p-3 bg-emerald-950/20 hover:bg-emerald-950/40 rounded-lg border border-emerald-500/30 hover:border-emerald-500/60 cursor-pointer transition-all group"
         id="sidebar-verification-card"
-        title="Inspect automated data verification and official standings calibration"
+        title="Inspect the latest data audit; a score is unavailable until the audit has run."
       >
         <div className="flex items-center justify-between text-[10px] text-emerald-400 uppercase font-bold mb-1 font-mono">
           <span className="flex items-center gap-1.5">
@@ -224,8 +224,8 @@ export const TechnicalSidebar: React.FC<TechnicalSidebarProps> = ({
           <span className="text-emerald-300 text-[9px] group-hover:underline">VERIFY</span>
         </div>
         <div className="flex justify-between items-center text-xs">
-          <span className="text-slate-300 font-mono text-[11px]">ESPN Standings Sync</span>
-          <span className="font-mono text-emerald-400 font-extrabold text-sm">{authenticityScore}% Pass</span>
+          <span className="text-slate-300 font-mono text-[11px]">Standings/Data Audit</span>
+          <span className={`font-mono font-extrabold text-sm ${typeof authenticityScore === "number" && Number.isFinite(authenticityScore) ? "text-emerald-400" : "text-amber-300"}`}>{typeof authenticityScore === "number" && Number.isFinite(authenticityScore) ? `${Math.round(authenticityScore)}% Pass` : "NOT RUN"}</span>
         </div>
         <div className="flex justify-between text-[9px] font-mono text-slate-400 mt-1">
           <span className="text-slate-400">Ranks & Points Integrity</span>
