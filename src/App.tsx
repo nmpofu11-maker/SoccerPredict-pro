@@ -1062,7 +1062,7 @@ export default function App() {
         onUpdateAutoScrapeConfig={handleUpdateAutoScrapeConfig}
         secondsUntilNextScrape={secondsUntilNextScrape}
         isScrapingNow={isScrapingNow}
-        onTriggerScrapeNow={triggerScrapeCycle}
+        onTriggerScrapeNow={() => triggerScrapeCycle(true)}
         scrapeLogs={scrapeLogs}
         auditReport={auditReport}
         onAuditUpdated={(report) => setAuditReport(report)}
