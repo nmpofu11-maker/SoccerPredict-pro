@@ -12,6 +12,7 @@ import { CountryFlagCircle } from './CountryFlagCircle';
 import { HISTORICAL_MATCH_RESULTS } from '../data/historical_results';
 import { calculateHomeWinProbabilityTrend } from '../utils/probabilityTrend';
 import { getTeamOutlierStatus } from '../utils/robustMetricsCalculator';
+import { isQuickBetEligible } from '../utils/quickBetEligibility';
 import { OutlierIndicator } from './OutlierIndicator';
 import { VolatilityHeatmapOverlay } from './VolatilityHeatmapOverlay';
 import { resolveTeamPerformanceProfile, formatSquadValue } from '../utils/teamPerformanceProfile';
@@ -196,7 +197,6 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
   // Neutral priors are not actionable forecasts: require verified fixture-specific evidence.
   const hasPredictionEvidence = prediction.hasEvidence;
-  const isQuickBet = hasPredictionEvidence && prediction.modelLeaderProbabilityPct >= 50;
 
   const isHomePick = prediction.predictedWinner === 'home';
   const isAwayPick = prediction.predictedWinner === 'away';
@@ -227,6 +227,28 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   const awayOdds = fixture.odds?.away && Number(fixture.odds.away) > 1.05
     ? Number(fixture.odds.away).toFixed(2)
     : '--';
+
+  const hasVerifiedStandings = Boolean(
+    fixture.isStandingsVerified ||
+    fixture.authenticity?.source === 'OFFICIAL_ESPN_STANDINGS'
+  );
+  const selectedMarketOdds = isHomePick
+    ? fixture.odds?.home
+    : isAwayPick
+    ? fixture.odds?.away
+    : isDrawPick
+    ? fixture.odds?.draw
+    : null;
+  const isQuickBet = isQuickBetEligible({
+    hasPredictionEvidence,
+    hasVerifiedStandings,
+    modelLeaderProbabilityPct: prediction.modelLeaderProbabilityPct,
+    pickProbabilityPct: pickProbability,
+    marketOdds: selectedMarketOdds != null && Number.isFinite(Number(selectedMarketOdds))
+      ? Number(selectedMarketOdds)
+      : null,
+    oddsSource: fixture.odds?.provider ?? null,
+  });
 
   return (
     <div
@@ -309,7 +331,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           </span>
 
           {/* Data-Quality Gate: Official Standings Verification vs No Edge Estimate */}
-          {(fixture.isStandingsVerified || fixture.authenticity?.source === 'OFFICIAL_ESPN_STANDINGS') ? (
+          {hasVerifiedStandings ? (
             <span
               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[9px] font-mono uppercase font-bold"
               title="Standings verified against official league table"
@@ -327,12 +349,12 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             </span>
           )}
 
-          {/* Quick Bet Badge (>80% Confidence Score) */}
+          {/* Quick Bet requires verified evidence, >80% leader probability, sourced market odds, and >=5% model expected return. */}
           {isQuickBet && (
             <span
               id={`quick-bet-badge-${fixture.id}`}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-400/15 text-amber-300 border border-amber-400/40 text-[9.5px] font-mono uppercase font-black tracking-wider shadow-sm"
-              title={`Quick Bet: High leading-probability match with ${Number.isFinite(prediction.modelLeaderProbabilityPct) ? prediction.modelLeaderProbabilityPct : 'N/A'}% leading probability (>80%)`}
+              title={`Verified value edge: ${Number.isFinite(prediction.modelLeaderProbabilityPct) ? prediction.modelLeaderProbabilityPct : 'N/A'}% leading probability and at least 5% model expected return at the sourced market price.`}
             >
               <Zap className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
               Quick Bet
