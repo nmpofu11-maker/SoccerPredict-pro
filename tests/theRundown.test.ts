@@ -123,11 +123,13 @@ test('TheRundown score helper returns an outcome only when both scores are numer
   } as any);
   assert.deepEqual(missing, { home: null, away: null, outcome: null });
 
-  for (const invalidScore of [-1, 1.5]) {
-    const invalid = getTheRundownScores({
+  for (const score of [
+    { score_home: -1, score_away: 0 },
+    { score_home: 1.5, score_away: 0 },
+  ]) {
+    assert.deepEqual(getTheRundownScores({
       event_id: 'test',
-      score: { event_status: 'STATUS_FULL_TIME', score_home: invalidScore, score_away: 1 },
-    } as any);
-    assert.deepEqual(invalid, { home: null, away: null, outcome: null });
+      score: { event_status: 'STATUS_FULL_TIME', ...score },
+    } as any), { home: null, away: null, outcome: null });
   }
 });

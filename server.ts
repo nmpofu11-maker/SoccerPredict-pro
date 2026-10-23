@@ -6,6 +6,8 @@ import { createHash, timingSafeEqual } from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import { resolveListenPort } from './src/utils/serverPort';
+import { isValidFootballScore, normalizeFootballScore } from './src/utils/scoreValidation';
 import { resolveRuntimeFilePath } from './src/services/runtimeFilePath';
 import { createHistoricalArchiveBackup, ensureInitialHistoricalArchiveBackup, listHistoricalArchiveBackups, readHistoricalArchiveBackup, HISTORICAL_ARCHIVE_BACKUP_LIMIT } from './src/services/historicalArchiveBackup';
 import cron from 'node-cron';
@@ -67,8 +69,6 @@ import { parseRawResults } from './src/services/resultParserService';
 import { readResultsLogFile } from './src/services/resultsLogStore';
 import { findSafeSettlementNameMatch } from './src/utils/settlementMatching';
 import { createSingleFlight } from './src/utils/singleFlight';
-import { resolveListenPort } from './src/utils/serverPort';
-import { isValidFootballScore } from './src/utils/scoreValidation';
 import { summarizeSettlementRun } from './src/utils/settlementRunStatus';
 import { parseSportApiAiKickoff } from './src/utils/sportApiAiKickoff';
 import { readAdminGuardConfig, decideAdminAccess } from './src/services/adminGuard';
@@ -277,7 +277,7 @@ function getListenHost(): string {
   return process.env.HOST?.trim() || '0.0.0.0';
 }
 
-const PORT = getListenPort();
+const PORT = resolveListenPort(process.argv, process.env.PORT);
 const HOST = getListenHost();
 
 const MANIFEST_PATH = path.join(process.cwd(), 'data', 'fixtures-manifest.json');
@@ -1305,9 +1305,9 @@ function mapPitchApiToInternalFixture(match: any): any {
   if (!homeName || !awayName) return null;
   const kickoffTime = parseProviderKickoff(match?.time_utc);
   if (!kickoffTime) return null;
-  const homeScore = Number(match?.score_home);
-  const awayScore = Number(match?.score_away);
-  const hasFinishedScore = isValidFootballScore(homeScore) && isValidFootballScore(awayScore);
+  const homeScore = normalizeFootballScore(match?.score_home);
+  const awayScore = normalizeFootballScore(match?.score_away);
+  const hasFinishedScore = homeScore !== null && awayScore !== null;
   const leagueName = match?.league?.name || 'PitchAPI Football';
   const id = String(match.id || (homeName + '_' + awayName));
   return {
@@ -1340,9 +1340,9 @@ function mapSportDbToInternalFixture(match: any, fallbackDateStr: string): any {
     : null;
   if (!kickoffTime) return null;
 
-  const homeScore = Number(match?.score?.home ?? match?.score?.fulltime?.home ?? match?.score_home);
-  const awayScore = Number(match?.score?.away ?? match?.score?.fulltime?.away ?? match?.score_away);
-  const hasFinishedScore = isValidFootballScore(homeScore) && isValidFootballScore(awayScore);
+  const homeScore = normalizeFootballScore(match?.score?.home ?? match?.score?.fulltime?.home ?? match?.score_home);
+  const awayScore = normalizeFootballScore(match?.score?.away ?? match?.score?.fulltime?.away ?? match?.score_away);
+  const hasFinishedScore = homeScore !== null && awayScore !== null;
 
   const leagueName = typeof match?.league === 'string' ? match.league : (match?.league?.name || 'SportDB Football');
   const id = String(match.id || match.match_id || `${homeName}_${awayName}`);
@@ -2011,8 +2011,8 @@ async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: 
             let awayScore: number | null = null;
             for (const sc of scoresList) {
               const part = String(sc?.participant ?? sc?.description ?? '').toLowerCase();
-              const val = Number(sc?.score?.goals ?? sc?.goals ?? sc?.value);
-              if (isValidFootballScore(val)) {
+              const val = normalizeFootballScore(sc?.score?.goals ?? sc?.goals ?? sc?.value);
+              if (val !== null) {
                 if (part === 'home' || part === '1') homeScore = val;
                 if (part === 'away' || part === '2') awayScore = val;
               }
@@ -2121,9 +2121,9 @@ async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: 
 
             if (!match) continue;
             if (match.status !== 'finished') continue;
-            const homeScore = Number(match.score_home);
-            const awayScore = Number(match.score_away);
-            if (!isValidFootballScore(homeScore) || !isValidFootballScore(awayScore)) continue;
+            const homeScore = normalizeFootballScore(match.score_home);
+            const awayScore = normalizeFootballScore(match.score_away);
+            if (homeScore === null || awayScore === null) continue;
 
             const outcome = homeScore > awayScore ? 'home' : awayScore > homeScore ? 'away' : 'draw';
             newEntries.push({

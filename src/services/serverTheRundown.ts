@@ -11,6 +11,8 @@ import { isValidFootballScore } from '../utils/scoreValidation';
  * Daily Endpoint: GET /api/v2/sports/{sportId}/events/{YYYY-MM-DD}?include=scores+all_periods
  */
 
+import { normalizeFootballScore } from '../utils/scoreValidation';
+
 export interface TheRundownEvent {
   event_id: string;
   sport_id: number;
@@ -260,8 +262,8 @@ export function isTheRundownEventFinished(ev: TheRundownEvent): boolean {
 export function getTheRundownScores(ev: TheRundownEvent): { home: number | null; away: number | null; outcome: 'home' | 'draw' | 'away' | null } {
   if (!ev || !ev.score) return { home: null, away: null, outcome: null };
 
-  const home = typeof ev.score.score_home === 'number' ? ev.score.score_home : null;
-  const away = typeof ev.score.score_away === 'number' ? ev.score.score_away : null;
+  const home = normalizeFootballScore(ev.score.score_home);
+  const away = normalizeFootballScore(ev.score.score_away);
 
   if (!isValidFootballScore(home) || !isValidFootballScore(away)) {
     return { home: null, away: null, outcome: null };

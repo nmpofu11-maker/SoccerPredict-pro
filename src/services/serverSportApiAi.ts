@@ -9,7 +9,7 @@
  * Daily Endpoint: GET /api/fixtures/date/{YYYY-MM-DD}
  */
 
-import { isValidFootballScore } from '../utils/scoreValidation';
+import { isValidFootballScore, normalizeFootballScore } from '../utils/scoreValidation';
 
 export interface SportApiAiFixture {
   id: string | number;
@@ -204,9 +204,9 @@ export function getSportApiAiScores(f: any): { home: number | null; away: number
       awayValue === null || awayValue === undefined || awayValue === ''
     ) continue;
 
-    const parsedHome = Number(homeValue);
-    const parsedAway = Number(awayValue);
-    if (isValidFootballScore(parsedHome) && isValidFootballScore(parsedAway)) {
+    const parsedHome = normalizeFootballScore(homeValue);
+    const parsedAway = normalizeFootballScore(awayValue);
+    if (parsedHome !== null && parsedAway !== null) {
       home = parsedHome;
       away = parsedAway;
       break;
@@ -229,8 +229,8 @@ export function getSportApiAiScores(f: any): { home: number | null; away: number
         const value = score?.goals ?? score?.value ?? entry?.goals;
         if (value === null || value === undefined || value === '') continue;
 
-        const parsed = Number(value);
-        if (!isValidFootballScore(parsed)) continue;
+        const parsed = normalizeFootballScore(value);
+        if (parsed === null) continue;
 
         if (side === 'home' || side === '1') home = parsed;
         if (side === 'away' || side === '2') away = parsed;
@@ -238,10 +238,9 @@ export function getSportApiAiScores(f: any): { home: number | null; away: number
     }
   }
 
-  if (!isValidFootballScore(home) || !isValidFootballScore(away)) {
+  if (home === null || away === null) {
     return { home: null, away: null, outcome: null };
   }
-
   const outcome: 'home' | 'draw' | 'away' =
     home > away ? 'home' : away > home ? 'away' : 'draw';
 
