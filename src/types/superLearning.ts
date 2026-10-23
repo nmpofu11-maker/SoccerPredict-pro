@@ -7,6 +7,8 @@ export interface LearnedCoefficients {
 
 export interface TeamIntelligenceMatrixEntry {
   sample_size_matches: number;
+  /** Count of matches with sourced short-rest/fatigue evidence; distinct from total appearances. */
+  fatigue_sample_matches?: number;
   learned_coefficients: LearnedCoefficients;
   lastUpdated?: string;
   clubName?: string;
@@ -22,6 +24,7 @@ export interface AggressiveSuperLearningSyncPayload {
     string,
     {
       sample_size_matches: number;
+      fatigue_sample_matches?: number;
       learned_coefficients: {
         home_advantage_multiplier: number;
         form_momentum_weight: number;
