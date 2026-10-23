@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, test } from 'node:test';
 import {
   createHistoricalArchiveBackup,
+  readHistoricalArchiveBackup,
   resolveHistoricalArchiveBackupPath,
   HISTORICAL_ARCHIVE_BACKUP_LIMIT,
   listHistoricalArchiveBackups,
@@ -46,6 +47,25 @@ test('backup lookup rejects path traversal and non-backup filenames', () => {
   const directory = makeDirectory();
   assert.equal(resolveHistoricalArchiveBackupPath(directory, '../historical-matches.json'), null);
   assert.equal(resolveHistoricalArchiveBackupPath(directory, 'some-other-file.json'), null);
+});
+
+test('restore reader validates the archive schema and match rows', () => {
+  const directory = makeDirectory();
+  const store = path.join(directory, 'historical-matches.json');
+  const backupDirectory = path.join(directory, 'backups');
+  fs.writeFileSync(store, JSON.stringify({
+    version: 1,
+    rows: [{ key: 'match-1', date: '2025-01-01', league: 'L', home: 'A', away: 'B', hg: 1, ag: 0 }],
+  }));
+  const backup = createHistoricalArchiveBackup(store, backupDirectory, new Date('2026-01-03T00:00:00.000Z'));
+  assert.ok(backup);
+  assert.equal(readHistoricalArchiveBackup(backupDirectory, backup.filename)?.[0].key, 'match-1');
+  assert.equal(readHistoricalArchiveBackup(backupDirectory, '../historical-matches.json'), null);
+
+  fs.writeFileSync(store, JSON.stringify({ version: 1, rows: [{}] }));
+  const invalid = createHistoricalArchiveBackup(store, backupDirectory, new Date('2026-01-04T00:00:00.000Z'));
+  assert.ok(invalid);
+  assert.throws(() => readHistoricalArchiveBackup(backupDirectory, invalid.filename), /invalid match rows/i);
 });
 
 test('missing archive does not create a meaningless backup', () => {
