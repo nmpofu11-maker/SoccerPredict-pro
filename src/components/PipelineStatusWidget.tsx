@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cpu, RefreshCw, CheckCircle2, AlertCircle, Clock, ShieldCheck, ShieldAlert } from 'lucide-react';
-import { fetchCronStatus, triggerIngestNow, fetchDailySlate, fetchEvidenceCoverage, CronStatusResponse, EvidenceCoverageResponse } from '../services/resultsService';
+import { fetchCronStatus, triggerIngestNow, fetchPersistedSlate, fetchEvidenceCoverage, CronStatusResponse, EvidenceCoverageResponse } from '../services/resultsService';
 import { MatchFixture } from '../types/soccer';
 
 interface PipelineStatusWidgetProps {
@@ -11,6 +11,7 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
   const [status, setStatus] = useState<CronStatusResponse | null>(null);
   const [evidence, setEvidence] = useState<EvidenceCoverageResponse | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const refresh = () => {
     fetchCronStatus().then(setStatus);
@@ -25,13 +26,28 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
 
   const handleSyncNow = async () => {
     setIsSyncing(true);
+    setSyncMessage(null);
     try {
-      await triggerIngestNow();
-      refresh();
-      if (onFixturesSynced) {
-        const fixtures = await fetchDailySlate();
-        if (fixtures) onFixturesSynced(fixtures);
+      const ingest = await triggerIngestNow();
+      if (!ingest.success) {
+        setSyncMessage(`Ingestion failed: ${ingest.message}. Existing fixtures were retained.`);
+        refresh();
+        return;
       }
+
+      const persisted = await fetchPersistedSlate();
+      if (!persisted.fixtures) {
+        setSyncMessage(`Ingestion finished, but the saved fixture list could not be read: ${persisted.message || 'unknown read error'}.`);
+        refresh();
+        return;
+      }
+
+      if (onFixturesSynced) onFixturesSynced(persisted.fixtures);
+      setSyncMessage(`Ingestion finished: ${ingest.message || 'provider job completed'}. Loaded ${persisted.fixtures.length} saved fixtures.`);
+      refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      setSyncMessage(`Sync failed: ${message}. Existing fixtures were retained.`);
     } finally {
       setIsSyncing(false);
     }
@@ -140,6 +156,11 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
           <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
         </button>
       </div>
+      {syncMessage && (
+        <div aria-live="polite" className={`text-[11px] rounded-lg border px-3 py-2 ${syncMessage.toLowerCase().includes('failed') ? 'bg-rose-950/40 border-rose-800 text-rose-300' : 'bg-slate-950/60 border-slate-700 text-slate-300'}`}>
+          {syncMessage}
+        </div>
+      )}
     </div>
   );
 };
