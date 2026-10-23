@@ -234,6 +234,19 @@ function writeHistoricalStore(rows: ImportedMatchRow[]): void {
   fs.renameSync(tmp, HISTORICAL_STORE_PATH);
 }
 
+// Protect an already-imported archive on the first start after this safeguard is deployed.
+try {
+  if (fs.existsSync(HISTORICAL_STORE_PATH) && listHistoricalArchiveBackups(HISTORICAL_BACKUP_DIR).length === 0) {
+    const initialSnapshot = createHistoricalArchiveBackup(HISTORICAL_STORE_PATH, HISTORICAL_BACKUP_DIR);
+    if (initialSnapshot) {
+      console.info(`[historical-store] Initial safety snapshot saved: ${initialSnapshot.filename} (${initialSnapshot.sizeBytes} bytes)`);
+    }
+  }
+} catch (error) {
+  // Keep the app available for reads; the pre-write guard will still prevent replacement without a backup.
+  console.error('[historical-store] Initial safety snapshot could not be created:', error instanceof Error ? error.message : error);
+}
+
 function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction): void {
   const cfg = readAdminGuardConfig(process.env);
   const supplied = req.get('x-admin-api-key') || '';
