@@ -21,7 +21,7 @@ interface NavbarProps {
   onOpenStatisticalAnalysis?: () => void;
   onOpenVerification?: () => void;
   onPurgeSlates?: () => void;
-  authenticityScore?: number;
+  authenticityScore?: number | null;
   overridesCount: number;
   autoScrapeEnabled: boolean;
   onToggleAutoScrape: () => void;
@@ -42,7 +42,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenStatisticalAnalysis,
   onOpenVerification,
   onPurgeSlates,
-  authenticityScore = 100,
+  authenticityScore = null,
   autoScrapeEnabled,
   onToggleAutoScrape,
   secondsUntilNextScrape,
@@ -121,12 +121,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           onClick={onOpenVerification || onOpenIngestion}
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs transition-colors shadow-sm"
           id="btn-nav-verified-data"
-          title="Data Authenticity Gate: Automatic standings validation & auto-healing"
+          title="Open the data audit. A score is shown only after an audit report is available."
         >
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-          <span className="hidden sm:inline font-bold">Data Verified</span>
+          <span className="hidden sm:inline font-bold">Data Audit</span>
           <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-900/90 text-emerald-200 border border-emerald-700/60 font-bold">
-            {authenticityScore}%
+            {typeof authenticityScore === 'number' && Number.isFinite(authenticityScore) ? `${Math.round(authenticityScore)}%` : 'NOT RUN'}
           </span>
         </button>
 
