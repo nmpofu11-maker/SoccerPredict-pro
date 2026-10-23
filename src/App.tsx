@@ -587,7 +587,7 @@ export default function App() {
         onOpenIngestion={() => handleOpenIngestionModal('autoscrape')}
         onOpenVerification={() => handleOpenIngestionModal('verification')}
         onPurgeSlates={handlePurgeSlates}
-        authenticityScore={auditReport?.overallAuthenticityScore ?? 100}
+        authenticityScore={auditReport?.overallAuthenticityScore ?? null}
         onOpenRules={() => setIsRulesModalOpen(true)}
         onOpenFavouritesList={() => setIsFavMatrixOpen(true)}
         onOpenLearning={() => handleTabChange('learning')}
@@ -612,7 +612,7 @@ export default function App() {
           onOpenFavourites={() => setIsFavMatrixOpen(true)}
           onOpenVerification={() => handleOpenIngestionModal('verification')}
           onOpenCoverage={() => handleOpenIngestionModal('coverage')}
-          authenticityScore={auditReport?.overallAuthenticityScore ?? 100}
+          authenticityScore={auditReport?.overallAuthenticityScore ?? null}
           onNavigateToLearning={() => handleTabChange('learning')}
           onNavigateToYesterday={() => handleTabChange('yesterday')}
           learningAccuracyPct={cumulativeSuccessRate}
