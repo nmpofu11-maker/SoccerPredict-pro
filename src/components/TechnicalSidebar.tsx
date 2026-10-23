@@ -16,7 +16,7 @@ interface TechnicalSidebarProps {
   onToggleAutoScrape?: () => void;
   onNavigateToLearning?: () => void;
   onNavigateToYesterday?: () => void;
-  learningAccuracyPct?: number;
+  learningAccuracyPct?: number | null;
   yesterdayStats?: {
     total: number;
     correct: number;
@@ -42,7 +42,7 @@ export const TechnicalSidebar: React.FC<TechnicalSidebarProps> = ({
   onToggleAutoScrape,
   onNavigateToLearning,
   onNavigateToYesterday,
-  learningAccuracyPct = 81.3,
+  learningAccuracyPct = null,
   yesterdayStats,
   totalFixturesCount = 0,
   totalLeaguesCount = 0,
