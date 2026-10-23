@@ -7,6 +7,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { resolveListenPort } from './src/utils/serverPort';
+import { isAutoSettlementEnabled } from './src/utils/autoSettlement';
 import { isValidFootballScore, normalizeFootballScore } from './src/utils/scoreValidation';
 import { resolveRuntimeFilePath } from './src/services/runtimeFilePath';
 import { createHistoricalArchiveBackup, ensureInitialHistoricalArchiveBackup, listHistoricalArchiveBackups, readHistoricalArchiveBackup, HISTORICAL_ARCHIVE_BACKUP_LIMIT } from './src/services/historicalArchiveBackup';
@@ -3141,6 +3142,7 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
         apiFootballConfigured: apiFootballConfigured(),
         sportmonksConfigured: sportmonksConfigured(),
         footballDataConfigured: footballDataConfigured(),
+        autoSettlementEnabled: isAutoSettlementEnabled(process.env.AUTO_SETTLEMENT_ENABLED),
         cron: readCronStatus(),
       });
     } catch (err: unknown) {
@@ -3650,11 +3652,16 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       runDailyIngestJob().catch((e) => console.error('[cron:ingest] unhandled error', e));
     });
 
-    // Settlement: check for finished matches every 3 hours around the clock,
-    // since kickoff times and match lengths vary across leagues/timezones.
-    cron.schedule('0 */3 * * *', () => {
-      runSettlementJob().catch((e) => console.error('[cron:settlement] unhandled error', e));
-    });
+    const autoSettlementEnabled = isAutoSettlementEnabled(process.env.AUTO_SETTLEMENT_ENABLED);
+    if (autoSettlementEnabled) {
+      // Settlement: check for finished matches every 3 hours around the clock,
+      // since kickoff times and match lengths vary across leagues/timezones.
+      cron.schedule('0 */3 * * *', () => {
+        runSettlementJob().catch((e) => console.error('[cron:settlement] unhandled error', e));
+      });
+    } else {
+      console.log('[startup] Automatic settlement is disabled by AUTO_SETTLEMENT_ENABLED.');
+    }
 
     // Freeze predictions for upcoming fixtures every 30 minutes (once per fixture, never updated).
     cron.schedule('*/30 * * * *', () => {
@@ -3665,7 +3672,9 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
     // until the next scheduled slot (e.g. after a redeploy).
     setTimeout(() => {
       runDailyIngestJob().catch((e) => console.error('[cron:ingest] startup run failed', e));
-      runSettlementJob().catch((e) => console.error('[cron:settlement] startup run failed', e));
+      if (autoSettlementEnabled) {
+        runSettlementJob().catch((e) => console.error('[cron:settlement] startup run failed', e));
+      }
     }, 10_000);
     setTimeout(() => { try { runPredictionFreezeJob(); } catch (e) { console.error('[prediction-log] startup freeze failed', e); } }, 25_000);
   });
