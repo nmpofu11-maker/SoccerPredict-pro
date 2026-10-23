@@ -68,6 +68,14 @@ test('restore reader validates the archive schema and match rows', () => {
   assert.throws(() => readHistoricalArchiveBackup(backupDirectory, invalid.filename), /invalid match rows/i);
 });
 
+test('backup listing ignores unrelated JSON and temporary files', () => {
+  const directory = makeDirectory();
+  fs.mkdirSync(path.join(directory, 'backups'), { recursive: true });
+  fs.writeFileSync(path.join(directory, 'backups', 'notes.json'), '{"not":"a historical backup"}');
+  fs.writeFileSync(path.join(directory, 'backups', 'historical-matches-2026-01-01T00-00-00-000Z-123.tmp'), 'incomplete');
+  assert.deepEqual(listHistoricalArchiveBackups(path.join(directory, 'backups')), []);
+});
+
 test('missing archive does not create a meaningless backup', () => {
   const directory = makeDirectory();
   const backupDirectory = path.join(directory, 'backups');
