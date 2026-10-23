@@ -1,11 +1,34 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { fetchDailySlate, fetchPersistedSlate } from '../src/services/resultsService';
+import { fetchDailySlate, fetchPersistedSlate, triggerIngestNow } from '../src/services/resultsService';
 
 const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+});
+
+test('triggerIngestNow reports a provider-ingestion timeout instead of spinning forever', async () => {
+  globalThis.fetch = (async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    return await new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      if (!signal) {
+        reject(new Error('Expected the ingestion request to have an abort signal'));
+        return;
+      }
+      if (signal.aborted) {
+        reject(new DOMException('Request aborted', 'AbortError'));
+        return;
+      }
+      signal.addEventListener('abort', () => {
+        reject(new DOMException('Request aborted', 'AbortError'));
+      }, { once: true });
+    });
+  }) as typeof fetch;
+
+  const result = await triggerIngestNow(5);
+  assert.equal(result.success, false);
+  assert.match(result.message, /timed out after 0\.005 seconds/i);
 });
 
 test('fetchDailySlate aborts a stalled request and returns null', async () => {
