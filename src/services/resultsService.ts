@@ -93,8 +93,10 @@ export interface DailySlateResponse {
  * should drive the visible match list; there is no other legitimate source.
  */
 export async function fetchDailySlate(): Promise<MatchFixture[] | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15_000);
   try {
-    const res = await fetch('/api/fixtures/daily-slate');
+    const res = await fetch('/api/fixtures/daily-slate', { signal: controller.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data: DailySlateResponse = await res.json();
     if (data.status === 'success' && Array.isArray(data.fixtures)) {
@@ -104,6 +106,8 @@ export async function fetchDailySlate(): Promise<MatchFixture[] | null> {
   } catch (err) {
     console.warn('Failed to fetch daily slate from server pipeline:', err);
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
  
