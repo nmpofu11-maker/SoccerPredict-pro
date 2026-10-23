@@ -37,7 +37,7 @@ import {
 import { loadTeamIntelligenceMatrices } from './engine/teamIntelligenceMatrix';
 import { ensurePersistentStorage } from './services/durablePersistence';
 import { deleteFixtureOnServer, purgeFixturesOnServer, ingestSlateToServer } from './services/apiService';
-import { fetchSettledResults, fetchDailySlate } from './services/resultsService';
+import { fetchSettledResults, fetchDailySlate, fetchPersistedSlate, triggerIngestNow } from './services/resultsService';
 import { HistoricalMatchResult } from './types/soccer';
 import { isFavouriteTeam, isHighVolatilityLeague } from './constants/favourites';
 import { getLeagueMeta, LeagueCategoryId, matchesLeagueCategory, LEAGUE_CATEGORIES } from './constants/leagues';
@@ -214,20 +214,19 @@ export default function App() {
       }
     }
 
-    // Fetch the real fixture slate from the automated server-side pipeline
-    // (data/fixtures-manifest.json via /api/fixtures/daily-slate). This is the
-    // ONE authoritative source — the previous ESPN-based performLiveApiSync
-    // call has been removed because it silently overwrote real pipeline data
-    // with narrower ESPN coverage on every single app load.
-    fetchDailySlate()
-      .then((serverFixtures) => {
+    // Read the already-persisted authoritative fixture manifest on startup.
+    // Do not trigger a provider/evidence refresh just because the UI mounted.
+    fetchPersistedSlate()
+      .then(({ fixtures: serverFixtures, message }) => {
         if (serverFixtures !== null) {
           setFixtures(serverFixtures);
           saveCustomFixtures(serverFixtures);
+        } else {
+          console.warn('Persisted fixture fetch on startup failed; keeping local dataset:', message);
         }
       })
       .catch((err) => {
-        console.warn('Daily slate fetch on startup failed, keeping local dataset:', err);
+        console.warn('Persisted fixture fetch on startup failed, keeping local dataset:', err);
       });
   }, []);
 
@@ -434,15 +433,32 @@ export default function App() {
     setOverrides(cleared);
   };
 
-  // Trigger an automated scraping and live API ingestion cycle — now backed by
-  // the real server-side pipeline (fetchDailySlate) instead of the old
-  // ESPN-only performLiveApiSync, which had narrower coverage and would
-  // periodically overwrite real pipeline data with a sparser dataset.
-  const triggerScrapeCycle = useCallback(() => {
+  // Background cycles only refresh the saved fixture manifest. An explicit sync action
+  // starts provider ingestion and then reads the manifest written by the server.
+  const triggerScrapeCycle = useCallback((runProviderIngest = false) => {
+    if (isScrapingNow) return;
     setIsScrapingNow(true);
-    fetchDailySlate()
-      .then((serverFixtures) => {
-        const updatedFixtures = serverFixtures !== null ? serverFixtures : fixtures;
+
+    const run = async () => {
+      try {
+        let ingestMessage: string | null = null;
+        let providerCount: number | null = null;
+
+        if (runProviderIngest) {
+          const ingest = await triggerIngestNow();
+          if (!ingest.success) {
+            throw new Error(ingest.message || 'The server-side provider ingestion failed.');
+          }
+          ingestMessage = ingest.message;
+          providerCount = Number.isFinite(ingest.count) ? ingest.count : 0;
+        }
+
+        const persisted = await fetchPersistedSlate();
+        if (!persisted.fixtures) {
+          throw new Error(persisted.message || 'The server returned no readable persisted fixture manifest.');
+        }
+
+        const updatedFixtures = persisted.fixtures;
         setFixtures(updatedFixtures);
         saveCustomFixtures(updatedFixtures);
 
@@ -451,36 +467,54 @@ export default function App() {
           timestamp: new Date().toISOString(),
           fixturesCount: updatedFixtures.length,
           favouritesCount: updatedFixtures.filter((f) => isFavouriteTeam(f.homeTeam.name) || isFavouriteTeam(f.awayTeam.name)).length,
-          status: serverFixtures !== null ? 'SYNCED' : 'ERROR',
-          details: serverFixtures !== null
-            ? `Synced authoritative server slate (${serverFixtures.length} fixtures).`
-            : 'Server pipeline request failed; kept existing dataset as an offline fallback.',
+          status: 'SYNCED',
+          details: runProviderIngest
+            ? `Provider ingestion completed (${providerCount ?? 0} fixtures returned): ${ingestMessage || 'No provider message.'} Loaded ${updatedFixtures.length} fixtures from the persisted server manifest.`
+            : `Refreshed ${updatedFixtures.length} fixtures from the persisted server manifest; this background poll did not start external provider ingestion.`,
         };
-        const newLogs = saveScrapeLog(log);
-        setScrapeLogs(newLogs);
+        setScrapeLogs(saveScrapeLog(log));
 
-        setAutoScrapeConfig((prev) => {
-          const updated = saveAutoScrapeConfig({
-            ...prev,
-            lastScrapedAt: new Date().toISOString(),
-            totalScrapesCount: prev.totalScrapesCount + 1,
-          });
-          return updated;
+        const updatedConfig = saveAutoScrapeConfig({
+          ...autoScrapeConfig,
+          lastScrapedAt: new Date().toISOString(),
+          totalScrapesCount: autoScrapeConfig.totalScrapesCount + 1,
         });
+        setAutoScrapeConfig(updatedConfig);
 
+        setAutoScrapeNotice(runProviderIngest
+          ? `Provider ingest completed (${providerCount ?? 0} fixtures returned); refreshed ${updatedFixtures.length} saved fixtures.`
+          : `Fixture list refreshed from server (${updatedFixtures.length} saved fixtures).`);
+        setTimeout(() => setAutoScrapeNotice(null), 8_000);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown sync failure';
+        console.warn('Fixture sync failed:', message);
+
+        const log: ScrapeLogItem = {
+          id: `sync_error_${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          fixturesCount: fixtures.length,
+          favouritesCount: fixtures.filter((f) => isFavouriteTeam(f.homeTeam.name) || isFavouriteTeam(f.awayTeam.name)).length,
+          status: 'ERROR',
+          details: `Sync failed: ${message}. Retained the existing ${fixtures.length}-fixture dataset.`,
+        };
+        setScrapeLogs(saveScrapeLog(log));
+        setAutoScrapeNotice(`Sync failed: ${message}. Retained the existing ${fixtures.length}-fixture dataset.`);
+        setTimeout(() => setAutoScrapeNotice(null), 12_000);
+
+        const updatedConfig = saveAutoScrapeConfig({
+          ...autoScrapeConfig,
+          lastScrapedAt: new Date().toISOString(),
+          totalScrapesCount: autoScrapeConfig.totalScrapesCount + 1,
+        });
+        setAutoScrapeConfig(updatedConfig);
+      } finally {
         setIsScrapingNow(false);
         setSecondsUntilNextScrape(autoScrapeConfig.intervalSeconds);
-        setAutoScrapeNotice(serverFixtures !== null
-          ? `Live Sync: ${updatedFixtures.length} authoritative fixtures refreshed.`
-          : `Sync failed: retained the existing ${updatedFixtures.length}-fixture dataset.`);
-        setTimeout(() => setAutoScrapeNotice(null), 4000);
-      })
-      .catch((err) => {
-        console.warn('Scraper cycle error:', err);
-        setIsScrapingNow(false);
-        setSecondsUntilNextScrape(autoScrapeConfig.intervalSeconds);
-      });
-  }, [autoScrapeConfig.intervalSeconds, fixtures, learningState, combinedHistoricalResults]);
+      }
+    };
+
+    void run();
+  }, [isScrapingNow, autoScrapeConfig, autoScrapeConfig.intervalSeconds, fixtures]); 
 
   // Automated Scraper Interval Countdown
   useEffect(() => {
@@ -601,7 +635,7 @@ export default function App() {
         onToggleAutoScrape={handleToggleAutoScrape}
         secondsUntilNextScrape={secondsUntilNextScrape}
         isScrapingNow={isScrapingNow}
-        onTriggerScrapeNow={triggerScrapeCycle}
+        onTriggerScrapeNow={() => triggerScrapeCycle(true)}
         cumulativeSuccessRate={cumulativeSuccessRate}
         correctPredictionsCount={correctPredictionsCount}
         totalPredictionsCount={totalPredictionsEvaluated}
