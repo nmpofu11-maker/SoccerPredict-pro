@@ -119,13 +119,13 @@ export const Navbar: React.FC<NavbarProps> = ({
         <button
           type="button"
           onClick={onOpenVerification || onOpenIngestion}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs transition-colors shadow-sm"
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border hover:text-white text-xs transition-colors shadow-sm ${typeof authenticityScore === "number" && Number.isFinite(authenticityScore) ? "bg-emerald-950/60 hover:bg-emerald-900/80 border-emerald-500/40 text-emerald-300" : "bg-amber-950/40 hover:bg-amber-900/60 border-amber-500/40 text-amber-300"}`}
           id="btn-nav-verified-data"
-          title="Open the data audit. A score is shown only after an audit report is available."
+          title="Open the data audit. A score is shown only after an audit report is available; it is not the fixture evidence coverage score."
         >
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+          <ShieldCheck className={`w-3.5 h-3.5 ${typeof authenticityScore === "number" && Number.isFinite(authenticityScore) ? "text-emerald-400" : "text-amber-300"}`} />
           <span className="hidden sm:inline font-bold">Data Audit</span>
-          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-900/90 text-emerald-200 border border-emerald-700/60 font-bold">
+          <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded border font-bold ${typeof authenticityScore === "number" && Number.isFinite(authenticityScore) ? "bg-emerald-900/90 text-emerald-200 border-emerald-700/60" : "bg-amber-900/60 text-amber-200 border-amber-700/60"}`}>
             {typeof authenticityScore === 'number' && Number.isFinite(authenticityScore) ? `${Math.round(authenticityScore)}%` : 'NOT RUN'}
           </span>
         </button>
