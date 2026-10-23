@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import test from 'node:test';
+import { afterEach, test } from 'node:test';
 import {
   createHistoricalArchiveBackup,
   HISTORICAL_ARCHIVE_BACKUP_LIMIT,
@@ -15,7 +15,7 @@ function makeDirectory(): string {
   temporaryDirectories.push(directory);
   return directory;
 }
-test.afterEach(() => {
+afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     fs.rmSync(directory, { recursive: true, force: true });
   }
