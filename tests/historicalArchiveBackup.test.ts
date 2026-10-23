@@ -100,6 +100,23 @@ test('missing archive does not create a meaningless backup', () => {
   assert.deepEqual(listHistoricalArchiveBackups(backupDirectory), []);
 });
 
+test('two snapshots created in the same millisecond never overwrite one another', () => {
+  const directory = makeDirectory();
+  const store = path.join(directory, 'historical-matches.json');
+  const backupDirectory = path.join(directory, 'backups');
+  const sameInstant = new Date('2026-04-01T12:00:00.000Z');
+
+  fs.writeFileSync(store, JSON.stringify({ version: 1, rows: [{ key: 'before' }] }));
+  const first = createHistoricalArchiveBackup(store, backupDirectory, sameInstant);
+  fs.writeFileSync(store, JSON.stringify({ version: 1, rows: [{ key: 'after' }] }));
+  const second = createHistoricalArchiveBackup(store, backupDirectory, sameInstant);
+
+  assert.ok(first);
+  assert.ok(second);
+  assert.notEqual(first.filename, second.filename);
+  assert.equal(listHistoricalArchiveBackups(backupDirectory).length, 2);
+});
+
 test('backup retention keeps no more than the configured count', () => {
   const directory = makeDirectory();
   const store = path.join(directory, 'historical-matches.json');
