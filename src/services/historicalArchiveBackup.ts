@@ -66,6 +66,19 @@ export function createHistoricalArchiveBackup(
   };
 }
 
+/**
+ * Create a one-time baseline snapshot for an existing archive when no snapshots exist yet.
+ * Returns null when the archive is absent or already has a safety snapshot.
+ */
+export function ensureInitialHistoricalArchiveBackup(
+  sourcePath: string,
+  backupDirectory: string,
+  now: Date = new Date(),
+): HistoricalArchiveBackupInfo | null {
+  if (!fs.existsSync(sourcePath) || listHistoricalArchiveBackups(backupDirectory).length > 0) return null;
+  return createHistoricalArchiveBackup(sourcePath, backupDirectory, now);
+}
+
 /** Resolves only a filename produced by this service; rejects traversal and arbitrary files. */
 export function resolveHistoricalArchiveBackupPath(
   backupDirectory: string,
