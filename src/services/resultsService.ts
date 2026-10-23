@@ -198,8 +198,15 @@ export async function fetchEvidenceCoverage(): Promise<EvidenceCoverageResponse 
 
 /** Manually triggers the ingestion job right now, for a 'Sync Now' button that does something real. */
 export async function triggerIngestNow(): Promise<{ success: boolean; message: string; count: number }> {
+  const controller = new AbortController();
+  const timeoutMs = 90_000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch('/api/admin/run-ingest-now', { method: 'POST', headers: getAdminApiHeaders() });
+    const res = await fetch('/api/admin/run-ingest-now', {
+      method: 'POST',
+      headers: getAdminApiHeaders(),
+      signal: controller.signal,
+    });
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) {
       return { success: false, message: 'Authentication required (401): Please configure ADMIN_API_KEY in session.', count: 0 };
@@ -212,6 +219,11 @@ export async function triggerIngestNow(): Promise<{ success: boolean; message: s
     }
     return data;
   } catch (err) {
-    return { success: false, message: err instanceof Error ? err.message : 'Request failed', count: 0 };
+    const message = err instanceof Error && err.name === 'AbortError'
+      ? `Provider ingestion timed out after ${timeoutMs / 1000} seconds.`
+      : err instanceof Error ? err.message : 'Request failed';
+    return { success: false, message, count: 0 };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
