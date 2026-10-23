@@ -74,6 +74,28 @@ test('synthesizes sample-backed profiles from imported history but does not inve
   assert.equal(matrices['Mamelodi Sundowns'].sample_size_matches, 0, 'a club absent from this imported archive must remain a baseline with no sample');
 });
 
+test('uses match-point variance for volatility and keeps unsupported fatigue coefficients at baseline', () => {
+  const { results } = buildTrainingSet(synthetic(900));
+  const stableForT0 = results.map((match) => {
+    if (match.fixture.homeTeam.name === 'T0') return { ...match, actualOutcome: 'home' as const };
+    if (match.fixture.awayTeam.name === 'T0') return { ...match, actualOutcome: 'away' as const };
+    return match;
+  });
+  const alternatingForT0 = results.map((match, index) => {
+    if (match.fixture.homeTeam.name === 'T0') return { ...match, actualOutcome: index % 2 === 0 ? 'home' as const : 'away' as const };
+    if (match.fixture.awayTeam.name === 'T0') return { ...match, actualOutcome: index % 2 === 0 ? 'away' as const : 'home' as const };
+    return match;
+  });
+
+  const stable = buildPredictionTeamMatrices(stableForT0).T0;
+  const volatile = buildPredictionTeamMatrices(alternatingForT0).T0;
+  assert.ok(stable && volatile);
+  assert.equal(stable.fatigue_sample_matches, 0, 'the imported results archive does not contain sourced 72-hour schedule observations');
+  assert.equal(stable.learned_coefficients.fatigue_penalty_modifier, 0.15, 'fatigue coefficient must stay at its baseline without supporting samples');
+  assert.ok(stable.learned_coefficients.volatility_index < volatile.learned_coefficients.volatility_index,
+    'consistent points per appearance should be less volatile than mixed outcomes');
+});
+
 test('active imported-history evaluation marks absent holdout evidence unavailable, not zero', () => {
   const report = evaluateHistoricalModelOnHoldout([], DEFAULT_ENGINE_WEIGHTS);
   assert.equal(report.status, 'insufficient_data');
