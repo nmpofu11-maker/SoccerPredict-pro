@@ -451,7 +451,7 @@ export default function App() {
           timestamp: new Date().toISOString(),
           fixturesCount: updatedFixtures.length,
           favouritesCount: updatedFixtures.filter((f) => isFavouriteTeam(f.homeTeam.name) || isFavouriteTeam(f.awayTeam.name)).length,
-          status: 'SYNCED',
+          status: serverFixtures !== null ? 'SYNCED' : 'ERROR',
           details: serverFixtures !== null
             ? `Synced authoritative server slate (${serverFixtures.length} fixtures).`
             : 'Server pipeline request failed; kept existing dataset as an offline fallback.',
@@ -470,7 +470,9 @@ export default function App() {
 
         setIsScrapingNow(false);
         setSecondsUntilNextScrape(autoScrapeConfig.intervalSeconds);
-        setAutoScrapeNotice(`Live Sync: ${updatedFixtures.length} real fixtures synchronized • Weights active (${learningState.accuracyPct.toFixed(1)}% Acc)`);
+        setAutoScrapeNotice(serverFixtures !== null
+          ? `Live Sync: ${updatedFixtures.length} authoritative fixtures refreshed.`
+          : `Sync failed: retained the existing ${updatedFixtures.length}-fixture dataset.`);
         setTimeout(() => setAutoScrapeNotice(null), 4000);
       })
       .catch((err) => {
@@ -487,7 +489,8 @@ export default function App() {
     const timer = setInterval(() => {
       setSecondsUntilNextScrape((prev) => {
         if (prev <= 1) {
-          triggerScrapeCycle();
+          // Avoid overlapping requests when a previous sync is still in progress.
+          if (!isScrapingNow) triggerScrapeCycle();
           return autoScrapeConfig.intervalSeconds;
         }
         return prev - 1;
@@ -495,7 +498,7 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [autoScrapeConfig.enabled, autoScrapeConfig.intervalSeconds, triggerScrapeCycle]);
+  }, [autoScrapeConfig.enabled, autoScrapeConfig.intervalSeconds, triggerScrapeCycle, isScrapingNow]);
 
   // Toggle Auto-Scraping ON / OFF
   const handleToggleAutoScrape = () => {
