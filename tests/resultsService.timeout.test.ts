@@ -73,6 +73,25 @@ test('fetchPersistedSlate reads the stored manifest without calling the expensiv
   assert.equal(result.message, null);
 });
 
+test('fetchPersistedSlate reports an explicit timeout when the manifest endpoint stalls', async () => {
+  globalThis.fetch = (async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    return await new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      if (!signal) {
+        reject(new Error('Expected the manifest request to have an abort signal'));
+        return;
+      }
+      signal.addEventListener('abort', () => {
+        reject(new DOMException('Request aborted', 'AbortError'));
+      }, { once: true });
+    });
+  }) as typeof fetch;
+
+  const result = await fetchPersistedSlate(5);
+  assert.equal(result.fixtures, null);
+  assert.equal(result.message, 'Timed out after 5 ms reading persisted fixtures.');
+});
+
 test('fetchPersistedSlate preserves actionable server error messages', async () => {
   globalThis.fetch = (async () => new Response(JSON.stringify({
     status: 'error',
