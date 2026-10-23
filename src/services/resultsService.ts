@@ -112,6 +112,39 @@ export async function fetchDailySlate(timeoutMs: number = 15_000): Promise<Match
   }
 }
  
+export interface PersistedSlateFetchResult {
+  fixtures: MatchFixture[] | null;
+  message: string | null;
+}
+
+/**
+ * Reads the already-persisted fixture manifest without starting a provider refresh.
+ * This endpoint is intentionally lightweight for startup and periodic UI refreshes.
+ */
+export async function fetchPersistedSlate(timeoutMs: number = 15_000): Promise<PersistedSlateFetchResult> {
+  const controller = new AbortController();
+  const safeTimeoutMs = Number.isFinite(timeoutMs) ? Math.max(1, Math.min(120_000, Math.floor(timeoutMs))) : 15_000;
+  const timeoutId = setTimeout(() => controller.abort(), safeTimeoutMs);
+  try {
+    const res = await fetch('/api/fixtures/persisted', { signal: controller.signal });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { fixtures: null, message: data?.message || data?.error || `HTTP ${res.status} reading persisted fixtures` };
+    }
+    if (data?.status === 'success' && Array.isArray(data.fixtures)) {
+      return { fixtures: data.fixtures as MatchFixture[], message: null };
+    }
+    return { fixtures: null, message: data?.message || data?.error || 'Persisted fixture response had an invalid shape.' };
+  } catch (err) {
+    const message = err instanceof Error && err.name === 'AbortError'
+      ? `Timed out after ${safeTimeoutMs} ms reading persisted fixtures.`
+      : err instanceof Error ? err.message : 'Request failed reading persisted fixtures.';
+    return { fixtures: null, message };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export interface CronStatusResponse {
   status: 'success' | 'error';
   sportApiAiConfigured: boolean;
