@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import type { ImportedMatchRow } from './historicalImport';
 
 export const HISTORICAL_ARCHIVE_BACKUP_LIMIT = 5;
 
@@ -77,6 +78,32 @@ export function resolveHistoricalArchiveBackupPath(
   } catch {
     return null;
   }
+}
+
+/** Reads and validates a named snapshot for an authenticated restore operation. */
+export function readHistoricalArchiveBackup(
+  backupDirectory: string,
+  filename: string,
+): ImportedMatchRow[] | null {
+  const backupPath = resolveHistoricalArchiveBackupPath(backupDirectory, filename);
+  if (!backupPath) return null;
+
+  const parsed: unknown = JSON.parse(fs.readFileSync(backupPath, 'utf-8'));
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as { rows?: unknown }).rows)) {
+    throw new Error('Historical archive backup has an invalid schema.');
+  }
+
+  const rows = (parsed as { rows: unknown[] }).rows;
+  const valid = rows.every(row => {
+    if (!row || typeof row !== 'object') return false;
+    const match = row as Partial<ImportedMatchRow>;
+    return typeof match.key === 'string' && typeof match.date === 'string' &&
+      typeof match.league === 'string' && typeof match.home === 'string' &&
+      typeof match.away === 'string' && Number.isInteger(match.hg) &&
+      Number.isInteger(match.ag) && (match.hg as number) >= 0 && (match.ag as number) >= 0;
+  });
+  if (!valid) throw new Error('Historical archive backup contains invalid match rows.');
+  return rows as ImportedMatchRow[];
 }
 
 /** Lists only backups created by this service, newest first. */
