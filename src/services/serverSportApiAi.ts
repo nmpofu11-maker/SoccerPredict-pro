@@ -9,6 +9,8 @@
  * Daily Endpoint: GET /api/fixtures/date/{YYYY-MM-DD}
  */
 
+import { isValidFootballScore } from '../utils/scoreValidation';
+
 export interface SportApiAiFixture {
   id: string | number;
   date?: string;
@@ -96,13 +98,25 @@ export async function fetchSportApiAiFixturesByDate(dateStr: string): Promise<an
   }
 
   const rawText = await res.text();
-  const jsonStart = rawText.indexOf('{');
-  const jsonEnd = rawText.lastIndexOf('}');
-  if (jsonStart === -1 || jsonEnd === -1) {
-    throw new Error(`SportAPI.ai invalid response format: ${rawText.slice(0, 200)}`);
+  let data: any;
+
+  // Preserve complete JSON documents, including top-level arrays.
+  try {
+    data = JSON.parse(rawText.trim());
+  } catch {
+    // Fallback for gateways that prepend text to an object response.
+    const jsonStart = rawText.indexOf('{');
+    const jsonEnd = rawText.lastIndexOf('}');
+    if (jsonStart < 0 || jsonEnd < jsonStart) {
+      throw new Error(`SportAPI.ai invalid response format: ${rawText.slice(0, 200)}`);
+    }
+    try {
+      data = JSON.parse(rawText.slice(jsonStart, jsonEnd + 1));
+    } catch {
+      throw new Error(`SportAPI.ai invalid JSON response: ${rawText.slice(0, 200)}`);
+    }
   }
 
-  const data = JSON.parse(rawText.slice(jsonStart, jsonEnd + 1));
   const fixturesArray: any[] = Array.isArray(data)
     ? data
     : Array.isArray(data.data)
@@ -133,7 +147,7 @@ export function isSportApiAiFixtureFinished(f: any): boolean {
   ];
 
   const finishedStatuses = new Set([
-    'FINISHED', 'FT', 'AET', 'PEN', 'ENDED', 'FINAL', 'COMPLETED',
+    'FINISHED', 'FT', 'AET', 'PEN', 'PENS', 'ENDED', 'FINAL', 'COMPLETED',
     'FULL TIME', 'MATCH FINISHED',
   ]);
 
@@ -146,32 +160,91 @@ export function isSportApiAiFixtureFinished(f: any): boolean {
   });
 }
 
+/** Confirm exact provider ID and exact normalized home/away identity. */
+export function isSportApiAiFixtureIdentityMatch(
+  candidate: any,
+  fixtureId: number | string,
+  homeTeam: string,
+  awayTeam: string,
+): boolean {
+  if (!candidate || String(candidate.id) !== String(fixtureId)) return false;
+  const candidateHome = candidate.home_team?.name || candidate.homeTeam?.name || candidate.home_team || candidate.homeTeam;
+  const candidateAway = candidate.away_team?.name || candidate.awayTeam?.name || candidate.away_team || candidate.awayTeam;
+  const normalize = (name: unknown) => typeof name === 'string' ? name.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+  const expectedHome = normalize(homeTeam);
+  const expectedAway = normalize(awayTeam);
+  return Boolean(expectedHome && expectedAway) &&
+    normalize(candidateHome) === expectedHome && normalize(candidateAway) === expectedAway;
+}
+
 /**
  * Extracts scores and decisive outcome from a SportAPI.ai fixture record.
  */
 export function getSportApiAiScores(f: any): { home: number | null; away: number | null; outcome: 'home' | 'draw' | 'away' | null } {
-  let home: number | null = null;
-  let away: number | null = null;
-
-  if (typeof f.home_score === 'number' && typeof f.away_score === 'number') {
-    home = f.home_score;
-    away = f.away_score;
-  } else if (f.score && typeof f.score.home === 'number' && typeof f.score.away === 'number') {
-    home = f.score.home;
-    away = f.score.away;
-  } else if (f.home_team && typeof f.home_team.score === 'number' && f.away_team && typeof f.away_team.score === 'number') {
-    home = f.home_team.score;
-    away = f.away_team.score;
-  } else if (typeof f.homeScore === 'number' && typeof f.awayScore === 'number') {
-    home = f.homeScore;
-    away = f.awayScore;
-  }
-
-  if (home === null || away === null) {
+  if (!f || typeof f !== 'object') {
     return { home: null, away: null, outcome: null };
   }
 
-  const outcome: 'home' | 'draw' | 'away' = home > away ? 'home' : away > home ? 'away' : 'draw';
+  let home: number | null = null;
+  let away: number | null = null;
+
+  const pairs = [
+    [f.home_score, f.away_score],
+    [f.score?.home, f.score?.away],
+    [f.home_team?.score, f.away_team?.score],
+    [f.homeScore, f.awayScore],
+    [f.goals?.home, f.goals?.away],
+    [f.score?.fulltime?.home, f.score?.fulltime?.away],
+    [f.score?.fullTime?.home, f.score?.fullTime?.away],
+  ];
+
+  for (const [homeValue, awayValue] of pairs) {
+    if (
+      homeValue === null || homeValue === undefined || homeValue === '' ||
+      awayValue === null || awayValue === undefined || awayValue === ''
+    ) continue;
+
+    const parsedHome = Number(homeValue);
+    const parsedAway = Number(awayValue);
+    if (isValidFootballScore(parsedHome) && isValidFootballScore(parsedAway)) {
+      home = parsedHome;
+      away = parsedAway;
+      break;
+    }
+  }
+
+  if (home === null || away === null) {
+    const scores = f.scores?.data ?? f.scores;
+    if (Array.isArray(scores)) {
+      const current = scores.filter(
+        (entry: any) => String(entry?.description || '').toUpperCase() === 'CURRENT'
+      );
+      const rows = current.length ? current : scores;
+
+      for (const entry of rows) {
+        const score = entry?.score ?? entry;
+        const side = String(
+          score?.participant ?? entry?.participant ?? ''
+        ).toLowerCase();
+        const value = score?.goals ?? score?.value ?? entry?.goals;
+        if (value === null || value === undefined || value === '') continue;
+
+        const parsed = Number(value);
+        if (!isValidFootballScore(parsed)) continue;
+
+        if (side === 'home' || side === '1') home = parsed;
+        if (side === 'away' || side === '2') away = parsed;
+      }
+    }
+  }
+
+  if (!isValidFootballScore(home) || !isValidFootballScore(away)) {
+    return { home: null, away: null, outcome: null };
+  }
+
+  const outcome: 'home' | 'draw' | 'away' =
+    home > away ? 'home' : away > home ? 'away' : 'draw';
+
   return { home, away, outcome };
 }
 
@@ -222,6 +295,12 @@ export async function fetchSportApiAiStandings(leagueId: number | string): Promi
 export async function fetchSportApiAiFixtureStats(fixtureId: number | string): Promise<any> {
   const body = await sportApiAiGet(`fixtures/${encodeURIComponent(String(fixtureId))}/stats`);
   return body?.data ?? body;
+}
+
+/** Fetch one provider fixture directly when the date index does not return it. */
+export async function fetchSportApiAiFixtureById(fixtureId: number | string): Promise<any | null> {
+  const body = await sportApiAiGet(`fixtures/${encodeURIComponent(String(fixtureId))}`);
+  return body?.fixture ?? body?.data ?? null;
 }
 
 export async function fetchSportApiAiHeadToHead(team1Id: number | string, team2Id: number | string): Promise<any> {

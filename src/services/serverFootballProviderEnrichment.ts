@@ -1658,8 +1658,9 @@ export async function enrichFixturesWithFootballApis(
         team.scheduleSource = 'SPORTAPI_AI';
 
         if (!team.homeAwayFormSource) {
-          const homeMatches = matches.filter((m) => completedProviderMatch(m, fixture.kickoffTime) && teamSideForFixture(m, String(id), team.name) === 'home');
-          const awayMatches = matches.filter((m) => completedProviderMatch(m, fixture.kickoffTime) && teamSideForFixture(m, String(id), team.name) === 'away');
+          const eligibleMatches = eligibleHistoricalMatches(matches, fixture, fixture.kickoffTime);
+          const homeMatches = eligibleMatches.filter((m) => teamSideForFixture(m, String(id), team.name) === 'home');
+          const awayMatches = eligibleMatches.filter((m) => teamSideForFixture(m, String(id), team.name) === 'away');
           if (homeMatches.length >= 3) {
             const homeForm = summarizeFormFromMatches(team.name, String(id), homeMatches.slice(-5), fixture.kickoffTime, 'SPORTAPI_AI', fixture.league, fixture.competition).form || [];
             const ppg = homeForm.length ? homeForm.reduce((sum, r) => sum + (r === 'W' ? 3 : r === 'D' ? 1 : 0), 0) / homeForm.length : 0;

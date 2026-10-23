@@ -197,9 +197,9 @@ export async function fetchEvidenceCoverage(): Promise<EvidenceCoverageResponse 
 }
 
 /** Manually triggers the ingestion job right now, for a 'Sync Now' button that does something real. */
-export async function triggerIngestNow(timeoutMs: number = 90_000): Promise<{ success: boolean; message: string; count: number }> {
+export async function triggerIngestNow(timeoutMs: number = 180_000): Promise<{ success: boolean; message: string; count: number }> {
   const controller = new AbortController();
-  const safeTimeoutMs = Number.isFinite(timeoutMs) ? Math.max(1, Math.min(120_000, Math.floor(timeoutMs))) : 90_000;
+  const safeTimeoutMs = Number.isFinite(timeoutMs) ? Math.max(1, Math.min(240_000, Math.floor(timeoutMs))) : 180_000;
   const timeoutId = setTimeout(() => controller.abort(), safeTimeoutMs);
   try {
     const res = await fetch('/api/admin/run-ingest-now', {

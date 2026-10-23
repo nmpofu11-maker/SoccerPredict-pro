@@ -235,6 +235,7 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
     assert.equal(out.awayTeam.leagueRank, 5);
     assert.deepEqual(out.homeTeam.form, ['W','W','D','L','W']);
     assert.equal(out.homeTeam.formSource, 'SPORTAPI_AI');
+
     assert.equal(out.homeTeam.avgPossession, 56.7);
     assert.equal(out.homeTeam.avgShotsOnTarget, 6);
     assert.equal(out.homeTeam.matchStatsSource, 'SPORTAPI_AI');
@@ -504,6 +505,8 @@ test('SportAPI.ai historical form excludes cups, friendlies, simulated feeds and
     const out = result.fixtures[0];
     assert.deepEqual(out.homeTeam.form, ['D', 'W']);
     assert.equal(out.homeTeam.formSource, 'SPORTAPI_AI');
+    assert.equal(out.homeTeam.isHomeDominant, undefined);
+    assert.equal(out.homeTeam.homeAwayFormSource, undefined);
   } finally {
     restoreEnvironment();
     delete process.env.SPORT_PROVIDER_MAX_TEAM_LOOKUPS;

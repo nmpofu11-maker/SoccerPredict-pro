@@ -486,7 +486,7 @@ export function verifyAndSanitizeFixtures(
     : [];
 
   // Deduplicate and reconcile against ghost matches, duplicate fixture IDs, and rescheduled/inverted duplicates
-  const seenPairings = new Set<string>();
+  const seenPairings = new Map<string, typeof safeList[number]>();
   const seenIds = new Map<string, typeof safeList[0]>();
   const seenProviderIds = new Map<string, typeof safeList[0]>();
   const deduplicatedList: typeof safeList = [];
@@ -510,6 +510,34 @@ export function verifyAndSanitizeFixtures(
   };
 
   const mergeRecords = (existing: any, incoming: any) => {
+    const hasTeamEvidence = (team: any): boolean =>
+      (Boolean(team?.standingsSource) &&
+        Number.isFinite(team?.leagueRank) &&
+        team.leagueRank >= 1) ||
+      (Array.isArray(team?.form) &&
+        team.form.length > 0 &&
+        Boolean(team?.formSource)) ||
+      (Boolean(team?.advancedStatsSource) &&
+        (Number.isFinite(team?.avgMatchRating) ||
+          Number.isFinite(team?.totalSquadValueEur)));
+
+    const hasFixtureEvidence = (fixture: any): boolean =>
+      hasTeamEvidence(fixture?.homeTeam) &&
+      hasTeamEvidence(fixture?.awayTeam);
+
+    const existingHasEvidence = hasFixtureEvidence(existing);
+    const incomingHasEvidence = hasFixtureEvidence(incoming);
+
+    if (existingHasEvidence !== incomingHasEvidence) {
+      const canonical = existingHasEvidence ? existing : incoming;
+      const older = existingHasEvidence ? incoming : existing;
+
+      if (!canonical.pitchApiScore && older.pitchApiScore) {
+        canonical.pitchApiScore = older.pitchApiScore;
+      }
+
+      return { canonical, older };
+    }
     const existingHasIds = Boolean(existing.sportApiAiHomeTeamId || existing.pitchApiMatchId || existing.theRundownEventId || existing.sportmonksFixtureId);
     const incomingHasIds = Boolean(incoming.sportApiAiHomeTeamId || incoming.pitchApiMatchId || incoming.theRundownEventId || incoming.sportmonksFixtureId);
 
@@ -556,6 +584,22 @@ export function verifyAndSanitizeFixtures(
     const pairingKey = `${homeKey}_vs_${awayKey}_${dateKey}`;
 
     if (seenPairings.has(pairingKey)) {
+      const existing = seenPairings.get(pairingKey)!;
+      const { canonical } = mergeRecords(existing, f);
+      const idx = deduplicatedList.indexOf(existing);
+
+      if (idx !== -1) {
+        deduplicatedList[idx] = canonical;
+      }
+
+      seenPairings.set(pairingKey, canonical);
+      seenIds.set(canonical.id, canonical);
+
+      const providerKey = getProviderKey(canonical);
+      if (providerKey) {
+        seenProviderIds.set(providerKey, canonical);
+      }
+
       continue;
     }
 
@@ -594,7 +638,7 @@ export function verifyAndSanitizeFixtures(
       }
     }
 
-    seenPairings.add(pairingKey);
+    seenPairings.set(pairingKey, f);
     seenIds.set(f.id, f);
     if (provKey) seenProviderIds.set(provKey, f);
     deduplicatedList.push(f);

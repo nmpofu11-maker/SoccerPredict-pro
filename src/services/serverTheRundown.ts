@@ -1,3 +1,5 @@
+import { isValidFootballScore } from '../utils/scoreValidation';
+
 /**
  * TheRundown.io client (Secondary Provider & Betting Odds Feed).
  *
@@ -229,18 +231,39 @@ export async function fetchAllTheRundownSoccerEvents(dateStr: string): Promise<A
 }
 
 export function isTheRundownEventFinished(ev: TheRundownEvent): boolean {
-  if (!ev || !ev.score) return false;
-  const status = (ev.score.event_status || '').toUpperCase();
-  return status === 'STATUS_FINAL' || status === 'FINAL' || status === 'STATUS_FINAL_PEN';
-}
+  if (!ev || !ev.score || typeof ev.score.event_status !== 'string') return false;
 
+  const status = ev.score.event_status
+    .trim()
+    .toUpperCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  // Only explicit terminal statuses qualify; scores alone are not proof of completion.
+  const finishedStatuses = new Set([
+    'STATUS FINAL',
+    'FINAL',
+    'STATUS FINAL PEN',
+    'STATUS FULL TIME',
+    'FULL TIME',
+    'FULLTIME',
+    'FT',
+    'AET',
+    'PEN',
+    'ENDED',
+    'COMPLETED',
+    'MATCH FINISHED',
+  ]);
+
+  return finishedStatuses.has(status);
+}
 export function getTheRundownScores(ev: TheRundownEvent): { home: number | null; away: number | null; outcome: 'home' | 'draw' | 'away' | null } {
   if (!ev || !ev.score) return { home: null, away: null, outcome: null };
 
   const home = typeof ev.score.score_home === 'number' ? ev.score.score_home : null;
   const away = typeof ev.score.score_away === 'number' ? ev.score.score_away : null;
 
-  if (home === null || away === null) {
+  if (!isValidFootballScore(home) || !isValidFootballScore(away)) {
     return { home: null, away: null, outcome: null };
   }
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchAllTheRundownSoccerEvents, THE_RUNDOWN_SOCCER_SPORTS } from '../src/services/serverTheRundown';
+import { fetchAllTheRundownSoccerEvents, THE_RUNDOWN_SOCCER_SPORTS, isTheRundownEventFinished, getTheRundownScores } from '../src/services/serverTheRundown';
 
 type FetchFn = typeof globalThis.fetch;
 const realFetch = globalThis.fetch;
@@ -75,4 +75,59 @@ test('a 429 that clears on the retry is recovered without skipping leagues', asy
     assert.equal(res.length, THE_RUNDOWN_SOCCER_SPORTS.length);
     assert.equal(calls.length, THE_RUNDOWN_SOCCER_SPORTS.length + 1);
   } finally { teardown(); }
+});
+
+
+test('finished-status helper accepts explicit full-time and final statuses', () => {
+  for (const status of [
+    'STATUS_FULL_TIME', 'FULL_TIME', 'FULL TIME', 'FT',
+    'STATUS_FINAL', 'FINAL', 'STATUS_FINAL_PEN', 'AET', 'PEN',
+  ]) {
+    assert.equal(
+      isTheRundownEventFinished({
+        event_id: 'test',
+        score: { event_status: status, score_home: 2, score_away: 1 },
+      } as any),
+      true,
+      status
+    );
+  }
+});
+
+test('finished-status helper rejects scheduled, live, postponed, and missing statuses', () => {
+  for (const status of [
+    'STATUS_SCHEDULED', 'STATUS_IN_PROGRESS', 'STATUS_POSTPONED', '',
+  ]) {
+    assert.equal(
+      isTheRundownEventFinished({
+        event_id: 'test',
+        score: { event_status: status, score_home: 2, score_away: 1 },
+      } as any),
+      false,
+      status
+    );
+  }
+  assert.equal(isTheRundownEventFinished({ event_id: 'test' } as any), false);
+});
+
+test('TheRundown score helper returns an outcome only when both scores are numeric', () => {
+  const result = getTheRundownScores({
+    event_id: 'test',
+    score: { event_status: 'STATUS_FULL_TIME', score_home: 2, score_away: 1 },
+  } as any);
+  assert.deepEqual(result, { home: 2, away: 1, outcome: 'home' });
+
+  const missing = getTheRundownScores({
+    event_id: 'test',
+    score: { event_status: 'STATUS_FULL_TIME', score_home: null, score_away: 1 },
+  } as any);
+  assert.deepEqual(missing, { home: null, away: null, outcome: null });
+
+  for (const invalidScore of [-1, 1.5]) {
+    const invalid = getTheRundownScores({
+      event_id: 'test',
+      score: { event_status: 'STATUS_FULL_TIME', score_home: invalidScore, score_away: 1 },
+    } as any);
+    assert.deepEqual(invalid, { home: null, away: null, outcome: null });
+  }
 });

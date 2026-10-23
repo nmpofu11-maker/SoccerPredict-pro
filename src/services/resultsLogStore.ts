@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { parseResultsArrays } from './resultsLogParser';
+import { isValidFootballScore } from '../utils/scoreValidation';
 
 export interface SettledResultRecord {
   id: string;
@@ -36,8 +37,8 @@ export function readResultsLogFile<T = SettledResultRecord>(filePath: string): T
       typeof entry !== 'object' ||
       typeof entry.id !== 'string' ||
       entry.id.trim().length === 0 ||
-      !Number.isFinite(entry.homeScore) ||
-      !Number.isFinite(entry.awayScore) ||
+      !isValidFootballScore(entry.homeScore) ||
+      !isValidFootballScore(entry.awayScore) ||
       !['home', 'draw', 'away'].includes(entry.actualOutcome)
     ) {
       throw new Error(`Results log contains an invalid settlement record at index ${index}; settlement halted to protect existing history.`);

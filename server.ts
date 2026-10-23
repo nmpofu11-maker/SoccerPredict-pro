@@ -15,7 +15,10 @@ import type { DataIntegrityAuditReport, EngineWeights } from './src/types/soccer
 import {
   sportApiAiConfigured,
   hasSportApiAiKey,
+  isSportApiAiRateLimited,
   fetchSportApiAiFixturesByDate,
+  fetchSportApiAiFixtureById,
+  isSportApiAiFixtureIdentityMatch,
   isSportApiAiFixtureFinished,
   getSportApiAiScores,
 } from './src/services/serverSportApiAi';
@@ -63,6 +66,11 @@ import { evaluateAuditedPredictionPerformance, isAuditableSettledResult } from '
 import { parseRawResults } from './src/services/resultParserService';
 import { readResultsLogFile } from './src/services/resultsLogStore';
 import { findSafeSettlementNameMatch } from './src/utils/settlementMatching';
+import { createSingleFlight } from './src/utils/singleFlight';
+import { resolveListenPort } from './src/utils/serverPort';
+import { isValidFootballScore } from './src/utils/scoreValidation';
+import { summarizeSettlementRun } from './src/utils/settlementRunStatus';
+import { parseSportApiAiKickoff } from './src/utils/sportApiAiKickoff';
 import { readAdminGuardConfig, decideAdminAccess } from './src/services/adminGuard';
 import { importFromBuffer, mergeRows, buildTrainingSet, IMPORT_LIMITS, type ImportedMatchRow } from './src/services/historicalImport';
 import { buildPredictionTeamMatrices, evaluateHistoricalModelOnHoldout, trainOnHistoricalResults, TRAIN_LIMITS, type HistoricalTrainingOutcome } from './src/services/historicalTraining';
@@ -258,18 +266,7 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
 }
 
 function getListenPort(): number {
-  const portArgIndex = process.argv.indexOf('--port');
-  if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
-    const parsed = Number(process.argv[portArgIndex + 1]);
-    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
-  }
-  // The dev server in this environment must run on port 3000.
-  // When PORT is set to 8080 by the outer container/Nginx, avoid colliding with Nginx.
-  const envPort = Number(process.env.PORT);
-  if (!Number.isNaN(envPort) && envPort > 0 && envPort !== 8080) {
-    return envPort;
-  }
-  return 3000;
+  return resolveListenPort(process.argv, process.env.PORT);
 }
 
 function getListenHost(): string {
@@ -849,13 +846,18 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
         if (lf.kickoffTime && lf.kickoffTime.slice(0, 10) < minCutoffDate) continue;
         const key = normalizeKey(lf);
         const existing = mergedMap.get(key);
-        // If the match is bookmaker protected or from Hollywoodbets slate, never overwrite
+        // Preserve bookmaker-protected fixtures.
         if (existing && (existing.isBookmakerProtected || (existing.id && existing.id.startsWith('hollywoodbets_')))) {
           continue;
         }
+
+        // A weaker scoreboard response must not discard verified team evidence.
+        if (existing && fixtureHasEvidence(existing) && !fixtureHasEvidence(lf)) {
+          continue;
+        }
+
         mergedMap.set(key, lf);
       }
-
       const combinedFixtures = Array.from(mergedMap.values())
         .filter(f => !f.kickoffTime || f.kickoffTime.slice(0, 10) >= minCutoffDate);
       combinedFixtures.sort((a, b) => new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime());
@@ -982,6 +984,12 @@ function readResultsLog(): SettledResultEntry[] {
 }
 
 function writeResultsLog(entries: SettledResultEntry[]): void {
+  if (entries.some((entry) =>
+    !isValidFootballScore(entry.homeScore) || !isValidFootballScore(entry.awayScore)
+  )) {
+    throw new Error('Results log write rejected an invalid football score.');
+  }
+
   const tempPath = `${RESULTS_LOG_PATH}.${process.pid}.tmp`;
   try {
     fs.mkdirSync(path.dirname(RESULTS_LOG_PATH), { recursive: true });
@@ -1176,12 +1184,7 @@ function mapSportApiAiToInternalFixture(f: any, providerDate?: string): any {
   const idStr = String(f.id || `${homeName}_${awayName}`);
 
   // Date-only provider records do not contain a real kickoff time; reject them.
-  const kickoffTime =
-    parseProviderKickoff(f.datetime) ||
-    parseProviderKickoff(f.kickoff_time) ||
-    parseProviderKickoff(f.utc_date) ||
-    parseProviderKickoff(f.start_time) ||
-    (typeof f.date === 'string' && /[T ]\d{2}:\d{2}/.test(f.date) ? parseProviderKickoff(f.date) : null);
+  const kickoffTime = parseSportApiAiKickoff(f);
   if (!kickoffTime) return null;
 
   const leagueName = f.league_name
@@ -1304,7 +1307,7 @@ function mapPitchApiToInternalFixture(match: any): any {
   if (!kickoffTime) return null;
   const homeScore = Number(match?.score_home);
   const awayScore = Number(match?.score_away);
-  const hasFinishedScore = Number.isFinite(homeScore) && Number.isFinite(awayScore);
+  const hasFinishedScore = isValidFootballScore(homeScore) && isValidFootballScore(awayScore);
   const leagueName = match?.league?.name || 'PitchAPI Football';
   const id = String(match.id || (homeName + '_' + awayName));
   return {
@@ -1339,7 +1342,7 @@ function mapSportDbToInternalFixture(match: any, fallbackDateStr: string): any {
 
   const homeScore = Number(match?.score?.home ?? match?.score?.fulltime?.home ?? match?.score_home);
   const awayScore = Number(match?.score?.away ?? match?.score?.fulltime?.away ?? match?.score_away);
-  const hasFinishedScore = Number.isFinite(homeScore) && Number.isFinite(awayScore);
+  const hasFinishedScore = isValidFootballScore(homeScore) && isValidFootballScore(awayScore);
 
   const leagueName = typeof match?.league === 'string' ? match.league : (match?.league?.name || 'SportDB Football');
   const id = String(match.id || match.match_id || `${homeName}_${awayName}`);
@@ -1367,7 +1370,7 @@ function mapSportDbToInternalFixture(match: any, fallbackDateStr: string): any {
  * or TheRundown (secondary) and merges them into the disk manifest, without
  * overwriting any existing Hollywoodbets slate entries.
  */
-async function runDailyIngestJob(): Promise<{ success: boolean; message: string; count: number; diagnostics: IngestDiagnostics }> {
+async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message: string; count: number; diagnostics: IngestDiagnostics }> {
   const startedAt = new Date().toISOString();
   const baseDate = new Date();
   const dateFormatter = new Intl.DateTimeFormat('en-CA', {
@@ -1700,24 +1703,41 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
     let newCount = 0;
     for (const mf of mapped) {
       const key = normalizeKey(mf);
-      // Clean up previous date entry if this fixture was rescheduled
-      if (mf.id && idToKeyMap.has(mf.id)) {
-        const oldKey = idToKeyMap.get(mf.id)!;
-        if (oldKey !== key) {
-          mergedMap.delete(oldKey);
-        }
-      }
+      const oldKey = mf.id && idToKeyMap.has(mf.id)
+        ? idToKeyMap.get(mf.id)!
+        : undefined;
+      const previous = oldKey && oldKey !== key ? mergedMap.get(oldKey) : undefined;
       const existing = mergedMap.get(key);
+
+      // Preserve a protected fixture at the destination.
       if (existing && (existing.isBookmakerProtected || (existing.id && existing.id.startsWith('hollywoodbets_')))) {
         if (!existing.sportApiAiFixtureId && mf.sportApiAiFixtureId) existing.sportApiAiFixtureId = mf.sportApiAiFixtureId;
         if (!existing.theRundownEventId && mf.theRundownEventId) existing.theRundownEventId = mf.theRundownEventId;
         continue;
       }
+
+      // Never let a weaker response remove or replace verified evidence.
+      if (previous && (previous.isBookmakerProtected || (previous.id && previous.id.startsWith('hollywoodbets_')))) {
+        if (!previous.sportApiAiFixtureId && mf.sportApiAiFixtureId) previous.sportApiAiFixtureId = mf.sportApiAiFixtureId;
+        if (!previous.theRundownEventId && mf.theRundownEventId) previous.theRundownEventId = mf.theRundownEventId;
+        continue;
+      }
+      if (previous && fixtureHasEvidence(previous) && !fixtureHasEvidence(mf)) {
+        continue;
+      }
+      if (existing && fixtureHasEvidence(existing) && !fixtureHasEvidence(mf)) {
+        continue;
+      }
+
+      // Only remove the old date entry after all preservation checks pass.
+      if (oldKey && oldKey !== key) {
+        mergedMap.delete(oldKey);
+      }
+
       if (!existing) newCount++;
       mergedMap.set(key, mf);
       if (mf.id) idToKeyMap.set(mf.id, key);
     }
-
     const { fixtures: combined } = verifyAndSanitizeFixtures(Array.from(mergedMap.values()));
     writeDiskManifest(combined);
     fixturesCache = null;
@@ -1761,12 +1781,33 @@ async function runDailyIngestJob(): Promise<{ success: boolean; message: string;
   }
 }
 /**
+ * Single-flight guard: manual, scheduled, and startup triggers share one
+ * ingestion run instead of concurrently writing the fixture manifest.
+ */
+let dailyIngestJobInFlight: ReturnType<typeof runDailyIngestJobUnlocked> | null = null;
+
+function runDailyIngestJob() {
+  if (dailyIngestJobInFlight) {
+    console.warn('[cron:ingest] An ingestion run is already active; reusing its result.');
+    return dailyIngestJobInFlight;
+  }
+
+  const job = runDailyIngestJobUnlocked();
+  dailyIngestJobInFlight = job;
+
+  void job.finally(() => {
+    if (dailyIngestJobInFlight === job) dailyIngestJobInFlight = null;
+  }).catch(() => undefined);
+
+  return job;
+}
+/**
  * Settlement job: finds fixtures in the manifest whose kickoff has passed and
  * that haven't been settled yet, checks their real result via SportAPI.ai
  * (primary) or TheRundown (secondary), and appends finished ones to
  * data/results-log.json.
  */
-async function runSettlementJob(): Promise<{ success: boolean; message: string; count: number }> {
+async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: string; count: number }> {
   try {
     const now = Date.now();
     const manifest = readRawDiskManifest();
@@ -1815,6 +1856,8 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
     );
     let settledCount = 0;
     const newEntries: SettledResultEntry[] = [];
+  let providerFailureCount = 0;
+  let providerQueryCount = 0;
 
     for (const [dateStr, fixturesForDate] of dateGroups.entries()) {
       if (!allowedDates.has(dateStr)) continue;
@@ -1822,7 +1865,9 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
       // 1. Try SportAPI.ai settlement
       if (sportApiAiConfigured()) {
         try {
+          providerQueryCount++;
           const apiFixtures = await fetchSportApiAiFixturesByDate(dateStr);
+          if (isSportApiAiRateLimited()) providerFailureCount++;
           const byIdMap = new Map<string, any>();
           const byNameMap = new Map<string, any[]>();
 
@@ -1838,6 +1883,26 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
 
           for (const f of fixturesForDate) {
             let match = f.sportApiAiFixtureId ? byIdMap.get(String(f.sportApiAiFixtureId)) : undefined;
+            if (!match && f.sportApiAiFixtureId && sportApiAiConfigured()) {
+              try {
+                providerQueryCount++;
+                const detail = await fetchSportApiAiFixtureById(f.sportApiAiFixtureId);
+                if (isSportApiAiRateLimited()) providerFailureCount++;
+                if (
+                  isSportApiAiFixtureIdentityMatch(
+                    detail,
+                    f.sportApiAiFixtureId,
+                    f.homeTeam?.name,
+                    f.awayTeam?.name,
+                  )
+                ) {
+                  match = detail;
+                }
+              } catch (err) {
+                providerFailureCount++;
+                console.warn(`[cron:settlement] SportAPI.ai fixture lookup failed for ${f.id}:`, err);
+              }
+            }
             if (!match) {
               const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
               match = findSafeSettlementNameMatch(byNameMap.get(key), f);
@@ -1860,6 +1925,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             settledCount++;
           }
         } catch (err) {
+          providerFailureCount++;
           console.warn(`[cron:settlement] SportAPI.ai settlement failed for ${dateStr}:`, err);
         }
       }
@@ -1867,6 +1933,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
       // 2. Try TheRundown as fallback for remaining unsettled
       if (theRundownConfigured()) {
         try {
+          providerQueryCount++;
           const rundownEvents = await fetchAllTheRundownSoccerEvents(dateStr);
           const byIdMap = new Map<string, any>();
           const byNameMap = new Map<string, any[]>();
@@ -1907,6 +1974,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             settledCount++;
           }
         } catch (err) {
+          providerFailureCount++;
           console.warn(`[cron:settlement] TheRundown settlement failed for ${dateStr}:`, err);
         }
       }
@@ -1915,6 +1983,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
       const unsettledForSportmonks = fixturesForDate.filter((f) => !newEntries.some((e) => e.id === f.id));
       if (unsettledForSportmonks.length > 0 && sportmonksConfigured()) {
         try {
+          providerQueryCount++;
           const smFixtures = await fetchSportmonksFixturesByDate(dateStr);
           const byIdMap = new Map<string, any>();
           const byNameMap = new Map<string, any>();
@@ -1943,12 +2012,12 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             for (const sc of scoresList) {
               const part = String(sc?.participant ?? sc?.description ?? '').toLowerCase();
               const val = Number(sc?.score?.goals ?? sc?.goals ?? sc?.value);
-              if (Number.isFinite(val)) {
+              if (isValidFootballScore(val)) {
                 if (part === 'home' || part === '1') homeScore = val;
                 if (part === 'away' || part === '2') awayScore = val;
               }
             }
-            if (homeScore === null || awayScore === null) continue;
+            if (!isValidFootballScore(homeScore) || !isValidFootballScore(awayScore)) continue;
             const outcome = homeScore > awayScore ? 'home' : awayScore > homeScore ? 'away' : 'draw';
             newEntries.push({
               id: f.id,
@@ -1963,6 +2032,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             settledCount++;
           }
         } catch (err: unknown) {
+          providerFailureCount++;
           const errMsg = String(err instanceof Error ? err.message : err);
           if (errMsg.includes('401') || errMsg.includes('Invalid token') || errMsg.includes('403') || errMsg.includes('unauthenticated')) {
             console.warn('[cron:settlement] Sportmonks authentication failed; current settlement pass stopped. Rotate/update SPORTMONKS_API_KEY before retrying.');
@@ -1989,6 +2059,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
           }
           try {
             if (i > 0) await delay(requestSpacingMs());
+            providerQueryCount++;
             const finishedMatches = await fetchFinishedMatches(code);
             for (const f of unsettledForFootballData) {
               if (newEntries.some((e) => e.id === f.id)) continue;
@@ -2002,7 +2073,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
                 const mA = normalizeTeamName(m.awayTeam?.name || m.awayTeam?.shortName);
                 return mH === hNorm && mA === aNorm;
               });
-              if (!match || typeof match.score?.fullTime?.home !== 'number' || typeof match.score?.fullTime?.away !== 'number') continue;
+              if (!match || !isValidFootballScore(match.score?.fullTime?.home) || !isValidFootballScore(match.score?.fullTime?.away)) continue;
               const homeScore = match.score.fullTime.home;
               const awayScore = match.score.fullTime.away;
               const outcome = homeScore > awayScore ? 'home' : awayScore > homeScore ? 'away' : 'draw';
@@ -2019,6 +2090,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
               settledCount++;
             }
           } catch (err) {
+            providerFailureCount++;
             if (err instanceof FootballDataRateLimitError) {
               console.log(`[cron:settlement] Football-Data rate limit reached on ${code}; pausing remaining ${codesList.length - i} leagues in settlement batch.`);
               break;
@@ -2032,6 +2104,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
       const unsettledForPitchApi = fixturesForDate.filter((f) => !newEntries.some((e) => e.id === f.id));
       if (unsettledForPitchApi.length > 0 && pitchApiConfigured()) {
         try {
+          providerQueryCount++;
           const finishedMatches = await fetchPitchApiFinishedMatchesByDate(dateStr);
           for (const f of unsettledForPitchApi) {
             if (newEntries.some((e) => e.id === f.id)) continue;
@@ -2050,7 +2123,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             if (match.status !== 'finished') continue;
             const homeScore = Number(match.score_home);
             const awayScore = Number(match.score_away);
-            if (!Number.isFinite(homeScore) || !Number.isFinite(awayScore)) continue;
+            if (!isValidFootballScore(homeScore) || !isValidFootballScore(awayScore)) continue;
 
             const outcome = homeScore > awayScore ? 'home' : awayScore > homeScore ? 'away' : 'draw';
             newEntries.push({
@@ -2066,6 +2139,7 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
             settledCount++;
           }
         } catch (err: unknown) {
+          providerFailureCount++;
           console.warn(`[cron:settlement] PitchAPI settlement failed for ${dateStr}:`, err instanceof Error ? err.message : err);
         }
       }
@@ -2076,15 +2150,20 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
     }
     reconcilePredictionOutcomes();
 
-    const msg = `Settled ${settledCount} of ${pastFixtures.length} unsettled past fixtures.`;
+    const runStatus = summarizeSettlementRun(
+      settledCount,
+      pastFixtures.length,
+      providerFailureCount,
+      providerQueryCount,
+    );
     updateSettlementCronStatus({
       lastRunAt: new Date().toISOString(),
-      lastSuccess: true,
-      lastMessage: msg,
+      lastSuccess: runStatus.success,
+      lastMessage: runStatus.message,
       resultsSettled: settledCount,
     }, CRON_STATUS_PATH);
-    console.log(`[cron:settlement] ${msg}`);
-    return { success: true, message: msg, count: settledCount };
+    console.log(`[cron:settlement] ${runStatus.message}`);
+    return { success: runStatus.success, message: runStatus.message, count: settledCount };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown settlement error';
     console.error(`[cron:settlement] FAILED: ${msg}`);
@@ -2097,6 +2176,8 @@ async function runSettlementJob(): Promise<{ success: boolean; message: string; 
     return { success: false, message: msg, count: 0 };
   }
 }
+
+const runSettlementJob = createSingleFlight(runSettlementJobUnlocked);
 
 async function startServer() {
   const app = express();

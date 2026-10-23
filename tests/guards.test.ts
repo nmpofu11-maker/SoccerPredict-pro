@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -69,8 +70,22 @@ test('no hardcoded headline accuracy figure in the UI', () => {
 });
 
 test('committed learning state, if present, is untrained with auto-learning off', () => {
-  const p = path.join(root, 'data', 'persisted_learning_state.json');
+  const relativePath = 'data/persisted_learning_state.json';
+
+  // Runtime state must not be mistaken for committed seed state.
+  try {
+    execFileSync(
+      'git',
+      ['ls-files', '--error-unmatch', '--', relativePath],
+      { cwd: root, stdio: 'ignore' }
+    );
+  } catch {
+    return;
+  }
+
+  const p = path.join(root, relativePath);
   if (!fs.existsSync(p)) return;
+
   const s = JSON.parse(fs.readFileSync(p, 'utf8'));
   assert.equal(s.totalEpochsTrained ?? 0, 0);
   assert.equal(s.isAutoLearningEnabled ?? false, false);

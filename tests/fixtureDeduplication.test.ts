@@ -134,3 +134,67 @@ test('verifyAndSanitizeFixtures keeps provider namespaces distinct', () => {
   assert.equal((result[0] as any).sportApiAiFixtureId, '12345');
   assert.equal((result[1] as any).pitchApiMatchId, '12345');
 });
+
+const evidenceTeam = (id: string, name: string) => ({
+  ...team(id, name),
+  form: ['W', 'D', 'W'] as ('W' | 'D' | 'L')[],
+  formSource: 'SPORTAPI_AI',
+});
+
+test('preserves evidence-bearing same-date duplicate over a weaker record', () => {
+  const fixtures: MatchFixture[] = [
+    {
+      id: 'fixture_evidence',
+      kickoffTime: '2026-10-24T15:00:00.000Z',
+      league: 'Test League',
+      homeTeam: evidenceTeam('home', 'Team Alpha'),
+      awayTeam: evidenceTeam('away', 'Team Beta'),
+      h2h: null,
+    } as any,
+    {
+      id: 'fixture_weaker',
+      kickoffTime: '2026-10-24T18:00:00.000Z',
+      league: 'Test League',
+      homeTeam: team('home', 'Team Alpha'),
+      awayTeam: team('away', 'Team Beta'),
+      h2h: null,
+    } as any,
+  ];
+
+  const { fixtures: result } = verifyAndSanitizeFixtures(fixtures);
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, 'fixture_evidence');
+  assert.deepEqual(result[0].homeTeam.form, ['W', 'D', 'W']);
+  assert.deepEqual(result[0].awayTeam.form, ['W', 'D', 'W']);
+});
+
+test('preserves verified evidence when a weaker provider record reports a reschedule', () => {
+  const fixtures: MatchFixture[] = [
+    {
+      id: 'sportapiai_shared42',
+      sportApiAiFixtureId: 'shared42',
+      kickoffTime: '2026-10-24T15:00:00.000Z',
+      league: 'Test League',
+      homeTeam: evidenceTeam('home', 'Team Alpha'),
+      awayTeam: evidenceTeam('away', 'Team Beta'),
+      h2h: null,
+    } as any,
+    {
+      id: 'sportapiai_shared42',
+      sportApiAiFixtureId: 'shared42',
+      kickoffTime: '2026-10-25T15:00:00.000Z',
+      league: 'Test League',
+      homeTeam: team('home', 'Team Alpha'),
+      awayTeam: team('away', 'Team Beta'),
+      h2h: null,
+    } as any,
+  ];
+
+  const { fixtures: result } = verifyAndSanitizeFixtures(fixtures);
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].kickoffTime, '2026-10-24T15:00:00.000Z');
+  assert.deepEqual(result[0].homeTeam.form, ['W', 'D', 'W']);
+  assert.deepEqual(result[0].awayTeam.form, ['W', 'D', 'W']);
+});

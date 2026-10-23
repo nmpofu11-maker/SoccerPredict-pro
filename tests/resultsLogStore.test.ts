@@ -51,6 +51,17 @@ test('rejects structurally invalid settlement entries', () => {
   });
 });
 
+test('rejects negative and fractional scores in settlement history', () => {
+  for (const invalid of [
+    { ...validEntry, homeScore: -1 },
+    { ...validEntry, awayScore: 1.5 },
+  ]) {
+    withTempFile(JSON.stringify([invalid]), (filePath) => {
+      assert.throws(() => readResultsLogFile(filePath), /invalid settlement record/i);
+    });
+  }
+});
+
 test('propagates file I/O errors instead of converting them to an empty ledger', () => {
   withTempFile(JSON.stringify([validEntry]), (filePath) => {
     fs.rmSync(filePath);
