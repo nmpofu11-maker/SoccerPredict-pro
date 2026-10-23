@@ -229,7 +229,7 @@ export const TechnicalSidebar: React.FC<TechnicalSidebarProps> = ({
         </div>
         <div className="flex justify-between text-[9px] font-mono text-slate-400 mt-1">
           <span className="text-slate-400">Ranks & Points Integrity</span>
-          <span className="text-emerald-400 font-semibold">Auto-Protected</span>
+          <span className={`font-semibold ${typeof authenticityScore === "number" && Number.isFinite(authenticityScore) ? "text-emerald-400" : "text-amber-300"}`}>{typeof authenticityScore === "number" && Number.isFinite(authenticityScore) ? "AUDIT AVAILABLE" : "AUDIT PENDING"}</span>
         </div>
       </div>
 
@@ -286,8 +286,8 @@ export const TechnicalSidebar: React.FC<TechnicalSidebarProps> = ({
           />
         </div>
         <div className="flex justify-between text-[9px] font-mono text-purple-300/80 mt-1.5">
-          <span>Success Indicator</span>
-          <span className="text-emerald-400 font-bold">{typeof learningAccuracyPct === 'number' ? `${learningAccuracyPct.toFixed(1)}%` : 'n/a'} Calibrated</span>
+          <span>Audited Ledger</span>
+          <span className="text-emerald-400 font-bold">{typeof learningAccuracyPct === 'number' ? `${learningAccuracyPct.toFixed(1)}%` : 'n/a'} Measured</span>
         </div>
       </div>
 
