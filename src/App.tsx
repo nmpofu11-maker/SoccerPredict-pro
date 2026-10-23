@@ -37,7 +37,7 @@ import {
 import { loadTeamIntelligenceMatrices } from './engine/teamIntelligenceMatrix';
 import { ensurePersistentStorage } from './services/durablePersistence';
 import { deleteFixtureOnServer, purgeFixturesOnServer, ingestSlateToServer } from './services/apiService';
-import { fetchSettledResults, fetchDailySlate, fetchPersistedSlate, triggerIngestNow } from './services/resultsService';
+import { fetchSettledResults, fetchPersistedSlate, triggerIngestNow } from './services/resultsService';
 import { HistoricalMatchResult } from './types/soccer';
 import { isFavouriteTeam, isHighVolatilityLeague } from './constants/favourites';
 import { getLeagueMeta, LeagueCategoryId, matchesLeagueCategory, LEAGUE_CATEGORIES } from './constants/leagues';
@@ -666,7 +666,7 @@ export default function App() {
           secondsUntilNextScrape={secondsUntilNextScrape}
           intervalSeconds={autoScrapeConfig.intervalSeconds}
           isScrapingNow={isScrapingNow}
-          onTriggerScrapeNow={triggerScrapeCycle}
+          onTriggerScrapeNow={() => triggerScrapeCycle(true)}
           onToggleAutoScrape={handleToggleAutoScrape}
         />
 
