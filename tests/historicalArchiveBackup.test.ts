@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, test } from 'node:test';
 import {
   createHistoricalArchiveBackup,
+  ensureInitialHistoricalArchiveBackup,
   readHistoricalArchiveBackup,
   resolveHistoricalArchiveBackupPath,
   HISTORICAL_ARCHIVE_BACKUP_LIMIT,
@@ -74,6 +75,22 @@ test('backup listing ignores unrelated JSON and temporary files', () => {
   fs.writeFileSync(path.join(directory, 'backups', 'notes.json'), '{"not":"a historical backup"}');
   fs.writeFileSync(path.join(directory, 'backups', 'historical-matches-2026-01-01T00-00-00-000Z-123.tmp'), 'incomplete');
   assert.deepEqual(listHistoricalArchiveBackups(path.join(directory, 'backups')), []);
+});
+
+test('startup creates a single initial snapshot for an existing archive', () => {
+  const directory = makeDirectory();
+  const store = path.join(directory, 'historical-matches.json');
+  const backupDirectory = path.join(directory, 'backups');
+  fs.writeFileSync(store, JSON.stringify({
+    version: 1,
+    rows: [{ key: 'match-1', date: '2025-01-01', league: 'L', home: 'A', away: 'B', hg: 1, ag: 0 }],
+  }));
+
+  const first = ensureInitialHistoricalArchiveBackup(store, backupDirectory, new Date('2026-03-01T00:00:00.000Z'));
+  const second = ensureInitialHistoricalArchiveBackup(store, backupDirectory, new Date('2026-03-02T00:00:00.000Z'));
+  assert.ok(first);
+  assert.equal(second, null);
+  assert.equal(listHistoricalArchiveBackups(backupDirectory).length, 1);
 });
 
 test('missing archive does not create a meaningless backup', () => {
