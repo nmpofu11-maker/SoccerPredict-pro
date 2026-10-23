@@ -280,6 +280,7 @@ export function synthesizeTeamIntelligenceMatrices(
       awayWins: number;
       draws: number;
       pointsTotal: number;
+      pointsSquaredTotal: number;
       volatilityErrors: number;
       fatigueMatches: number;
       fatiguePointsLost: number;
@@ -303,6 +304,7 @@ export function synthesizeTeamIntelligenceMatrices(
         awayWins: 0,
         draws: 0,
         pointsTotal: 0,
+        pointsSquaredTotal: 0,
         volatilityErrors: 0,
         fatigueMatches: 0,
         fatiguePointsLost: 0,
@@ -317,6 +319,7 @@ export function synthesizeTeamIntelligenceMatrices(
         awayWins: 0,
         draws: 0,
         pointsTotal: 0,
+        pointsSquaredTotal: 0,
         volatilityErrors: 0,
         fatigueMatches: 0,
         fatiguePointsLost: 0,
@@ -327,6 +330,11 @@ export function synthesizeTeamIntelligenceMatrices(
     teamStats[hName].homeMatches++;
     teamStats[aName].totalMatches++;
     teamStats[aName].awayMatches++;
+
+    const homeMatchPoints = result.actualOutcome === 'home' ? 3 : result.actualOutcome === 'draw' ? 1 : 0;
+    const awayMatchPoints = result.actualOutcome === 'away' ? 3 : result.actualOutcome === 'draw' ? 1 : 0;
+    teamStats[hName].pointsSquaredTotal += homeMatchPoints ** 2;
+    teamStats[aName].pointsSquaredTotal += awayMatchPoints ** 2;
 
     if (result.actualOutcome === 'home') {
       teamStats[hName].homeWins++;
@@ -374,16 +382,19 @@ export function synthesizeTeamIntelligenceMatrices(
     const pointsPerMatch = stats.totalMatches > 0 ? stats.pointsTotal / stats.totalMatches : 0;
     const formMomentum = Math.min(0.98, Math.max(0.65, Number((0.68 + (pointsPerMatch / 3) * 0.28).toFixed(2))));
 
-    // Volatility index calibrated from 0.05 to 0.35 (lower means more predictable)
-    const volatility = Math.min(0.35, Math.max(0.05, Number((0.25 - (pointsPerMatch / 3) * 0.15).toFixed(2))));
+    // Empirical volatility from variance of per-match points (0, 1, or 3), not a proxy based on PPG.
+    // Standard deviation spans 0..1.5 for this bounded outcome scale, mapped to the index range 0.05..0.35.
+    const pointsVariance = Math.max(0, stats.pointsSquaredTotal / sampleSize - pointsPerMatch ** 2);
+    const volatility = Math.min(0.35, Math.max(0.05, Number((0.05 + (Math.sqrt(pointsVariance) / 1.5) * 0.30).toFixed(2))));
 
-    // Fatigue penalty modifier calibrated from 0.08 to 0.25
-    const fatiguePenalty = stats.fatigueMatches > 0
+    // Do not promote a fatigue coefficient derived from fewer than three sourced fatigue observations.
+    const fatiguePenalty = stats.fatigueMatches >= 3
       ? Math.min(0.25, Math.max(0.08, Number((0.09 + (stats.fatiguePointsLost / (stats.fatigueMatches * 3)) * 0.12).toFixed(2))))
       : DEFAULT_LEARNED_COEFFICIENTS.fatigue_penalty_modifier;
 
     updatedMatrices[teamName] = {
       sample_size_matches: sampleSize,
+      fatigue_sample_matches: stats.fatigueMatches,
       learned_coefficients: {
         home_advantage_multiplier: homeAdvantage,
         form_momentum_weight: formMomentum,
@@ -448,6 +459,7 @@ export function generateAggressiveSuperLearningPayload(
     if (!entry || !entry.learned_coefficients) continue;
     formattedMatrices[team] = {
       sample_size_matches: Number.isFinite(entry.sample_size_matches) ? entry.sample_size_matches : 0,
+      fatigue_sample_matches: Number.isFinite(entry.fatigue_sample_matches) ? entry.fatigue_sample_matches : 0,
       learned_coefficients: {
         home_advantage_multiplier: entry.learned_coefficients.home_advantage_multiplier,
         form_momentum_weight: entry.learned_coefficients.form_momentum_weight,
