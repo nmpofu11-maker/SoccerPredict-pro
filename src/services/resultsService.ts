@@ -92,9 +92,10 @@ export interface DailySlateResponse {
  * the daily provider sync (TheSportsDB / API-Football) added. This is what
  * should drive the visible match list; there is no other legitimate source.
  */
-export async function fetchDailySlate(): Promise<MatchFixture[] | null> {
+export async function fetchDailySlate(timeoutMs: number = 15_000): Promise<MatchFixture[] | null> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15_000);
+  const safeTimeoutMs = Number.isFinite(timeoutMs) ? Math.max(1, Math.min(120_000, Math.floor(timeoutMs))) : 15_000;
+  const timeoutId = setTimeout(() => controller.abort(), safeTimeoutMs);
   try {
     const res = await fetch('/api/fixtures/daily-slate', { signal: controller.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
