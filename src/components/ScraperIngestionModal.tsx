@@ -944,7 +944,7 @@ export const ScraperIngestionModal: React.FC<ScraperIngestionModalProps> = ({
                       <tr key={log.id} className="hover:bg-slate-900/40 transition-colors">
                         <td className="p-2.5 text-slate-300 font-bold">{log.timestamp}</td>
                         <td className="p-2.5">
-                          <span className="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px]">
+                          <span className={`px-1.5 py-0.5 rounded border text-[10px] ${log.status === 'ERROR' ? 'bg-rose-950 text-rose-300 border-rose-800' : 'bg-emerald-950 text-emerald-400 border-emerald-800'}`}>
                             {log.status}
                           </span>
                         </td>
