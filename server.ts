@@ -7,7 +7,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { resolveRuntimeFilePath } from './src/services/runtimeFilePath';
-import { createHistoricalArchiveBackup, listHistoricalArchiveBackups, HISTORICAL_ARCHIVE_BACKUP_LIMIT } from './src/services/historicalArchiveBackup';
+import { createHistoricalArchiveBackup, listHistoricalArchiveBackups, readHistoricalArchiveBackup, HISTORICAL_ARCHIVE_BACKUP_LIMIT } from './src/services/historicalArchiveBackup';
 import cron from 'node-cron';
 import { verifyAndSanitizeFixtures } from './src/services/dataIntegrityValidator';
 import { parseHollywoodbetsRawText } from './src/services/hollywoodbetsParser';
@@ -3411,6 +3411,34 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       });
     } catch (error) {
       return res.status(500).json({ status: 'error', message: error instanceof Error ? error.message : 'Could not list historical archive backups' });
+    }
+  });
+
+  app.post('/api/admin/historical/backups/restore', requireAdmin, (req, res) => {
+    if (historicalStoreMutationRunning) {
+      return res.status(409).json({ error: 'Historical data is being updated by another request. No restore was started; retry after the current update finishes.' });
+    }
+    const filename = typeof req.body?.filename === 'string' ? req.body.filename : '';
+    if (!filename || path.basename(filename) !== filename) {
+      return res.status(400).json({ error: 'Provide a valid historical archive backup filename.' });
+    }
+
+    historicalStoreMutationRunning = true;
+    try {
+      const rows = readHistoricalArchiveBackup(HISTORICAL_BACKUP_DIR, filename);
+      if (!rows) return res.status(404).json({ error: 'Historical archive backup was not found.' });
+      // writeHistoricalStore snapshots the current archive first, so restoring is itself reversible.
+      writeHistoricalStore(rows);
+      return res.json({
+        success: true,
+        restoredFrom: filename,
+        storedTotal: rows.length,
+        training: buildTrainingSet(rows).summary,
+      });
+    } catch (error) {
+      return res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to restore historical archive backup' });
+    } finally {
+      historicalStoreMutationRunning = false;
     }
   });
 
