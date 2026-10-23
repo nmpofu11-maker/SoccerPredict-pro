@@ -7,7 +7,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { resolveRuntimeFilePath } from './src/services/runtimeFilePath';
-import { createHistoricalArchiveBackup, listHistoricalArchiveBackups, readHistoricalArchiveBackup, HISTORICAL_ARCHIVE_BACKUP_LIMIT } from './src/services/historicalArchiveBackup';
+import { createHistoricalArchiveBackup, ensureInitialHistoricalArchiveBackup, listHistoricalArchiveBackups, readHistoricalArchiveBackup, HISTORICAL_ARCHIVE_BACKUP_LIMIT } from './src/services/historicalArchiveBackup';
 import cron from 'node-cron';
 import { verifyAndSanitizeFixtures } from './src/services/dataIntegrityValidator';
 import { parseHollywoodbetsRawText } from './src/services/hollywoodbetsParser';
@@ -236,11 +236,9 @@ function writeHistoricalStore(rows: ImportedMatchRow[]): void {
 
 // Protect an already-imported archive on the first start after this safeguard is deployed.
 try {
-  if (fs.existsSync(HISTORICAL_STORE_PATH) && listHistoricalArchiveBackups(HISTORICAL_BACKUP_DIR).length === 0) {
-    const initialSnapshot = createHistoricalArchiveBackup(HISTORICAL_STORE_PATH, HISTORICAL_BACKUP_DIR);
-    if (initialSnapshot) {
-      console.info(`[historical-store] Initial safety snapshot saved: ${initialSnapshot.filename} (${initialSnapshot.sizeBytes} bytes)`);
-    }
+  const initialSnapshot = ensureInitialHistoricalArchiveBackup(HISTORICAL_STORE_PATH, HISTORICAL_BACKUP_DIR);
+  if (initialSnapshot) {
+    console.info(`[historical-store] Initial safety snapshot saved: ${initialSnapshot.filename} (${initialSnapshot.sizeBytes} bytes)`);
   }
 } catch (error) {
   // Keep the app available for reads; the pre-write guard will still prevent replacement without a backup.
