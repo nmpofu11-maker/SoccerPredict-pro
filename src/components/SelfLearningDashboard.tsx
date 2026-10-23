@@ -756,7 +756,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
               <div className="text-xl font-bold text-purple-300 mt-1">
                 {Object.values(teamMatrices).filter(entry => entry.sample_size_matches >= 3).length} Teams
               </div>
-              <span className="text-[10px] text-slate-400">Observed coefficients when supported by at least three completed training-window matches</span>
+              <span className="text-[10px] text-slate-400">History-derived profiles from at least three completed matches; fatigue is sample-gated separately</span>
             </div>
           </div>
 
@@ -782,7 +782,7 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-amber-400" />
                 <h4 className="text-sm font-bold font-mono text-white">
-                  Team Intelligence Matrices & Learned Coefficients
+                  Team Historical Profiles & Coefficients
                 </h4>
                 <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                   LIVE IN PREDICTIONS
@@ -835,13 +835,15 @@ export const SelfLearningDashboard: React.FC<SelfLearningDashboardProps> = ({
                           {entry.learned_coefficients.volatility_index.toFixed(2)}
                         </td>
                         <td className="p-2.5 text-right font-bold text-rose-300">
-                          -{(entry.learned_coefficients.fatigue_penalty_modifier * 100).toFixed(0)}%
+                          {(entry.fatigue_sample_matches ?? 0) >= 3
+                            ? `−${(entry.learned_coefficients.fatigue_penalty_modifier * 100).toFixed(0)}%`
+                            : `BASELINE −${(entry.learned_coefficients.fatigue_penalty_modifier * 100).toFixed(0)}%`}
                         </td>
                         <td className="p-2.5 text-center">
                           <span className={entry.sample_size_matches >= 3
                             ? "px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
                             : "px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700"}>
-                            {entry.sample_size_matches >= 3 ? 'OBSERVED' : 'BASELINE — NO SAMPLE'}
+                            {entry.sample_size_matches >= 3 ? 'HISTORY-DERIVED' : 'BASELINE — NO SAMPLE'}
                           </span>
                         </td>
                       </tr>
