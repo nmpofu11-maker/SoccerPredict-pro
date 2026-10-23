@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, test } from 'node:test';
 import {
   createHistoricalArchiveBackup,
+  resolveHistoricalArchiveBackupPath,
   HISTORICAL_ARCHIVE_BACKUP_LIMIT,
   listHistoricalArchiveBackups,
 } from '../src/services/historicalArchiveBackup';
@@ -39,6 +40,12 @@ test('historical archive backup is a byte-for-byte snapshot and is listed newest
   assert.equal(backups.length, 2);
   assert.ok(backups[0].filename.includes('2026-01-02T00-00-00-000Z'));
   assert.ok(backups[1].filename.includes('2026-01-01T00-00-00-000Z'));
+});
+
+test('backup lookup rejects path traversal and non-backup filenames', () => {
+  const directory = makeDirectory();
+  assert.equal(resolveHistoricalArchiveBackupPath(directory, '../historical-matches.json'), null);
+  assert.equal(resolveHistoricalArchiveBackupPath(directory, 'some-other-file.json'), null);
 });
 
 test('missing archive does not create a meaningless backup', () => {
