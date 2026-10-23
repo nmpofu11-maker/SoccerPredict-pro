@@ -155,7 +155,7 @@ export interface ScrapeLogItem {
   timestamp: string;
   fixturesCount: number;
   favouritesCount: number;
-  status: 'SUCCESS' | 'SYNCED' | 'PARSED';
+  status: 'SUCCESS' | 'SYNCED' | 'PARSED' | 'ERROR';
   details: string;
 }
 
