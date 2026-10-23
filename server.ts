@@ -7,6 +7,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { resolveRuntimeFilePath } from './src/services/runtimeFilePath';
+import { createHistoricalArchiveBackup, listHistoricalArchiveBackups, HISTORICAL_ARCHIVE_BACKUP_LIMIT } from './src/services/historicalArchiveBackup';
 import cron from 'node-cron';
 import { verifyAndSanitizeFixtures } from './src/services/dataIntegrityValidator';
 import { parseHollywoodbetsRawText } from './src/services/hollywoodbetsParser';
@@ -122,6 +123,10 @@ const HISTORICAL_STORE_PATH = resolveRuntimeFilePath(
   path.join(process.cwd(), 'data', 'historical-matches.json'),
   'HISTORICAL_DATA_PATH',
 );
+const configuredHistoricalBackupDir = process.env.HISTORICAL_BACKUP_DIR?.trim();
+const HISTORICAL_BACKUP_DIR = configuredHistoricalBackupDir
+  ? path.resolve(configuredHistoricalBackupDir)
+  : path.join(path.dirname(HISTORICAL_STORE_PATH), 'historical-backups');
 
 /**
  * Keep the most recent training proposal on disk, separate from the active model state.
@@ -217,6 +222,12 @@ function readHistoricalStore(): ImportedMatchRow[] {
 }
 
 function writeHistoricalStore(rows: ImportedMatchRow[]): void {
+  // Preserve the current archive before every replacement, including explicit clears.
+  // If the safety copy fails, abort the write rather than risk losing the prior archive.
+  if (fs.existsSync(HISTORICAL_STORE_PATH)) {
+    const backup = createHistoricalArchiveBackup(HISTORICAL_STORE_PATH, HISTORICAL_BACKUP_DIR);
+    if (backup) console.info(`[historical-store] Safety snapshot saved: ${backup.filename} (${backup.sizeBytes} bytes)`);
+  }
   fs.mkdirSync(path.dirname(HISTORICAL_STORE_PATH), { recursive: true });
   const tmp = `${HISTORICAL_STORE_PATH}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), rows }));
@@ -3372,13 +3383,34 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
           pathConfigured: Boolean(configuredHistoricalStorePath),
           // A configured filename alone does not prove its volume survives a redeploy.
           persistenceVerified: false,
+          backups: {
+            directoryConfigured: Boolean(configuredHistoricalBackupDir),
+            count: listHistoricalArchiveBackups(HISTORICAL_BACKUP_DIR).length,
+            retentionLimit: HISTORICAL_ARCHIVE_BACKUP_LIMIT,
+            latest: listHistoricalArchiveBackups(HISTORICAL_BACKUP_DIR)[0] ?? null,
+          },
           note: configuredHistoricalStorePath
-            ? 'HISTORICAL_DATA_PATH is configured, but the server cannot verify that the backing volume is durable across restarts or redeploys.'
-            : 'Using local ./data/historical-matches.json. This may be ephemeral on serverless hosts; configure HISTORICAL_DATA_PATH to a persistent mounted volume.',
+            ? 'HISTORICAL_DATA_PATH is configured, but the server cannot verify that the backing volume is durable across restarts or redeploys. Automatic pre-write snapshots are kept beside the archive unless HISTORICAL_BACKUP_DIR is set.'
+            : 'Using local ./data/historical-matches.json. This may be ephemeral on serverless hosts; configure HISTORICAL_DATA_PATH to a persistent mounted volume. Automatic pre-write snapshots are kept beside the archive unless HISTORICAL_BACKUP_DIR is set.',
         },
       });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to summarise historical data' });
+    }
+  });
+
+  app.get('/api/admin/historical/backups', requireAdmin, (_req, res) => {
+    try {
+      const backups = listHistoricalArchiveBackups(HISTORICAL_BACKUP_DIR);
+      return res.json({
+        status: 'ok',
+        count: backups.length,
+        retentionLimit: HISTORICAL_ARCHIVE_BACKUP_LIMIT,
+        backups,
+        note: 'Snapshots are stored beside the historical archive by default. They do not prove or provide cross-deployment durability unless that storage is backed by a persistent volume.',
+      });
+    } catch (error) {
+      return res.status(500).json({ status: 'error', message: error instanceof Error ? error.message : 'Could not list historical archive backups' });
     }
   });
 
