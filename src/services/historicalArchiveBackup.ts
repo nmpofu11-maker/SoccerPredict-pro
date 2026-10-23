@@ -65,6 +65,20 @@ export function createHistoricalArchiveBackup(
   };
 }
 
+/** Resolves only a filename produced by this service; rejects traversal and arbitrary files. */
+export function resolveHistoricalArchiveBackupPath(
+  backupDirectory: string,
+  filename: string,
+): string | null {
+  if (path.basename(filename) !== filename || !BACKUP_FILENAME_PATTERN.test(filename)) return null;
+  const candidate = path.join(backupDirectory, filename);
+  try {
+    return fs.statSync(candidate).isFile() ? candidate : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Lists only backups created by this service, newest first. */
 export function listHistoricalArchiveBackups(
   backupDirectory: string,
