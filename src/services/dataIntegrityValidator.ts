@@ -499,14 +499,28 @@ export function verifyAndSanitizeFixtures(
     return null;
   };
 
+  const normalizeIdentity = (value: unknown): string =>
+    String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  // Different competitions must never be merged just because team names match.
+  const competitionIdentity = (fixture: any): string =>
+    normalizeIdentity(fixture.competition || fixture.league);
+
   const areSameTeams = (a: any, b: any): boolean => {
-    const hA = (a.homeTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const aA = (a.awayTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const hB = (b.homeTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const aB = (b.awayTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const direct = hA === hB && aA === aB;
-    const inverted = hA === aB && aA === hB;
-    return direct || inverted;
+    const competitionA = competitionIdentity(a);
+    const competitionB = competitionIdentity(b);
+
+    if (competitionA && competitionB && competitionA !== competitionB) {
+      return false;
+    }
+
+    const hA = normalizeIdentity(a.homeTeam?.name);
+    const aA = normalizeIdentity(a.awayTeam?.name);
+    const hB = normalizeIdentity(b.homeTeam?.name);
+    const aB = normalizeIdentity(b.awayTeam?.name);
+
+    return (hA === hB && aA === aB) ||
+      (hA === aB && aA === hB);
   };
 
   const mergeRecords = (existing: any, incoming: any) => {
@@ -581,7 +595,8 @@ export function verifyAndSanitizeFixtures(
     const homeKey = (f.homeTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const awayKey = (f.awayTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const dateKey = (f.kickoffTime || '').slice(0, 10);
-    const pairingKey = `${homeKey}_vs_${awayKey}_${dateKey}`;
+    const competitionKey = competitionIdentity(f);
+    const pairingKey = `${competitionKey}_${homeKey}_vs_${awayKey}_${dateKey}`;
 
     if (seenPairings.has(pairingKey)) {
       const existing = seenPairings.get(pairingKey)!;
