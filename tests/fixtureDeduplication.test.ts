@@ -107,6 +107,62 @@ test('verifyAndSanitizeFixtures disambiguates colliding IDs for genuinely distin
   assert.equal(fixtures[1].homeTeam.name, 'Team Gamma');
 });
 
+
+test('keeps same-named teams in different competitions separate', () => {
+  const fixtures: MatchFixture[] = [
+    {
+      id: 'fixture_mens',
+      kickoffTime: '2026-10-25T15:00:00.000Z',
+      league: 'English Premier League',
+      competition: 'English Premier League',
+      homeTeam: team('mens_home', 'Manchester United'),
+      awayTeam: team('mens_away', 'Manchester City'),
+      h2h: null,
+    } as any,
+    {
+      id: 'fixture_womens',
+      kickoffTime: '2026-10-25T15:00:00.000Z',
+      league: 'English Womens Super League',
+      competition: 'English Womens Super League',
+      homeTeam: team('womens_home', 'Manchester United'),
+      awayTeam: team('womens_away', 'Manchester City'),
+      h2h: null,
+    } as any,
+  ];
+
+  const { fixtures: result } = verifyAndSanitizeFixtures(fixtures);
+  assert.equal(result.length, 2);
+  assert.ok(result.some((f) => f.id === 'fixture_mens'));
+  assert.ok(result.some((f) => f.id === 'fixture_womens'));
+});
+
+test('does not merge a shared provider fixture ID across competitions', () => {
+  const fixtures: MatchFixture[] = [
+    {
+      id: 'shared_provider_id',
+      sportApiAiFixtureId: 'shared_provider_id',
+      kickoffTime: '2026-10-25T15:00:00.000Z',
+      league: 'English Premier League',
+      homeTeam: team('mens_home', 'Manchester United'),
+      awayTeam: team('mens_away', 'Manchester City'),
+      h2h: null,
+    } as any,
+    {
+      id: 'shared_provider_id',
+      sportApiAiFixtureId: 'shared_provider_id',
+      kickoffTime: '2026-10-25T15:00:00.000Z',
+      league: 'English Womens Super League',
+      homeTeam: team('womens_home', 'Manchester United'),
+      awayTeam: team('womens_away', 'Manchester City'),
+      h2h: null,
+    } as any,
+  ];
+
+  const { fixtures: result } = verifyAndSanitizeFixtures(fixtures);
+  assert.equal(result.length, 2);
+  assert.notEqual(result[0].id, result[1].id);
+});
+
 test('verifyAndSanitizeFixtures keeps provider namespaces distinct', () => {
   const fixtures: MatchFixture[] = [
     {
