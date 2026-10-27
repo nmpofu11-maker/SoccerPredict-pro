@@ -58,10 +58,16 @@ test('controlled feature perturbations change prediction output', () => {
   form.homeTeam.form = ['W', 'W', 'W', 'W', 'W'];
   assert.ok(changed(baseP, probabilities(form)), 'form must affect probabilities');
 
-  const standings = baseFixture();
-  standings.homeTeam.leagueRank = 1;
-  standings.awayTeam.leagueRank = 20;
-  assert.ok(changed(baseP, probabilities(standings)), 'standings must affect probabilities');
+  const unverifiedStandings = baseFixture();
+  unverifiedStandings.homeTeam.leagueRank = 1;
+  unverifiedStandings.awayTeam.leagueRank = 20;
+  assert.equal(changed(baseP, probabilities(unverifiedStandings)), false, 'unverified standings must not affect probabilities');
+
+  const verifiedStandings = baseFixture();
+  verifiedStandings.isStandingsVerified = true;
+  verifiedStandings.homeTeam.leagueRank = 1;
+  verifiedStandings.awayTeam.leagueRank = 20;
+  assert.ok(changed(baseP, probabilities(verifiedStandings)), 'verified standings must affect probabilities');
 
   const h2h = baseFixture();
   h2h.h2h = {
