@@ -56,8 +56,8 @@ export function sanitizeEngineWeights(weights?: Partial<EngineWeights> | null): 
   return result;
 }
 
-const teamHasVerifiedStrength = (t: MatchFixture['homeTeam']): boolean =>
-  (Boolean(t.standingsSource) && Number.isFinite(t.leagueRank) && (t.leagueRank as number) >= 1) ||
+const teamHasVerifiedStrength = (t: MatchFixture['homeTeam'], standingsVerifiedForFixture: boolean): boolean =>
+  (standingsVerifiedForFixture && Boolean(t.standingsSource) && Number.isFinite(t.leagueRank) && (t.leagueRank as number) >= 1) ||
   (Array.isArray(t.form) && t.form.length > 0 && Boolean(t.formSource)) ||
   (Boolean(t.advancedStatsSource) && (Number.isFinite(t.avgMatchRating) || Number.isFinite(t.totalSquadValueEur)));
 
@@ -67,7 +67,9 @@ const teamHasVerifiedStrength = (t: MatchFixture['homeTeam']): boolean =>
  * enough to justify a directional prediction or an EV/value ranking.
  */
 export function fixtureHasEvidence(fixture: MatchFixture): boolean {
-  return teamHasVerifiedStrength(fixture.homeTeam) && teamHasVerifiedStrength(fixture.awayTeam);
+  const standingsVerifiedForFixture = fixture.isStandingsVerified === true;
+  return teamHasVerifiedStrength(fixture.homeTeam, standingsVerifiedForFixture) &&
+    teamHasVerifiedStrength(fixture.awayTeam, standingsVerifiedForFixture);
 }
 
 /**
