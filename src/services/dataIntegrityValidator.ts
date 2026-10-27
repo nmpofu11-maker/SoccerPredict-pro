@@ -11,8 +11,9 @@ export type { DataIntegrityAuditReport };
 
 export interface StandingsEntry {
   rank: number;
-  points: number;
+  points: number | null;
   name?: string;
+  /** ESPN competition code that produced this row; required for verification. */
   league?: string;
 }
 
@@ -104,6 +105,7 @@ function sanitizeTeamStats(
   opponentRank: number,
   isHome: boolean,
   standingsMap?: Map<string, StandingsEntry>,
+  expectedLeagueCode?: string,
   repairsLog: Array<{ field: string; originalValue: any; repairedValue: any; reason: string }> = []
 ): { team: TeamStats; matchedOfficialTable: boolean } {
   const cleanTeam: TeamStats = { ...team };
@@ -111,10 +113,15 @@ function sanitizeTeamStats(
 
   // Cross-reference only against the runtime official standings map.
   const cleanId = team.id ? team.id.replace('team_', '') : '';
-  const officialStanding = standingsMap
+  const candidateStanding = standingsMap
     ? standingsMap.get(cleanId) ||
       standingsMap.get(team.name.toLowerCase()) ||
       (team.shortName ? standingsMap.get(team.shortName.toLowerCase()) : undefined)
+    : undefined;
+  // Flattened standings caches can contain the same team/alias from another league.
+  // A match is official only when its originating ESPN competition code matches this fixture.
+  const officialStanding = expectedLeagueCode && candidateStanding?.league === expectedLeagueCode
+    ? candidateStanding
     : undefined;
 
   if (officialStanding) {
@@ -263,8 +270,9 @@ export function verifyAndSanitizeFixture(
   });
 
   // Sanitize Home and Away stats
-  const homeResult = sanitizeTeamStats(rawHome, Number.isFinite(rawAway.leagueRank) ? (rawAway.leagueRank as number) : 0, true, standingsMap, repairs);
-  const awayResult = sanitizeTeamStats(rawAway, Number.isFinite(rawHome.leagueRank) ? (rawHome.leagueRank as number) : 0, false, standingsMap, repairs);
+  const expectedLeagueCode = OFFICIAL_LEAGUE_CODES[fixture.competition || fixture.league] || undefined;
+  const homeResult = sanitizeTeamStats(rawHome, Number.isFinite(rawAway.leagueRank) ? (rawAway.leagueRank as number) : 0, true, standingsMap, expectedLeagueCode, repairs);
+  const awayResult = sanitizeTeamStats(rawAway, Number.isFinite(rawHome.leagueRank) ? (rawHome.leagueRank as number) : 0, false, standingsMap, expectedLeagueCode, repairs);
 
   let cleanHome = homeResult.team;
   let cleanAway = awayResult.team;

@@ -634,13 +634,13 @@ function getApplicationDateString(date = new Date()): string {
   }).format(date);
 }
 
-const standingsMemoryCache = new Map<string, Map<string, { rank: number; points: number | null }>>();
+const standingsMemoryCache = new Map<string, Map<string, { rank: number; points: number | null; league: string }>>();
 
-async function getLeagueStandingsMap(leagueCode: string): Promise<Map<string, { rank: number; points: number | null }>> {
+async function getLeagueStandingsMap(leagueCode: string): Promise<Map<string, { rank: number; points: number | null; league: string }>> {
   if (standingsMemoryCache.has(leagueCode)) {
     return standingsMemoryCache.get(leagueCode)!;
   }
-  const map = new Map<string, { rank: number; points: number | null }>();
+  const map = new Map<string, { rank: number; points: number | null; league: string }>();
   try {
     const res = await fetch(`https://site.api.espn.com/apis/v2/sports/soccer/${leagueCode}/standings`, {
       signal: AbortSignal.timeout(7000)
@@ -654,9 +654,9 @@ async function getLeagueStandingsMap(leagueCode: string): Promise<Map<string, { 
         const rank = parseInt(rankStat?.value ?? rankStat?.displayValue, 10);
         const points = parseInt(ptsStat?.value ?? ptsStat?.displayValue, 10);
         if (Number.isFinite(rank)) {
-          if (e.team?.id) map.set(String(e.team.id), { rank, points: Number.isFinite(points) ? points : null });
-          if (e.team?.displayName) map.set(e.team.displayName.toLowerCase(), { rank, points: Number.isFinite(points) ? points : null });
-          if (e.team?.name) map.set(e.team.name.toLowerCase(), { rank, points: Number.isFinite(points) ? points : null });
+          if (e.team?.id) map.set(String(e.team.id), { rank, points: Number.isFinite(points) ? points : null, league: leagueCode });
+          if (e.team?.displayName) map.set(e.team.displayName.toLowerCase(), { rank, points: Number.isFinite(points) ? points : null, league: leagueCode });
+          if (e.team?.name) map.set(e.team.name.toLowerCase(), { rank, points: Number.isFinite(points) ? points : null, league: leagueCode });
         }
       }
     }
@@ -671,8 +671,8 @@ async function getLeagueStandingsMap(leagueCode: string): Promise<Map<string, { 
   return map;
 }
 
-function aggregateStandingsFromCache(): Map<string, { rank: number; points: number }> {
-  const aggregatedStandings = new Map<string, { rank: number; points: number | null }>();
+function aggregateStandingsFromCache(): Map<string, { rank: number; points: number | null; league: string }> {
+  const aggregatedStandings = new Map<string, { rank: number; points: number | null; league: string }>();
   for (const [, sMap] of standingsMemoryCache.entries()) {
     for (const [k, v] of sMap.entries()) {
       aggregatedStandings.set(k, v);
@@ -681,7 +681,7 @@ function aggregateStandingsFromCache(): Map<string, { rank: number; points: numb
   return aggregatedStandings;
 }
 
-async function ensureAllHollywoodbetsStandingsCached(): Promise<Map<string, { rank: number; points: number }>> {
+async function ensureAllHollywoodbetsStandingsCached(): Promise<Map<string, { rank: number; points: number | null; league: string }>> {
   const CHUNK_SIZE = 8;
   for (let i = 0; i < HOLLYWOODBETS_LEAGUES.length; i += CHUNK_SIZE) {
     const chunk = HOLLYWOODBETS_LEAGUES.slice(i, i + CHUNK_SIZE);
