@@ -228,8 +228,9 @@ export function evaluateFixturePrediction(
   // ==========================================
   // Part A: Current Table Position Differential (Rank Difference ≥ 3 Places)
   // Only valid when both teams have authentic, verified league ranks (>= 1).
-  const homeRankValid = Boolean(fixture.homeTeam.standingsSource) && Number.isFinite(fixture.homeTeam.leagueRank) && fixture.homeTeam.leagueRank >= 1;
-  const awayRankValid = Boolean(fixture.awayTeam.standingsSource) && Number.isFinite(fixture.awayTeam.leagueRank) && fixture.awayTeam.leagueRank >= 1;
+  const standingsVerifiedForFixture = fixture.isStandingsVerified === true;
+  const homeRankValid = standingsVerifiedForFixture && Boolean(fixture.homeTeam.standingsSource) && Number.isFinite(fixture.homeTeam.leagueRank) && fixture.homeTeam.leagueRank >= 1;
+  const awayRankValid = standingsVerifiedForFixture && Boolean(fixture.awayTeam.standingsSource) && Number.isFinite(fixture.awayTeam.leagueRank) && fixture.awayTeam.leagueRank >= 1;
 
   if (homeRankValid && awayRankValid) {
     const rankDifference = fixture.awayTeam.leagueRank - fixture.homeTeam.leagueRank;
@@ -260,14 +261,13 @@ export function evaluateFixturePrediction(
   // Part B: Previous Season Final Standing in Same Competition
   // Previous-season pedigree is used only when the fixture itself carries an explicit
   // same-competition prior-season standing. Static profile fallbacks are not treated as current evidence.
-  const lastSeasonRankHome = fixture.homeTeam.advancedStatsSource && Number.isFinite(fixture.homeTeam.lastSeasonRank)
-    ? (fixture.homeTeam.lastSeasonRank as number)
-    : 0;
-  const lastSeasonRankAway = fixture.awayTeam.advancedStatsSource && Number.isFinite(fixture.awayTeam.lastSeasonRank)
-    ? (fixture.awayTeam.lastSeasonRank as number)
-    : 0;
-  const lastSeasonStandingHome = fixture.homeTeam.advancedStatsSource ? fixture.homeTeam.lastSeasonStanding ?? 'Unknown' : 'Unknown';
-  const lastSeasonStandingAway = fixture.awayTeam.advancedStatsSource ? fixture.awayTeam.lastSeasonStanding ?? 'Unknown' : 'Unknown';
+  // TeamStats currently has no competition/season identity for prior-season ranks.
+  // A provider label alone cannot prove those ranks belong to this fixture's competition,
+  // so do not apply pedigree until that provenance is represented and verified.
+  const lastSeasonRankHome = 0;
+  const lastSeasonRankAway = 0;
+  const lastSeasonStandingHome = 'Unknown';
+  const lastSeasonStandingAway = 'Unknown';
 
   const lastSeasonGap = lastSeasonRankHome > 0 && lastSeasonRankAway > 0 ? lastSeasonRankAway - lastSeasonRankHome : 0;
   const pedigreeWeight = Number.isFinite(w.lastSeasonStandingWeight) ? w.lastSeasonStandingWeight : 0.30;
