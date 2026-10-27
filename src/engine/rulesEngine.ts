@@ -266,8 +266,8 @@ export function evaluateFixturePrediction(
   // TeamStats currently has no competition/season identity for prior-season ranks.
   // A provider label alone cannot prove those ranks belong to this fixture's competition,
   // so do not apply pedigree until that provenance is represented and verified.
-  const lastSeasonRankHome = 0;
-  const lastSeasonRankAway = 0;
+  const lastSeasonRankHome: number = 0;
+  const lastSeasonRankAway: number = 0;
   const lastSeasonStandingHome = 'Unknown';
   const lastSeasonStandingAway = 'Unknown';
 
