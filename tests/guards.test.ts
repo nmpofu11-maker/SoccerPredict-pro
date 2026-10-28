@@ -28,6 +28,7 @@ test('predictions are identical with and without odds on a real-data-shaped fixt
     homeTeam: { id: 'h', name: 'Home FC', shortName: 'HOM', leagueRank: 2, points: 30, form: ['W', 'W', 'D', 'L', 'W'], formSource: 'API_FOOTBALL', avgPossession: null, avgShotsOnTarget: null },
     awayTeam: { id: 'a', name: 'Away FC', shortName: 'AWA', leagueRank: 8, points: 22, form: ['D', 'L', 'W', 'D', 'L'], formSource: 'API_FOOTBALL', avgPossession: null, avgShotsOnTarget: null },
     h2h: null,
+    authenticity: { status: 'VERIFIED_AUTHENTIC', authenticityScore: 100, isAuthentic: true, verifiedAt: '2026-10-28T00:00:00Z', source: 'test', checks: [] },
   };
   const base = evaluateFixturePrediction(fixture, 'none') as any;
   const withOdds = evaluateFixturePrediction(
@@ -38,6 +39,45 @@ test('predictions are identical with and without odds on a real-data-shaped fixt
     [withOdds?.homeWinPct, withOdds?.drawPct, withOdds?.awayWinPct, withOdds?.predictedWinner],
     [base?.homeWinPct, base?.drawPct, base?.awayWinPct, base?.predictedWinner],
   );
+});
+
+
+test('automatic predictions fail closed when a live provider fixture has no authenticity stamp', () => {
+  const fixture: any = {
+    id: 'provider-missing-authenticity-stamp',
+    kickoffTime: '2026-10-30T15:00:00Z',
+    league: 'Test League',
+    automationSource: 'SPORTAPI_AI',
+    venue: 'Test Ground',
+    isHighStakes: false,
+    motivation: 'regular',
+    homeTeam: { id: 'h', name: 'Home FC', shortName: 'HOM', leagueRank: null, points: null, form: ['W', 'W', 'D'], formSource: 'API_FOOTBALL', avgPossession: null, avgShotsOnTarget: null },
+    awayTeam: { id: 'a', name: 'Away FC', shortName: 'AWA', leagueRank: null, points: null, form: ['L', 'D', 'L'], formSource: 'API_FOOTBALL', avgPossession: null, avgShotsOnTarget: null },
+    h2h: null,
+  };
+  const prediction = evaluateFixturePrediction(fixture, 'none') as any;
+  assert.equal(prediction.predictedWinner, 'none');
+  assert.equal(prediction.hasEvidence, false);
+});
+
+test('automatic directional predictions are blocked when fixture authenticity is unverified even if both teams have sourced form', () => {
+  const fixture: any = {
+    id: 'unverified-authenticity',
+    kickoffTime: '2026-10-30T15:00:00Z',
+    league: 'Test League',
+    automationSource: 'SPORTAPI_AI',
+    venue: 'Test Ground',
+    isHighStakes: false,
+    motivation: 'regular',
+    homeTeam: { id: 'h', name: 'Home FC', shortName: 'HOM', leagueRank: null, points: null, form: ['W', 'W', 'D'], formSource: 'API_FOOTBALL', avgPossession: null, avgShotsOnTarget: null },
+    awayTeam: { id: 'a', name: 'Away FC', shortName: 'AWA', leagueRank: null, points: null, form: ['L', 'D', 'L'], formSource: 'API_FOOTBALL', avgPossession: null, avgShotsOnTarget: null },
+    h2h: null,
+    authenticity: { status: 'UNVERIFIED', authenticityScore: 50, isAuthentic: false, verifiedAt: null, source: 'test', checks: [] },
+  };
+  const prediction = evaluateFixturePrediction(fixture, 'none') as any;
+  assert.equal(prediction.predictedWinner, 'none');
+  assert.equal(prediction.hasEvidence, false);
+  assert.ok(prediction.appliedRules.some((rule: any) => rule.ruleName === 'Team Data Sufficiency Guard'));
 });
 
 test('SSRF filter blocks private, loopback, link-local and mapped addresses', () => {
@@ -201,4 +241,34 @@ test('priority favourite classification does not force a probability floor', () 
   assert.ok(!prediction.appliedRules.some((rule) => rule.ruleName === 'Priority Favourite Win Floor'));
   assert.ok(Math.abs(prediction.homeWinPct - prediction.awayWinPct) < 0.01);
   assert.ok(prediction.homeWinPct < 55);
+});
+
+test('provider fixture identity is traceable without falsely claiming authenticity or standings verification', () => {
+  const fixture: any = {
+    id: 'sportapiai_12345',
+    sportApiAiFixtureId: '12345',
+    automationSource: 'SPORTAPI_AI',
+    kickoffTime: '2026-10-30T15:00:00Z',
+    league: 'Test League',
+    venue: 'Test Ground',
+    isHighStakes: false,
+    motivation: 'regular',
+    homeTeam: { id: 'h', name: 'Home FC', shortName: 'HOM', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    awayTeam: { id: 'a', name: 'Away FC', shortName: 'AWA', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    h2h: null,
+  };
+
+  const { fixture: clean, stamp } = verifyAndSanitizeFixture(fixture);
+  assert.equal(clean.fixtureIdentityStatus, 'PROVIDER_IDENTIFIED');
+  assert.equal(clean.isStandingsVerified, false);
+  assert.equal(stamp.isAuthentic, false);
+  assert.equal(stamp.status, 'UNVERIFIED');
+
+  const withoutProviderId = verifyAndSanitizeFixture({
+    ...fixture,
+    id: 'unmapped-fixture',
+    sportApiAiFixtureId: undefined,
+  } as any);
+  assert.equal(withoutProviderId.fixture.fixtureIdentityStatus, 'UNVERIFIED');
+  assert.equal(withoutProviderId.stamp.isAuthentic, false);
 });

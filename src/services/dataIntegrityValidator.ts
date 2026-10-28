@@ -434,10 +434,28 @@ export function verifyAndSanitizeFixture(
 
   const isStandingsVerified = Boolean(bothTeamsCrossReferenced && stamp.source === 'OFFICIAL_ESPN_STANDINGS');
 
+  // Keep provider-record identity separate from official standings verification.
+  // A provider ID and complete fixture identity establish traceability only; they do NOT
+  // establish independent authenticity or team-strength evidence.
+  const sourceHasProviderId = (
+    (fixture.automationSource === 'SPORTAPI_AI' && Boolean(fixture.sportApiAiFixtureId || /^sportapiai_/i.test(fixture.id))) ||
+    (fixture.automationSource === 'SPORTMONKS' && Boolean(fixture.sportmonksFixtureId || /^sportmonks_/i.test(fixture.id))) ||
+    (fixture.automationSource === 'API_FOOTBALL' && Boolean(fixture.apiFootballFixtureId || /^api[_-]?football_/i.test(fixture.id))) ||
+    (fixture.automationSource === 'PITCHAPI' && /^pitchapi_/i.test(fixture.id))
+  );
+  const fixtureIdentityStatus = Boolean(
+    sourceHasProviderId &&
+    (fixture.competition || fixture.league) &&
+    rawHome.name?.trim() &&
+    rawAway.name?.trim() &&
+    hasValidKickoff
+  ) ? 'PROVIDER_IDENTIFIED' as const : 'UNVERIFIED' as const;
+
   const sanitizedFixture: MatchFixture = {
     ...fixture,
     odds: cleanOdds,
     isStandingsVerified,
+    fixtureIdentityStatus,
     homeTeam: cleanHome,
     awayTeam: cleanAway,
     h2h: cleanH2H,

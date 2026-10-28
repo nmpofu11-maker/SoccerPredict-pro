@@ -91,6 +91,8 @@ export interface MatchFixture {
 automationSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'PITCHAPI';
   isBookmakerProtected?: boolean;
   isStandingsVerified?: boolean;
+  /** Provider record identity is present; this is not independent proof of match authenticity. */
+  fixtureIdentityStatus?: FixtureIdentityStatus;
   impliedProbabilities?: {
     home: number;
     draw: number;
@@ -265,6 +267,8 @@ export interface EnginePerformanceSummary {
   drawAccuracyPct: number | null;
   brierLoss: number | null;
 }
+
+export type FixtureIdentityStatus = 'PROVIDER_IDENTIFIED' | 'UNVERIFIED';
 
 export type DataAuthenticityStatus =
   | 'VERIFIED_AUTHENTIC'
