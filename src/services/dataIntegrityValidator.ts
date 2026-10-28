@@ -240,7 +240,7 @@ export function verifyIndependentFixtureSchedule(
   observations: FixtureScheduleObservation[] = fixture.scheduleObservations || [],
 ): { verified: boolean; providers: string[]; reason: string } {
   const normalize = (value: unknown) => String(value || '').toLowerCase().normalize('NFKD')
-    .replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+    .replace(/\p{M}/gu, '').replace(/[^a-z0-9]/g, '');
   const kickoff = new Date(fixture.kickoffTime).getTime();
   if (!Number.isFinite(kickoff)) {
     return { verified: false, providers: [], reason: 'Fixture kickoff is invalid.' };
