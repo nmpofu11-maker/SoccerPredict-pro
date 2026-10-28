@@ -1540,7 +1540,9 @@ export async function enrichFixturesWithFootballApis(
   }
 
   for (const fixture of enriched) {
-    if (isValidPositiveInteger((fixture as any).sportApiAiFixtureId)) continue;
+    // Existing primary-provider IDs must still produce a raw schedule observation;
+    // otherwise the validator can never corroborate SportAPI.ai with another provider.
+    const currentSportApiFixtureId = String((fixture as any).sportApiAiFixtureId || '');
 
     const kickoffDate = fixture.kickoffTime ? fixture.kickoffTime.slice(0, 10) : '';
     const key = normalizeProviderTeamName(fixture.homeTeam.name) + '|' + normalizeProviderTeamName(fixture.awayTeam.name) + '|' + kickoffDate;
@@ -1549,7 +1551,8 @@ export async function enrichFixturesWithFootballApis(
 
     const compatible = candidates.filter((cand: any) => {
       const candidateId = String(cand.fixtureId);
-      if (usedSportApiFixtureIds.has(candidateId)) return false;
+      if (usedSportApiFixtureIds.has(candidateId) && candidateId !== currentSportApiFixtureId) return false;
+      if (currentSportApiFixtureId && candidateId !== currentSportApiFixtureId) return false;
 
       const fKickMs = Date.parse(fixture.kickoffTime);
       const rawCandKick = cand.raw?.datetime || cand.raw?.kickoff_time || cand.raw?.utc_date || cand.raw?.date;
@@ -1578,6 +1581,26 @@ export async function enrichFixturesWithFootballApis(
         const ids = firstCand;
         const fixtureId = String(ids.fixtureId);
         usedSportApiFixtureIds.add(fixtureId);
+
+        const raw = ids.raw;
+        const rawHomeName = raw?.home_team?.name || raw?.homeTeam?.name;
+        const rawAwayName = raw?.away_team?.name || raw?.awayTeam?.name;
+        const rawKickoff = raw?.datetime || raw?.kickoff_time || raw?.utc_date || raw?.date;
+        const rawCompetition = raw?.league?.name || raw?.league_name;
+        if (rawHomeName && rawAwayName && typeof rawKickoff === 'string' && rawCompetition) {
+          const parsedKickoff = new Date(rawKickoff);
+          if (Number.isFinite(parsedKickoff.getTime())) {
+            const sourceFixture = {
+              ...fixture,
+              kickoffTime: parsedKickoff.toISOString(),
+              homeTeam: { ...fixture.homeTeam, name: String(rawHomeName) },
+              awayTeam: { ...fixture.awayTeam, name: String(rawAwayName) },
+              league: String(rawCompetition),
+              competition: String(rawCompetition),
+            } as MatchFixture;
+            attachScheduleObservation(fixture, 'SPORTAPI_AI', ids.fixtureId, sourceFixture);
+          }
+        }
 
         const currentFixtureId = (fixture as any).sportApiAiFixtureId;
         if (isValidPositiveInteger(ids.fixtureId)) {
