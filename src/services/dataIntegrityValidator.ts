@@ -440,8 +440,8 @@ export function verifyAndSanitizeFixture(
   const sourceHasProviderId = (
     (fixture.automationSource === 'SPORTAPI_AI' && Boolean(fixture.sportApiAiFixtureId || /^sportapiai_/i.test(fixture.id))) ||
     (fixture.automationSource === 'SPORTMONKS' && Boolean(fixture.sportmonksFixtureId || /^sportmonks_/i.test(fixture.id))) ||
-    (fixture.automationSource === 'API_FOOTBALL' && Boolean(fixture.apiFootballFixtureId || /^api_football_/i.test(fixture.id))) ||
-    (fixture.automationSource === 'PITCHAPI' && Boolean(fixture.pitchApiMatchId || /^pitchapi_/i.test(fixture.id)))
+    (fixture.automationSource === 'API_FOOTBALL' && Boolean(fixture.apiFootballFixtureId || /^api[_-]?football_/i.test(fixture.id))) ||
+    (fixture.automationSource === 'PITCHAPI' && /^pitchapi_/i.test(fixture.id))
   );
   const fixtureIdentityStatus = Boolean(
     sourceHasProviderId &&
