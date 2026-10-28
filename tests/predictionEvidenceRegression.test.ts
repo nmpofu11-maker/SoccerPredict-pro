@@ -153,4 +153,9 @@ test('failed schedule authenticity blocks directional predictions even without a
   const prediction = evaluateFixturePrediction(evidenceFixture, 'none');
   assert.equal(prediction.predictedWinner, 'none');
   assert.equal(prediction.hasEvidence, false);
+
+  // An explicit selection cannot turn an unverified fixture into an authentic one.
+  const overridden = evaluateFixturePrediction(evidenceFixture, 'force_home');
+  assert.equal(overridden.predictedWinner, 'none');
+  assert.equal(overridden.hasEvidence, false);
 });
