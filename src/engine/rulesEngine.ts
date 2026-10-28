@@ -117,8 +117,9 @@ export function evaluateFixturePrediction(
 
   // Fail closed before any one-sided form, H2H, league archetype, favourite label,
   // or other downstream rule can leak a directional edge into an unqualified fixture.
-  // Explicit user overrides remain available, but automatic predictions stay neutral.
-  if (insufficientTeamData && manualOverride === 'none') {
+  // A manual selection may express a user's choice when team evidence is sparse,
+  // but it must never override a failed fixture-authenticity/schedule-corroboration gate.
+  if (explicitlyUnverifiedFixture || (!hasVerifiedTeamEvidence && manualOverride === 'none')) {
     appliedRules.push({
       ruleNumber: 0,
       ruleName: 'Team Data Sufficiency Guard',
