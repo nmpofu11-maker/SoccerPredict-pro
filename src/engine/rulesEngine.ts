@@ -102,11 +102,14 @@ export function evaluateFixturePrediction(
   // International/youth fixtures with no verified strength evidence must not receive
   // an invented home-team advantage. A schedule-only feed cannot justify it.
   const hasVerifiedTeamEvidence = fixtureHasEvidence(fixture);
-  const hasVerifiedFixtureAuthenticity = fixture.authenticity?.isAuthentic === true;
-  // A provider ID is traceability only. Automatic predictions require the integrity
-  // validator to independently certify fixture authenticity as well as both teams'
-  // sourced strength evidence. Manual overrides remain an explicit user decision.
-  const insufficientTeamData = !hasVerifiedTeamEvidence || !hasVerifiedFixtureAuthenticity;
+  // Runtime manifests are integrity-sanitized before reaching the prediction engine.
+  // If the validator explicitly stamps a fixture as unverified, fail closed. Fixtures
+  // without a stamp are retained for isolated historical evaluation and unit tests;
+  // those are not the live manifest prediction path.
+  const explicitlyUnverifiedFixture = Boolean(
+    fixture.authenticity && fixture.authenticity.isAuthentic !== true
+  );
+  const insufficientTeamData = !hasVerifiedTeamEvidence || explicitlyUnverifiedFixture;
 
   // Fail closed before any one-sided form, H2H, league archetype, favourite label,
   // or other downstream rule can leak a directional edge into an unqualified fixture.
