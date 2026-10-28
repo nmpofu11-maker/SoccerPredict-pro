@@ -172,6 +172,42 @@ export async function fetchCronStatus(): Promise<CronStatusResponse | null> {
   }
 }
 
+export interface FixtureEligibilityAuditResponse {
+  status: 'success' | 'error';
+  syncedAt?: string;
+  eligibilitySummary: {
+    totalFixtures: number;
+    providerIdentified: number;
+    authenticityVerified: number;
+    twoSidedEvidence: number;
+    eligibleForAutomaticPrediction: number;
+    blockedByAuthenticity: number;
+    blockedByTeamEvidence: number;
+  };
+  auditReport?: {
+    totalFixturesAudited: number;
+    fullyAuthenticCount: number;
+    standingsCrossReferencedCount: number;
+  };
+  message?: string;
+}
+
+/** Read the server's persisted eligibility audit without triggering provider requests. */
+export async function fetchFixtureEligibilityAudit(): Promise<FixtureEligibilityAuditResponse | null> {
+  try {
+    const res = await fetch('/api/fixtures/eligibility');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data?.status !== 'success' || !data?.eligibilitySummary) {
+      throw new Error(data?.message || 'Eligibility audit response has an invalid shape');
+    }
+    return data as FixtureEligibilityAuditResponse;
+  } catch (err) {
+    console.warn('Failed to fetch fixture eligibility audit:', err);
+    return null;
+  }
+}
+
 export interface EvidenceCoverageResponse {
   status: 'success' | 'error';
   totalFixtures: number;

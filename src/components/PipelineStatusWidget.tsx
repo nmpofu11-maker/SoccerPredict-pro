@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cpu, RefreshCw, CheckCircle2, AlertCircle, Clock, ShieldCheck, ShieldAlert } from 'lucide-react';
-import { fetchCronStatus, triggerIngestNow, fetchPersistedSlate, fetchEvidenceCoverage, CronStatusResponse, EvidenceCoverageResponse } from '../services/resultsService';
+import { fetchCronStatus, triggerIngestNow, fetchPersistedSlate, fetchEvidenceCoverage, fetchFixtureEligibilityAudit, CronStatusResponse, EvidenceCoverageResponse, FixtureEligibilityAuditResponse } from '../services/resultsService';
 import { MatchFixture } from '../types/soccer';
 
 interface PipelineStatusWidgetProps {
@@ -10,12 +10,14 @@ interface PipelineStatusWidgetProps {
 export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFixturesSynced }) => {
   const [status, setStatus] = useState<CronStatusResponse | null>(null);
   const [evidence, setEvidence] = useState<EvidenceCoverageResponse | null>(null);
+  const [eligibility, setEligibility] = useState<FixtureEligibilityAuditResponse | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const refresh = () => {
     fetchCronStatus().then(setStatus);
     fetchEvidenceCoverage().then(setEvidence);
+    fetchFixtureEligibilityAudit().then(setEligibility);
   };
 
   useEffect(() => {
@@ -100,6 +102,20 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
               <span>Standings: {evidence.standingsCount}</span>
               <span>•</span>
               <span>Form: {evidence.formCount}</span>
+            </div>
+          )}
+          {eligibility?.eligibilitySummary && (
+            <div
+              className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1 text-[10.5px]"
+              aria-label="Automatic prediction eligibility audit"
+              title="This audit reads the persisted fixture manifest only; it does not test live provider connectivity."
+            >
+              <span className="text-slate-300">Identified: <strong>{eligibility.eligibilitySummary.providerIdentified}/{eligibility.eligibilitySummary.totalFixtures}</strong></span>
+              <span className="text-slate-300">Authentic: <strong>{eligibility.eligibilitySummary.authenticityVerified}/{eligibility.eligibilitySummary.totalFixtures}</strong></span>
+              <span className="text-slate-300">Both teams evidenced: <strong>{eligibility.eligibilitySummary.twoSidedEvidence}/{eligibility.eligibilitySummary.totalFixtures}</strong></span>
+              <span className="text-emerald-300">Eligible: <strong>{eligibility.eligibilitySummary.eligibleForAutomaticPrediction}</strong></span>
+              <span className="text-amber-300">Blocked: authenticity <strong>{eligibility.eligibilitySummary.blockedByAuthenticity}</strong></span>
+              <span className="text-amber-300">Blocked: team evidence <strong>{eligibility.eligibilitySummary.blockedByTeamEvidence}</strong></span>
             </div>
           )}
           {!isHealthy && hasRun && (
