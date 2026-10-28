@@ -9,13 +9,15 @@ interface PipelineStatusWidgetProps {
 
 export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFixturesSynced }) => {
   const [status, setStatus] = useState<CronStatusResponse | null>(null);
-  const [evidence, setEvidence] = useState<EvidenceCoverageResponse | null>(null);\n  const [eligibility, setEligibility] = useState<FixtureEligibilityAuditResponse | null>(null);
+  const [evidence, setEvidence] = useState<EvidenceCoverageResponse | null>(null);
+  const [eligibility, setEligibility] = useState<FixtureEligibilityAuditResponse | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const refresh = () => {
     fetchCronStatus().then(setStatus);
-    fetchEvidenceCoverage().then(setEvidence);\n    fetchFixtureEligibilityAudit().then(setEligibility);
+    fetchEvidenceCoverage().then(setEvidence);
+    fetchFixtureEligibilityAudit().then(setEligibility);
   };
 
   useEffect(() => {
