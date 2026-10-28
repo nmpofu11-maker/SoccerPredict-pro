@@ -1,5 +1,6 @@
 import {
   MatchFixture,
+  FixtureScheduleObservation,
   MatchAuthenticityStamp,
   VerificationCheckResult,
   DataIntegrityAuditReport,
@@ -230,6 +231,40 @@ function sanitizeTeamStats(
 }
 
 /**
+ * A provider ID or a team's presence in standings cannot prove that this particular
+ * fixture is scheduled. Require two distinct provider observations that independently
+ * agree on teams, competition and kickoff before treating schedule authenticity as verified.
+ */
+export function verifyIndependentFixtureSchedule(
+  fixture: MatchFixture,
+  observations: FixtureScheduleObservation[] = fixture.scheduleObservations || [],
+): { verified: boolean; providers: string[]; reason: string } {
+  const normalize = (value: unknown) => String(value || '').toLowerCase().normalize('NFKD')
+    .replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+  const kickoff = new Date(fixture.kickoffTime).getTime();
+  if (!Number.isFinite(kickoff)) {
+    return { verified: false, providers: [], reason: 'Fixture kickoff is invalid.' };
+  }
+  const valid = observations.filter((observation) => {
+    if (!observation?.provider || !observation.fixtureId?.trim()) return false;
+    const observedKickoff = new Date(observation.kickoffTime).getTime();
+    if (!Number.isFinite(observedKickoff) || Math.abs(observedKickoff - kickoff) > 5 * 60 * 1000) return false;
+    return normalize(observation.homeTeam) === normalize(fixture.homeTeam?.name)
+      && normalize(observation.awayTeam) === normalize(fixture.awayTeam?.name)
+      && normalize(observation.competition) === normalize(fixture.competition || fixture.league);
+  });
+  const providers = [...new Set(valid.map((observation) => observation.provider))];
+  const verified = providers.length >= 2;
+  return {
+    verified,
+    providers,
+    reason: verified
+      ? `Exact fixture corroborated by independent schedule sources: ${providers.join(', ')}.`
+      : `Need two distinct providers to agree on teams, competition and kickoff; found ${providers.length} matching provider(s).`,
+  };
+}
+
+/**
  * Verifies and auto-heals an individual MatchFixture before it reaches the AI prediction engine.
  */
 export function verifyAndSanitizeFixture(
@@ -267,6 +302,16 @@ export function verifyAndSanitizeFixture(
       ? `Kickoff scheduled for ${new Date(fixture.kickoffTime).toLocaleString()}`
       : 'Invalid kickoff timestamp encountered',
     severity: 'warning',
+  });
+
+  // Check 3: Independent schedule corroboration. Standings confirm team identity only,
+  // never that this specific pairing is scheduled at this kickoff.
+  const scheduleVerification = verifyIndependentFixtureSchedule(fixture);
+  checks.push({
+    checkName: 'Independent Fixture Schedule Corroboration',
+    passed: scheduleVerification.verified,
+    details: scheduleVerification.reason,
+    severity: scheduleVerification.verified ? 'info' : 'critical',
   });
 
   // Sanitize Home and Away stats
@@ -416,7 +461,7 @@ export function verifyAndSanitizeFixture(
   const authenticityScore = rawScore;
 
   const status =
-    repairs.length === 0 && bothTeamsCrossReferenced
+    repairs.length === 0 && bothTeamsCrossReferenced && scheduleVerification.verified
       ? 'VERIFIED_AUTHENTIC'
       : repairs.length > 0
       ? 'AUTO_REPAIRED'
@@ -427,7 +472,7 @@ export function verifyAndSanitizeFixture(
     authenticityScore,
     isAuthentic: status === 'VERIFIED_AUTHENTIC',
     verifiedAt: new Date().toISOString(),
-    source: bothTeamsCrossReferenced ? 'OFFICIAL_ESPN_STANDINGS' : 'UNVERIFIED_PROVIDER_INGESTION',
+    source: scheduleVerification.verified ? `INDEPENDENT_SCHEDULE:${scheduleVerification.providers.join('+')}` : bothTeamsCrossReferenced ? 'STANDINGS_ONLY_NOT_FIXTURE_VERIFIED' : 'UNVERIFIED_PROVIDER_INGESTION',
     checks,
     repairedFields: repairs.map((r) => r.field),
   };
