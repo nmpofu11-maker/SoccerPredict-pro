@@ -202,3 +202,33 @@ test('priority favourite classification does not force a probability floor', () 
   assert.ok(Math.abs(prediction.homeWinPct - prediction.awayWinPct) < 0.01);
   assert.ok(prediction.homeWinPct < 55);
 });
+
+test('provider fixture identity is traceable without falsely claiming authenticity or standings verification', () => {
+  const fixture: any = {
+    id: 'sportapiai_12345',
+    sportApiAiFixtureId: '12345',
+    automationSource: 'SPORTAPI_AI',
+    kickoffTime: '2026-10-30T15:00:00Z',
+    league: 'Test League',
+    venue: 'Test Ground',
+    isHighStakes: false,
+    motivation: 'regular',
+    homeTeam: { id: 'h', name: 'Home FC', shortName: 'HOM', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    awayTeam: { id: 'a', name: 'Away FC', shortName: 'AWA', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    h2h: null,
+  };
+
+  const { fixture: clean, stamp } = verifyAndSanitizeFixture(fixture);
+  assert.equal(clean.fixtureIdentityStatus, 'PROVIDER_IDENTIFIED');
+  assert.equal(clean.isStandingsVerified, false);
+  assert.equal(stamp.isAuthentic, false);
+  assert.equal(stamp.status, 'UNVERIFIED');
+
+  const withoutProviderId = verifyAndSanitizeFixture({
+    ...fixture,
+    id: 'unmapped-fixture',
+    sportApiAiFixtureId: undefined,
+  } as any);
+  assert.equal(withoutProviderId.fixture.fixtureIdentityStatus, 'UNVERIFIED');
+  assert.equal(withoutProviderId.stamp.isAuthentic, false);
+});
