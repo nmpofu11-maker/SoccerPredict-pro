@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { verifyIndependentFixtureSchedule, verifyAndSanitizeFixture } from '../src/services/dataIntegrityValidator';
+import { verifyIndependentFixtureSchedule, verifyAndSanitizeFixture, verifyAndSanitizeFixtures } from '../src/services/dataIntegrityValidator';
 import type { MatchFixture, FixtureScheduleObservation } from '../src/types/soccer';
 
 const fixture = {
@@ -90,4 +90,30 @@ test('matching official standings alone never marks a specific fixture authentic
   assert.ok(result.stamp.checks.some((check) =>
     check.checkName === 'Independent Fixture Schedule Corroboration' && !check.passed
   ));
+});
+
+test('fixture deduplication preserves schedule observations from both providers', () => {
+  const homeTeam = {
+    id: 'home', name: 'São Paulo', shortName: 'SAO', leagueRank: 4, points: 30,
+    form: [], avgPossession: null, avgShotsOnTarget: null,
+  };
+  const awayTeam = {
+    id: 'away', name: 'Manchester City', shortName: 'MCI', leagueRank: 1, points: 40,
+    form: [], avgPossession: null, avgShotsOnTarget: null,
+  };
+  const first = {
+    ...fixture, id: 'fixture-first', homeTeam, awayTeam,
+    scheduleObservations: [observation('SPORTAPI_AI')],
+  } as MatchFixture;
+  const second = {
+    ...fixture, id: 'fixture-second', homeTeam, awayTeam,
+    scheduleObservations: [observation('SPORTMONKS')],
+  } as MatchFixture;
+
+  const result = verifyAndSanitizeFixtures([first, second]);
+  assert.equal(result.fixtures.length, 1);
+  assert.deepEqual(
+    new Set(result.fixtures[0].scheduleObservations?.map((item) => item.provider)),
+    new Set(['SPORTAPI_AI', 'SPORTMONKS']),
+  );
 });
