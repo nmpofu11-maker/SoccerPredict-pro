@@ -106,8 +106,12 @@ export function evaluateFixturePrediction(
   // If the validator explicitly stamps a fixture as unverified, fail closed. Fixtures
   // without a stamp are retained for isolated historical evaluation and unit tests;
   // those are not the live manifest prediction path.
+  // Any integrity-stamped fixture must pass the independent schedule-authenticity gate,
+  // regardless of whether an automationSource label was attached. Otherwise a fixture
+  // with verified team stats but failed schedule corroboration could bypass this guard.
+  // Unstamped fixtures remain supported only for isolated historical evaluation/unit tests.
   const explicitlyUnverifiedFixture = Boolean(
-    fixture.automationSource && fixture.authenticity?.isAuthentic !== true
+    fixture.authenticity && fixture.authenticity.isAuthentic !== true
   );
   const insufficientTeamData = !hasVerifiedTeamEvidence || explicitlyUnverifiedFixture;
 
