@@ -268,7 +268,7 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
 }
 
 function getListenPort(): number {
-  return resolveListenPort(process.argv, process.env.PORT);
+  return resolveListenPort(process.argv, process.env.PORT, process.env.APPLET_ID);
 }
 
 function getListenHost(): string {
@@ -279,7 +279,7 @@ function getListenHost(): string {
   return process.env.HOST?.trim() || '0.0.0.0';
 }
 
-const PORT = resolveListenPort(process.argv, process.env.PORT);
+const PORT = resolveListenPort(process.argv, process.env.PORT, process.env.APPLET_ID);
 const HOST = getListenHost();
 
 const MANIFEST_PATH = path.join(process.cwd(), 'data', 'fixtures-manifest.json');
