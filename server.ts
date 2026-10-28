@@ -2568,6 +2568,27 @@ async function startServer() {
     }
   });
 
+  // Lightweight eligibility audit: reads the persisted manifest only and never calls external providers.
+  app.get('/api/fixtures/eligibility', (_req, res) => {
+    try {
+      const diskData = readDiskManifest();
+      const { fixtures: validated, auditReport } = verifyAndSanitizeFixtures(diskData);
+      return res.json({
+        status: 'success',
+        syncedAt: new Date().toISOString(),
+        eligibilitySummary: summarizeFixtureEligibility(validated, hasVerifiedPredictionEvidence),
+        auditReport: {
+          totalFixturesAudited: auditReport.totalFixturesAudited,
+          fullyAuthenticCount: auditReport.fullyAuthenticCount,
+          standingsCrossReferencedCount: auditReport.standingsCrossReferencedCount,
+        },
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to audit fixture eligibility';
+      return res.status(500).json({ status: 'error', message: msg });
+    }
+  });
+
   // Daily Hollywoodbets and Master Slate Endpoint
   app.get('/api/fixtures/daily-slate', async (_req, res) => {
     try {
