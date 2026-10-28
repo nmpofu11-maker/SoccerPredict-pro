@@ -596,6 +596,19 @@ export function verifyAndSanitizeFixtures(
   };
 
   const mergeRecords = (existing: any, incoming: any) => {
+    const mergeScheduleObservations = (canonical: any, older: any) => {
+      const observations = [
+        ...(Array.isArray(canonical.scheduleObservations) ? canonical.scheduleObservations : []),
+        ...(Array.isArray(older.scheduleObservations) ? older.scheduleObservations : []),
+      ];
+      const unique = new Map<string, any>();
+      for (const observation of observations) {
+        if (!observation || typeof observation !== 'object') continue;
+        const key = [observation.provider, observation.fixtureId].map((value) => String(value || '').trim()).join(':');
+        if (key !== ':') unique.set(key, observation);
+      }
+      canonical.scheduleObservations = [...unique.values()];
+    };
     const hasTeamEvidence = (team: any): boolean =>
       (Boolean(team?.standingsSource) &&
         Number.isFinite(team?.leagueRank) &&
@@ -621,6 +634,7 @@ export function verifyAndSanitizeFixtures(
       if (!canonical.pitchApiScore && older.pitchApiScore) {
         canonical.pitchApiScore = older.pitchApiScore;
       }
+      mergeScheduleObservations(canonical, older);
 
       return { canonical, older };
     }
@@ -660,6 +674,7 @@ export function verifyAndSanitizeFixtures(
       canonical.awayTeam.formSource = older.awayTeam.formSource;
     }
 
+    mergeScheduleObservations(canonical, older);
     return { canonical, older };
   };
 
