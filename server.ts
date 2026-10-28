@@ -415,46 +415,22 @@ let primarySlateRefreshAt = 0;
 let primarySlateRefreshPromise: Promise<void> | null = null;
 
 function hasVerifiedPredictionEvidence(fixture: any): boolean {
-  const teams = [fixture?.homeTeam, fixture?.awayTeam];
-  const hasForm = teams.some((team: any) =>
-    Boolean(team?.formSource) && Array.isArray(team?.form) && team.form.length > 0
-  );
-  const hasStandings = teams.some((team: any) =>
-    Boolean(team?.standingsSource) &&
-    Number.isFinite(team?.leagueRank) &&
-    team.leagueRank >= 1
-  );
-  const hasMatchStats = teams.some((team: any) =>
-    Boolean(team?.matchStatsSource) &&
-    (Number.isFinite(team?.avgPossession) || Number.isFinite(team?.avgShotsOnTarget))
-  );
-  const hasAdvancedStats = teams.some((team: any) =>
-    Boolean(team?.advancedStatsSource) &&
-    (
-      Number.isFinite(team?.avgMatchRating) ||
-      Number.isFinite(team?.totalSquadValueEur) ||
-      Number.isFinite(team?.expectedGoalsAvg)
-    )
-  );
-  const hasH2H = Boolean(fixture?.h2h?.source) &&
-    Number.isFinite(fixture?.h2h?.totalLast5) &&
-    fixture.h2h.totalLast5 > 0;
-
-  return hasForm || hasStandings || hasMatchStats || hasAdvancedStats || hasH2H;
+  // Use the same two-sided strength gate as the prediction engine. One team's
+  // form, standings, H2H, or stats must never count as sufficient fixture evidence.
+  return fixtureHasEvidence(fixture);
 }
 
 function hasPrimaryPredictionEvidence(fixture: any): boolean {
-  const primary = (source: unknown) => source === 'SPORTAPI_AI' || source === 'SPORTMONKS';
-  const teams = [fixture?.homeTeam, fixture?.awayTeam];
-  return (
-    teams.some((team: any) => primary(team?.formSource) && Array.isArray(team?.form) && team.form.length > 0) ||
-    teams.some((team: any) => primary(team?.standingsSource) && Number.isFinite(team?.leagueRank) && team.leagueRank >= 1) ||
-    teams.some((team: any) => primary(team?.matchStatsSource) &&
-      (Number.isFinite(team?.avgPossession) || Number.isFinite(team?.avgShotsOnTarget))) ||
-    teams.some((team: any) => primary(team?.advancedStatsSource) &&
-      (Number.isFinite(team?.avgMatchRating) || Number.isFinite(team?.totalSquadValueEur) || Number.isFinite(team?.expectedGoalsAvg))) ||
-    (primary(fixture?.h2h?.source) && Number.isFinite(fixture?.h2h?.totalLast5) && fixture.h2h.totalLast5 > 0)
-  );
+  const isPrimary = (source: unknown) => source === 'SPORTAPI_AI' || source === 'SPORTMONKS';
+  const teamHasPrimaryStrength = (team: any): boolean =>
+    (isPrimary(team?.formSource) && Array.isArray(team?.form) && team.form.length > 0) ||
+    (fixture?.isStandingsVerified === true && isPrimary(team?.standingsSource) &&
+      Number.isFinite(team?.leagueRank) && team.leagueRank >= 1) ||
+    (isPrimary(team?.advancedStatsSource) &&
+      (Number.isFinite(team?.avgMatchRating) || Number.isFinite(team?.totalSquadValueEur)));
+  // Require primary-provider evidence on BOTH sides before considering the
+  // primary refresh complete; evidence on just one team must not suppress retry.
+  return teamHasPrimaryStrength(fixture?.homeTeam) && teamHasPrimaryStrength(fixture?.awayTeam);
 }
 
 async function refreshPrimaryEvidenceForDailySlate(force = false): Promise<void> {
