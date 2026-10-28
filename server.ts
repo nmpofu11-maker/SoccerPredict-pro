@@ -53,6 +53,7 @@ import {
 } from './src/services/serverFootballApis';
 import { enrichFixturesWithFootballApis } from './src/services/serverFootballProviderEnrichment';
 import { mergeEvidenceFallbackFixtures } from './src/services/predictionEvidenceMerge';
+import { summarizeFixtureEligibility } from './src/services/fixtureEligibility';
 import { extractTextFromPDF, scrapeUrl } from './src/services/manualDataService';
 import { evaluateFixturePrediction, sanitizeEngineWeights, fixtureHasEvidence } from './src/engine/rulesEngine';
 import {
@@ -2630,6 +2631,7 @@ async function startServer() {
           fixturesUsingNeutralPrior: validated.filter((fixture: any) => !hasVerifiedPredictionEvidence(fixture)).length,
           totalFixtures: validated.length,
         },
+        eligibilitySummary: summarizeFixtureEligibility(validated, hasVerifiedPredictionEvidence),
         fixtures: validated,
       });
     } catch (err: unknown) {
