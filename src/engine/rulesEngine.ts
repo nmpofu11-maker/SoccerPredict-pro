@@ -107,7 +107,7 @@ export function evaluateFixturePrediction(
   // without a stamp are retained for isolated historical evaluation and unit tests;
   // those are not the live manifest prediction path.
   const explicitlyUnverifiedFixture = Boolean(
-    fixture.automationSource && fixture.authenticity && fixture.authenticity.isAuthentic !== true
+    fixture.automationSource && fixture.authenticity?.isAuthentic !== true
   );
   const insufficientTeamData = !hasVerifiedTeamEvidence || explicitlyUnverifiedFixture;
 
