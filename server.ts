@@ -2631,6 +2631,7 @@ async function startServer() {
           fixturesUsingNeutralPrior: validated.filter((fixture: any) => !hasVerifiedPredictionEvidence(fixture)).length,
           totalFixtures: validated.length,
         },
+        eligibilitySummary: summarizeFixtureEligibility(validated, hasVerifiedPredictionEvidence),
         fixtures: validated,
       });
     } catch (err: unknown) {
