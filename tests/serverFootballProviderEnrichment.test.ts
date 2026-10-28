@@ -148,7 +148,16 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
       return new Response(JSON.stringify({ data: [] }), { status: 200 });
     }
     if (url.pathname.endsWith('/fixtures/date/2026-10-10')) {
-      return new Response(JSON.stringify({ success: true, fixtures: [] }), { status: 200 });
+      return new Response(JSON.stringify({
+        success: true,
+        fixtures: [{
+          id: 7001,
+          datetime: '2026-10-10T15:00:00Z',
+          home_team: { id: 101, name: 'Home FC' },
+          away_team: { id: 202, name: 'Away FC' },
+          league: { id: 77, name: 'Premier League' },
+        }],
+      }), { status: 200 });
     }
     if (url.pathname.endsWith('/standings/77')) {
       return new Response(JSON.stringify({
@@ -246,6 +255,19 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
     assert.equal(out.h2h?.homeWins, 2);
     assert.equal(out.h2h?.draws, 1);
     assert.equal(out.h2h?.awayWins, 0);
+    assert.deepEqual(out.scheduleObservations?.filter((item) => item.provider === 'SPORTAPI_AI').map((item) => ({
+      fixtureId: item.fixtureId,
+      kickoffTime: item.kickoffTime,
+      homeTeam: item.homeTeam,
+      awayTeam: item.awayTeam,
+      competition: item.competition,
+    })), [{
+      fixtureId: '7001',
+      kickoffTime: '2026-10-10T15:00:00.000Z',
+      homeTeam: 'Home FC',
+      awayTeam: 'Away FC',
+      competition: 'Premier League',
+    }]);
   } finally {
     restoreEnvironment();
     delete process.env.SPORT_PROVIDER_MAX_TEAM_LOOKUPS;
