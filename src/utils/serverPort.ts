@@ -1,7 +1,10 @@
 const SOCCERPREDICT_PORT = 3001;
 
 /** Resolve the app port without ever routing SoccerPredict-pro to the separate app on 3000. */
-export function resolveListenPort(args: string[], configuredPort?: string): number {
+export function resolveListenPort(args: string[], configuredPort?: string, appletId?: string): number {
+  // AI Studio's preview proxy expects the app backend on port 3000. Keep the local
+  // default at 3001 to avoid colliding with the user's separate local app.
+  if (appletId?.trim()) return 3000;
   const portArgIndex = args.indexOf('--port');
   if (portArgIndex !== -1 && args[portArgIndex + 1]) {
     const parsed = Number(args[portArgIndex + 1]);

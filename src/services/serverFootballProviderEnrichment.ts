@@ -1,4 +1,4 @@
-import type { MatchFixture, TeamStats, H2HRecord } from '../types/soccer';
+import type { MatchFixture, TeamStats, H2HRecord, FixtureScheduleObservation } from '../types/soccer';
 import { ALL_LEAGUES_DIRECTORY } from '../constants/leagues';
 import {
   apiFootballConfigured,
@@ -20,6 +20,22 @@ import {
   fetchSportApiAiFixtureStats,
   fetchSportApiAiHeadToHead,
 } from './serverSportApiAi';
+
+
+/** Keep schedule provenance from each raw provider response; never derive a second source from the merged fixture. */
+function attachScheduleObservation(fixture: MatchFixture, provider: FixtureScheduleObservation['provider'], fixtureId: unknown, sourceFixture: MatchFixture = fixture): void {
+  const id = String(fixtureId ?? '').trim();
+  const kickoffTime = String(sourceFixture.kickoffTime || '');
+  const homeTeam = String(sourceFixture.homeTeam?.name || '').trim();
+  const awayTeam = String(sourceFixture.awayTeam?.name || '').trim();
+  const competition = String(sourceFixture.competition || sourceFixture.league || '').trim();
+  if (!id || !Number.isFinite(Date.parse(kickoffTime)) || !homeTeam || !awayTeam || !competition) return;
+  const observation: FixtureScheduleObservation = { provider, fixtureId: id, kickoffTime, homeTeam, awayTeam, competition };
+  const existing = fixture.scheduleObservations || [];
+  if (!existing.some((item) => item.provider === provider && item.fixtureId === id)) {
+    fixture.scheduleObservations = [...existing, observation];
+  }
+}
 
 const TEAM_STATS_TTL_MS = 60 * 60 * 1000;
 const teamStatsCache = new Map<string, { expiresAt: number; value: any }>();
@@ -1284,6 +1300,7 @@ export async function enrichFixturesWithFootballApis(
   for (const raw of apiRaw) {
     const mapped = mapApiFootballFixture(raw);
     if (mapped && isTargetCompetition(raw, mapped)) {
+      attachScheduleObservation(mapped, 'API_FOOTBALL', raw?.fixture?.id ?? raw?.id);
       apiFootballMappedFixtures++;
       apiFootballCandidates.push({ raw, mapped });
     }
@@ -1295,7 +1312,13 @@ export async function enrichFixturesWithFootballApis(
     // never add them as new slate fixtures.
     if (Date.parse(cand.mapped.kickoffTime) < Date.now() - 3 * 60 * 60 * 1000) continue;
     const existingMatches = findMatchingSlateFixtures(cand.mapped, enriched);
-    if (existingMatches.length === 0) {
+    if (existingMatches.length > 0) {
+      for (const existing of existingMatches) {
+        for (const observation of cand.mapped.scheduleObservations || []) {
+          attachScheduleObservation(existing, observation.provider, observation.fixtureId, cand.mapped);
+        }
+      }
+    } else {
       const duplicatedCandidates = apiFootballCandidates.filter(c => {
         return normalizeProviderTeamName(c.mapped.homeTeam.name) === normalizeProviderTeamName(cand.mapped.homeTeam.name) &&
                normalizeProviderTeamName(c.mapped.awayTeam.name) === normalizeProviderTeamName(cand.mapped.awayTeam.name) &&
@@ -1387,6 +1410,7 @@ export async function enrichFixturesWithFootballApis(
   for (const raw of sportmonksRaw) {
     const mapped = mapSportmonksFixture(raw);
     if (mapped && isTargetCompetition(raw, mapped)) {
+      attachScheduleObservation(mapped, 'SPORTMONKS', raw?.id);
       sportmonksMappedFixtures++;
       sportmonksCandidates.push({ raw, mapped });
     }
@@ -1398,7 +1422,13 @@ export async function enrichFixturesWithFootballApis(
     // never add them as new slate fixtures.
     if (Date.parse(cand.mapped.kickoffTime) < Date.now() - 3 * 60 * 60 * 1000) continue;
     const existingMatches = findMatchingSlateFixtures(cand.mapped, enriched);
-    if (existingMatches.length === 0) {
+    if (existingMatches.length > 0) {
+      for (const existing of existingMatches) {
+        for (const observation of cand.mapped.scheduleObservations || []) {
+          attachScheduleObservation(existing, observation.provider, observation.fixtureId, cand.mapped);
+        }
+      }
+    } else {
       const duplicatedCandidates = sportmonksCandidates.filter(c => {
         return normalizeProviderTeamName(c.mapped.homeTeam.name) === normalizeProviderTeamName(cand.mapped.homeTeam.name) &&
                normalizeProviderTeamName(c.mapped.awayTeam.name) === normalizeProviderTeamName(cand.mapped.awayTeam.name) &&
@@ -1510,7 +1540,9 @@ export async function enrichFixturesWithFootballApis(
   }
 
   for (const fixture of enriched) {
-    if (isValidPositiveInteger((fixture as any).sportApiAiFixtureId)) continue;
+    // Existing primary-provider IDs must still produce a raw schedule observation;
+    // otherwise the validator can never corroborate SportAPI.ai with another provider.
+    const currentSportApiFixtureId = String((fixture as any).sportApiAiFixtureId || '');
 
     const kickoffDate = fixture.kickoffTime ? fixture.kickoffTime.slice(0, 10) : '';
     const key = normalizeProviderTeamName(fixture.homeTeam.name) + '|' + normalizeProviderTeamName(fixture.awayTeam.name) + '|' + kickoffDate;
@@ -1519,7 +1551,8 @@ export async function enrichFixturesWithFootballApis(
 
     const compatible = candidates.filter((cand: any) => {
       const candidateId = String(cand.fixtureId);
-      if (usedSportApiFixtureIds.has(candidateId)) return false;
+      if (usedSportApiFixtureIds.has(candidateId) && candidateId !== currentSportApiFixtureId) return false;
+      if (currentSportApiFixtureId && candidateId !== currentSportApiFixtureId) return false;
 
       const fKickMs = Date.parse(fixture.kickoffTime);
       const rawCandKick = cand.raw?.datetime || cand.raw?.kickoff_time || cand.raw?.utc_date || cand.raw?.date;
@@ -1548,6 +1581,26 @@ export async function enrichFixturesWithFootballApis(
         const ids = firstCand;
         const fixtureId = String(ids.fixtureId);
         usedSportApiFixtureIds.add(fixtureId);
+
+        const raw = ids.raw;
+        const rawHomeName = raw?.home_team?.name || raw?.homeTeam?.name;
+        const rawAwayName = raw?.away_team?.name || raw?.awayTeam?.name;
+        const rawKickoff = raw?.datetime || raw?.kickoff_time || raw?.utc_date || raw?.date;
+        const rawCompetition = raw?.league?.name || raw?.league_name;
+        if (rawHomeName && rawAwayName && typeof rawKickoff === 'string' && rawCompetition) {
+          const parsedKickoff = new Date(rawKickoff);
+          if (Number.isFinite(parsedKickoff.getTime())) {
+            const sourceFixture = {
+              ...fixture,
+              kickoffTime: parsedKickoff.toISOString(),
+              homeTeam: { ...fixture.homeTeam, name: String(rawHomeName) },
+              awayTeam: { ...fixture.awayTeam, name: String(rawAwayName) },
+              league: String(rawCompetition),
+              competition: String(rawCompetition),
+            } as MatchFixture;
+            attachScheduleObservation(fixture, 'SPORTAPI_AI', ids.fixtureId, sourceFixture);
+          }
+        }
 
         const currentFixtureId = (fixture as any).sportApiAiFixtureId;
         if (isValidPositiveInteger(ids.fixtureId)) {

@@ -15,3 +15,8 @@ test('preserves an explicit safe port and avoids the container proxy port', () =
   assert.equal(resolveListenPort(['--port', '3101'], '3201'), 3101);
   assert.equal(resolveListenPort([], '8080'), 3001);
 });
+
+test('uses the preview proxy port in AI Studio only when applet id is present', () => {
+  assert.equal(resolveListenPort([], undefined, 'ai-studio-applet'), 3000);
+  assert.equal(resolveListenPort([], undefined, ''), 3001);
+});

@@ -106,15 +106,21 @@ export function evaluateFixturePrediction(
   // If the validator explicitly stamps a fixture as unverified, fail closed. Fixtures
   // without a stamp are retained for isolated historical evaluation and unit tests;
   // those are not the live manifest prediction path.
+  // Any integrity-stamped fixture must pass the independent schedule-authenticity gate,
+  // regardless of whether an automationSource label was attached. Otherwise a fixture
+  // with verified team stats but failed schedule corroboration could bypass this guard.
+  // Unstamped fixtures remain supported only for isolated historical evaluation/unit tests.
   const explicitlyUnverifiedFixture = Boolean(
-    fixture.automationSource && fixture.authenticity?.isAuthentic !== true
+    (fixture.automationSource && fixture.authenticity?.isAuthentic !== true) ||
+    (fixture.authenticity && fixture.authenticity.isAuthentic !== true)
   );
   const insufficientTeamData = !hasVerifiedTeamEvidence || explicitlyUnverifiedFixture;
 
   // Fail closed before any one-sided form, H2H, league archetype, favourite label,
   // or other downstream rule can leak a directional edge into an unqualified fixture.
-  // Explicit user overrides remain available, but automatic predictions stay neutral.
-  if (insufficientTeamData && manualOverride === 'none') {
+  // A manual selection may express a user's choice when team evidence is sparse,
+  // but it must never override a failed fixture-authenticity/schedule-corroboration gate.
+  if (explicitlyUnverifiedFixture || (!hasVerifiedTeamEvidence && manualOverride === 'none')) {
     appliedRules.push({
       ruleNumber: 0,
       ruleName: 'Team Data Sufficiency Guard',

@@ -5,14 +5,19 @@
  * Secret Manager. Never import this module from browser/client code.
  */
 
-const API_FOOTBALL_DEFAULT_BASE_URL = 'https://api-football-v1.p.rapidapi.com/v3';
+const API_FOOTBALL_DIRECT_BASE_URL = 'https://v3.football.api-sports.io';
+const API_FOOTBALL_RAPIDAPI_BASE_URL = 'https://api-football-v1.p.rapidapi.com/v3';
 const SPORTMONKS_DEFAULT_BASE_URL = 'https://api.sportmonks.com/v3/football';
 
 function getApiFootballKey(): string {
-  return process.env.API_FOOTBALL_USE_RAPIDAPI?.trim() || process.env.API_FOOTBALL_KEY?.trim() || '';
+  // Prefer the explicitly named direct API-SPORTS credential. Keep the legacy
+  // API_FOOTBALL_USE_RAPIDAPI secret as a backward-compatible RapidAPI key.
+  return process.env.API_FOOTBALL_KEY?.trim() || process.env.API_FOOTBALL_USE_RAPIDAPI?.trim() || '';
 }
 
 function isRapidApiMode(): boolean {
+  // A direct API-SPORTS key always wins if both credential variables exist.
+  if (process.env.API_FOOTBALL_KEY?.trim()) return false;
   return Boolean(process.env.API_FOOTBALL_USE_RAPIDAPI?.trim()) || Boolean(process.env.API_FOOTBALL_RAPIDAPI_HOST?.trim());
 }
 
@@ -115,7 +120,8 @@ export async function apiFootballGet(path: string, params: Record<string, string
   if (!key) throw new Error('API_FOOTBALL_USE_RAPIDAPI is not configured');
   if (key === apiFootballAuthFailedKey) throw new Error('API-Football credential was rejected; rotate the configured key before retrying');
 
-  const base = getBaseUrl(process.env.API_FOOTBALL_BASE_URL, API_FOOTBALL_DEFAULT_BASE_URL);
+  const defaultBase = isRapidApiMode() ? API_FOOTBALL_RAPIDAPI_BASE_URL : API_FOOTBALL_DIRECT_BASE_URL;
+  const base = getBaseUrl(process.env.API_FOOTBALL_BASE_URL, defaultBase);
   const normalizedPath = path.split('/').filter(Boolean).join('/');
   const url = new URL(`${base}/${normalizedPath}`);
   for (const [name, value] of Object.entries(params)) {
