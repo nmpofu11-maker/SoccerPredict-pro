@@ -111,7 +111,8 @@ export function evaluateFixturePrediction(
   // with verified team stats but failed schedule corroboration could bypass this guard.
   // Unstamped fixtures remain supported only for isolated historical evaluation/unit tests.
   const explicitlyUnverifiedFixture = Boolean(
-    fixture.authenticity && fixture.authenticity.isAuthentic !== true
+    (fixture.automationSource && fixture.authenticity?.isAuthentic !== true) ||
+    (fixture.authenticity && fixture.authenticity.isAuthentic !== true)
   );
   const insufficientTeamData = !hasVerifiedTeamEvidence || explicitlyUnverifiedFixture;
 
