@@ -66,9 +66,14 @@ async function main(): Promise<void> {
   const sportmonksBase = (process.env.SPORTMONKS_BASE_URL || 'https://api.sportmonks.com/v3/football').replace(/\/+$/, '');
   const sportmonksUrl = sportmonksKey ? new URL(sportmonksBase + '/fixtures/date/' + date + '?include=participants%3Bscores%3Bleague%3Bstate') : null;
 
-  const footballKey = (process.env.API_FOOTBALL_USE_RAPIDAPI || process.env.API_FOOTBALL_KEY || '').trim();
-  const footballBase = (process.env.API_FOOTBALL_BASE_URL || 'https://api-football-v1.p.rapidapi.com/v3').replace(/\/+$/, '');
-  const footballRapid = Boolean(process.env.API_FOOTBALL_USE_RAPIDAPI?.trim()) || Boolean(process.env.API_FOOTBALL_RAPIDAPI_HOST?.trim());
+  // Match serverFootballApis.ts: an explicitly configured direct API-SPORTS key wins.
+  const directFootballKey = (process.env.API_FOOTBALL_KEY || '').trim();
+  const footballKey = (directFootballKey || process.env.API_FOOTBALL_USE_RAPIDAPI || '').trim();
+  const footballRapid = !directFootballKey && (Boolean(process.env.API_FOOTBALL_USE_RAPIDAPI?.trim()) || Boolean(process.env.API_FOOTBALL_RAPIDAPI_HOST?.trim()));
+  const defaultFootballBase = footballRapid
+    ? 'https://api-football-v1.p.rapidapi.com/v3'
+    : 'https://v3.football.api-sports.io';
+  const footballBase = (process.env.API_FOOTBALL_BASE_URL || defaultFootballBase).replace(/\\/+$/, '');
   const footballUrl = footballKey ? new URL(footballBase + '/fixtures?date=' + encodeURIComponent(date)) : null;
   const footballHeaders = footballRapid
     ? { 'x-rapidapi-key': footballKey, 'x-rapidapi-host': process.env.API_FOOTBALL_RAPIDAPI_HOST?.trim() || new URL(footballBase).host }
