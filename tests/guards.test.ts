@@ -47,6 +47,7 @@ test('automatic directional predictions are blocked when fixture authenticity is
     id: 'unverified-authenticity',
     kickoffTime: '2026-10-30T15:00:00Z',
     league: 'Test League',
+    automationSource: 'SPORTAPI_AI',
     venue: 'Test Ground',
     isHighStakes: false,
     motivation: 'regular',
