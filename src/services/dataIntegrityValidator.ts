@@ -460,12 +460,15 @@ export function verifyAndSanitizeFixture(
   const rawScore = Math.round((passedChecksCount / checks.length) * 100);
   const authenticityScore = rawScore;
 
-  const status =
-    repairs.length === 0 && bothTeamsCrossReferenced && scheduleVerification.verified
-      ? 'VERIFIED_AUTHENTIC'
-      : repairs.length > 0
-      ? 'AUTO_REPAIRED'
-      : 'UNVERIFIED';
+  // Authenticity is a schedule claim, not a summary of whether sanitization changed fields.
+  // Never let a repair label mask a missing independent schedule corroboration.
+  const status = scheduleVerification.verified && bothTeamsCrossReferenced && repairs.length === 0
+    ? 'VERIFIED_AUTHENTIC'
+    : !scheduleVerification.verified
+    ? 'UNVERIFIED'
+    : repairs.length > 0
+    ? 'AUTO_REPAIRED'
+    : 'UNVERIFIED';
 
   const stamp: MatchAuthenticityStamp = {
     status,
