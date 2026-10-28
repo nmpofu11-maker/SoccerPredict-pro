@@ -73,7 +73,7 @@ async function main(): Promise<void> {
   const defaultFootballBase = footballRapid
     ? 'https://api-football-v1.p.rapidapi.com/v3'
     : 'https://v3.football.api-sports.io';
-  const footballBase = (process.env.API_FOOTBALL_BASE_URL || defaultFootballBase).replace(/\\/+$/, '');
+  const footballBase = (process.env.API_FOOTBALL_BASE_URL || defaultFootballBase).replace(/\/+$/, '');
   const footballUrl = footballKey ? new URL(footballBase + '/fixtures?date=' + encodeURIComponent(date)) : null;
   const footballHeaders = footballRapid
     ? { 'x-rapidapi-key': footballKey, 'x-rapidapi-host': process.env.API_FOOTBALL_RAPIDAPI_HOST?.trim() || new URL(footballBase).host }
