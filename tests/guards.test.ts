@@ -42,6 +42,24 @@ test('predictions are identical with and without odds on a real-data-shaped fixt
 });
 
 
+test('automatic predictions fail closed when a live provider fixture has no authenticity stamp', () => {
+  const fixture: any = {
+    id: 'provider-missing-authenticity-stamp',
+    kickoffTime: '2026-10-30T15:00:00Z',
+    league: 'Test League',
+    automationSource: 'SPORTAPI_AI',
+    venue: 'Test Ground',
+    isHighStakes: false,
+    motivation: 'regular',
+    homeTeam: { id: 'h', name: 'Home FC', shortName: 'HOM', leagueRank: null, points: null, form: ['W', 'W', 'D'], formSource: 'API_FOOTBALL', avgPossession: null, avgShotsOnTarget: null },
+    awayTeam: { id: 'a', name: 'Away FC', shortName: 'AWA', leagueRank: null, points: null, form: ['L', 'D', 'L'], formSource: 'API_FOOTBALL', avgPossession: null, avgShotsOnTarget: null },
+    h2h: null,
+  };
+  const prediction = evaluateFixturePrediction(fixture, 'none') as any;
+  assert.equal(prediction.predictedWinner, 'none');
+  assert.equal(prediction.hasEvidence, false);
+});
+
 test('automatic directional predictions are blocked when fixture authenticity is unverified even if both teams have sourced form', () => {
   const fixture: any = {
     id: 'unverified-authenticity',
