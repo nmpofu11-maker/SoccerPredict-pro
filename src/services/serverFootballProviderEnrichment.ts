@@ -1425,7 +1425,7 @@ export async function enrichFixturesWithFootballApis(
     if (existingMatches.length > 0) {
       for (const existing of existingMatches) {
         for (const observation of cand.mapped.scheduleObservations || []) {
-          attachScheduleObservation(existing, observation.provider, observation.fixtureId);
+          attachScheduleObservation(existing, observation.provider, observation.fixtureId, cand.mapped);
         }
       }
     } else {
