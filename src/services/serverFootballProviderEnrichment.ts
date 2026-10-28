@@ -23,12 +23,12 @@ import {
 
 
 /** Keep schedule provenance from each raw provider response; never derive a second source from the merged fixture. */
-function attachScheduleObservation(fixture: MatchFixture, provider: FixtureScheduleObservation['provider'], fixtureId: unknown): void {
+function attachScheduleObservation(fixture: MatchFixture, provider: FixtureScheduleObservation['provider'], fixtureId: unknown, sourceFixture: MatchFixture = fixture): void {
   const id = String(fixtureId ?? '').trim();
-  const kickoffTime = String(fixture.kickoffTime || '');
-  const homeTeam = String(fixture.homeTeam?.name || '').trim();
-  const awayTeam = String(fixture.awayTeam?.name || '').trim();
-  const competition = String(fixture.competition || fixture.league || '').trim();
+  const kickoffTime = String(sourceFixture.kickoffTime || '');
+  const homeTeam = String(sourceFixture.homeTeam?.name || '').trim();
+  const awayTeam = String(sourceFixture.awayTeam?.name || '').trim();
+  const competition = String(sourceFixture.competition || sourceFixture.league || '').trim();
   if (!id || !Number.isFinite(Date.parse(kickoffTime)) || !homeTeam || !awayTeam || !competition) return;
   const observation: FixtureScheduleObservation = { provider, fixtureId: id, kickoffTime, homeTeam, awayTeam, competition };
   const existing = fixture.scheduleObservations || [];
@@ -1315,7 +1315,7 @@ export async function enrichFixturesWithFootballApis(
     if (existingMatches.length > 0) {
       for (const existing of existingMatches) {
         for (const observation of cand.mapped.scheduleObservations || []) {
-          attachScheduleObservation(existing, observation.provider, observation.fixtureId);
+          attachScheduleObservation(existing, observation.provider, observation.fixtureId, cand.mapped);
         }
       }
     } else {
