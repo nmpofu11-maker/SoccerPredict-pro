@@ -34,6 +34,14 @@ test('fixture schedule is verified only when two distinct providers agree on the
   assert.deepEqual(result.providers.sort(), ['API_FOOTBALL', 'SPORTAPI_AI']);
 });
 
+test('provider naming punctuation, accents and club suffixes do not block genuine corroboration', () => {
+  const result = verifyIndependentFixtureSchedule(fixture, [
+    observation('SPORTAPI_AI', { homeTeam: 'São Paulo FC', awayTeam: 'Manchester City FC' }),
+    observation('API_FOOTBALL', { homeTeam: 'Sao Paulo', awayTeam: 'Manchester City' }),
+  ]);
+  assert.equal(result.verified, true);
+});
+
 test('duplicate observations from one provider are not independent corroboration', () => {
   const result = verifyIndependentFixtureSchedule(fixture, [
     observation('SPORTAPI_AI', { fixtureId: 'sportapi-one' }),
