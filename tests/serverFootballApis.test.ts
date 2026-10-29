@@ -1,4 +1,4 @@
-import { afterEach, describe, it, mock } from 'node:test';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   apiFootballConfigured,
@@ -14,15 +14,26 @@ mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-10T12:00:00Z') });
 const originalFetch = globalThis.fetch;
 const originalEnv = {
   apiFootball: process.env.API_FOOTBALL_USE_RAPIDAPI,
+  apiFootballDirect: process.env.API_FOOTBALL_KEY,
+  apiFootballShort: process.env.API_FOOTBALL,
   sportmonks: process.env.SPORTMONKS_API_KEY,
   apiFootballBase: process.env.API_FOOTBALL_BASE_URL,
   sportmonksBase: process.env.SPORTMONKS_BASE_URL,
 };
 
+beforeEach(() => {
+  delete process.env.API_FOOTBALL_KEY;
+  delete process.env.API_FOOTBALL;
+});
+
 afterEach(() => {
   globalThis.fetch = originalFetch;
   if (originalEnv.apiFootball === undefined) delete process.env.API_FOOTBALL_USE_RAPIDAPI;
   else process.env.API_FOOTBALL_USE_RAPIDAPI = originalEnv.apiFootball;
+  if (originalEnv.apiFootballDirect === undefined) delete process.env.API_FOOTBALL_KEY;
+  else process.env.API_FOOTBALL_KEY = originalEnv.apiFootballDirect;
+  if (originalEnv.apiFootballShort === undefined) delete process.env.API_FOOTBALL;
+  else process.env.API_FOOTBALL = originalEnv.apiFootballShort;
   if (originalEnv.sportmonks === undefined) delete process.env.SPORTMONKS_API_KEY;
   else process.env.SPORTMONKS_API_KEY = originalEnv.sportmonks;
   if (originalEnv.apiFootballBase === undefined) delete process.env.API_FOOTBALL_BASE_URL;

@@ -7,6 +7,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { resolveListenPort } from './src/utils/serverPort';
+import { registerJsonBodyParsers } from './src/utils/jsonBodyMiddleware';
 import { isAutoSettlementEnabled } from './src/utils/autoSettlement';
 import { isValidFootballScore, normalizeFootballScore } from './src/utils/scoreValidation';
 import { resolveRuntimeFilePath } from './src/services/runtimeFilePath';
@@ -28,6 +29,7 @@ import {
 import {
   theRundownConfigured,
   fetchAllTheRundownSoccerEvents,
+  isDateWithinTheRundownHistoryWindow,
   isTheRundownEventFinished,
   getTheRundownScores,
 } from './src/services/serverTheRundown';
@@ -48,6 +50,11 @@ import {
   sportmonksConfigured,
   hasApiFootballKey,
   hasSportmonksKey,
+  isApiFootballRateLimited,
+  isSportmonksRateLimited,
+  isDateWithinApiFootballWindow,
+  isApiFootballFixtureFinished,
+  getApiFootballScores,
   fetchSportmonksFixturesByDate,
   fetchApiFootballFixturesByDate,
 } from './src/services/serverFootballApis';
@@ -268,7 +275,7 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
 }
 
 function getListenPort(): number {
-  return resolveListenPort(process.argv, process.env.PORT);
+  return resolveListenPort(process.argv, process.env.PORT, process.env);
 }
 
 function getListenHost(): string {
@@ -279,7 +286,7 @@ function getListenHost(): string {
   return process.env.HOST?.trim() || '0.0.0.0';
 }
 
-const PORT = resolveListenPort(process.argv, process.env.PORT);
+const PORT = resolveListenPort(process.argv, process.env.PORT, process.env);
 const HOST = getListenHost();
 
 const MANIFEST_PATH = path.join(process.cwd(), 'data', 'fixtures-manifest.json');
@@ -1574,12 +1581,14 @@ async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message:
     const providerResult = await enrichFixturesWithFootballApis(mapped as any, ingestDates);
     mapped = providerResult.fixtures as any[];
     if (diagnostics.apiFootball.configured) {
+      diagnostics.apiFootball.requestCount =
+        providerResult.apiFootballSuccessfulRequests + providerResult.apiFootballFailedRequests;
       diagnostics.apiFootball.rawRecords = providerResult.apiFootballFixtures;
       diagnostics.apiFootball.mappedRecords = providerResult.apiFootballMappedFixtures;
       diagnostics.apiFootball.successfulRequests = providerResult.apiFootballSuccessfulRequests;
       diagnostics.apiFootball.failedRequests = providerResult.apiFootballFailedRequests;
       if (providerResult.apiFootballFixtures === 0) diagnostics.apiFootball.notes.push('No API-Football fixtures returned for requested dates.');
-      diagnostics.apiFootball.notes.push(`Team-form/standings enrichment updated ${providerResult.enrichedTeams} fixture(s).`);
+      diagnostics.apiFootball.notes.push(`Schedule/H2H/standings enrichment updated ${providerResult.enrichedTeams} fixture(s).`);
     } else if (hasApiFootballKey()) {
       diagnostics.apiFootball.notes.push('API-Football is temporarily suspended due to daily rate limits.');
     }
@@ -1908,8 +1917,13 @@ async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: 
         }
       }
 
-      // 2. Try TheRundown as fallback for remaining unsettled
-      if (theRundownConfigured()) {
+      // 2. Try TheRundown as fallback for remaining unsettled (only within its 7-day history allowance)
+      const unsettledForTheRundown = fixturesForDate.filter((f) => !newEntries.some((e) => e.id === f.id));
+      if (
+        unsettledForTheRundown.length > 0 &&
+        theRundownConfigured() &&
+        isDateWithinTheRundownHistoryWindow(dateStr)
+      ) {
         try {
           providerQueryCount++;
           const rundownEvents = await fetchAllTheRundownSoccerEvents(dateStr);
@@ -2017,6 +2031,66 @@ async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: 
             break;
           }
           console.warn(`[cron:settlement] Sportmonks settlement failed for ${dateStr}:`, errMsg);
+        }
+      }
+
+      // 3b. Try API-Football settlement for remaining unsettled within plan's date window
+      const unsettledForApiFootball = fixturesForDate.filter((f) => !newEntries.some((e) => e.id === f.id));
+      if (
+        unsettledForApiFootball.length > 0 &&
+        apiFootballConfigured() &&
+        isDateWithinApiFootballWindow(dateStr)
+      ) {
+        try {
+          providerQueryCount++;
+          const afFixtures = await fetchApiFootballFixturesByDate(dateStr);
+          if (isApiFootballRateLimited()) providerFailureCount++;
+          const byIdMap = new Map<string, any>();
+          const byNameMap = new Map<string, any[]>();
+          for (const aff of afFixtures) {
+            const fixId = aff?.fixture?.id;
+            if (fixId) byIdMap.set(String(fixId), aff);
+            const homeName = aff?.teams?.home?.name || '';
+            const awayName = aff?.teams?.away?.name || '';
+            if (homeName && awayName) {
+              const key = `${normalizeTeamName(homeName)}_vs_${normalizeTeamName(awayName)}`;
+              byNameMap.set(key, [...(byNameMap.get(key) || []), {
+                ...aff,
+                home_team: aff.teams?.home,
+                away_team: aff.teams?.away,
+                kickoff_time: aff.fixture?.date,
+                league_name: aff.league?.country ? `${aff.league.country} • ${aff.league.name}` : aff.league?.name,
+              }]);
+            }
+          }
+          for (const f of unsettledForApiFootball) {
+            if (newEntries.some((e) => e.id === f.id)) continue;
+            const afId = f.apiFootballFixtureId || (typeof f.id === 'string' && f.id.startsWith('api_football_') ? f.id.replace('api_football_', '') : null);
+            let match = afId ? byIdMap.get(String(afId)) : undefined;
+            if (!match) {
+              const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
+              match = findSafeSettlementNameMatch(byNameMap.get(key), f);
+            }
+            if (!match || !isApiFootballFixtureFinished(match)) continue;
+            const scoreInfo = getApiFootballScores(match);
+            if (!scoreInfo.outcome || scoreInfo.home === null || scoreInfo.away === null) continue;
+            if (!isValidFootballScore(scoreInfo.home) || !isValidFootballScore(scoreInfo.away)) continue;
+
+            newEntries.push({
+              id: f.id,
+              fixture: f,
+              homeScore: scoreInfo.home,
+              awayScore: scoreInfo.away,
+              actualOutcome: scoreInfo.outcome,
+              date: dateStr,
+              notes: 'Settled via API-Football',
+              settledAt: new Date().toISOString(),
+            });
+            settledCount++;
+          }
+        } catch (err: unknown) {
+          providerFailureCount++;
+          console.warn(`[cron:settlement] API-Football settlement failed for ${dateStr}:`, err instanceof Error ? err.message : err);
         }
       }
 
@@ -2159,7 +2233,7 @@ const runSettlementJob = createSingleFlight(runSettlementJobUnlocked);
 
 async function startServer() {
   const app = express();
-  app.use(express.json());
+  registerJsonBodyParsers(app);
 
   // Idempotent migration: sanitize existing runtime fixtures-manifest.json
   try {
@@ -3141,6 +3215,21 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
         apiFootballConfigured: apiFootballConfigured(),
         sportmonksConfigured: sportmonksConfigured(),
         footballDataConfigured: footballDataConfigured(),
+        providerKeys: {
+          sportApiAi: hasSportApiAiKey(),
+          sportmonks: hasSportmonksKey(),
+          apiFootball: hasApiFootballKey(),
+          footballData: Boolean((process.env.FOOTBALL_DATA_KEY || process.env.FOOTBALL_DATA_API_KEY)?.trim()),
+          theRundown: theRundownConfigured(),
+          pitchApi: pitchApiConfigured(),
+          sportDb: sportDbConfigured(),
+        },
+        rateLimited: {
+          sportApiAi: isSportApiAiRateLimited(),
+          sportmonks: isSportmonksRateLimited(),
+          apiFootball: isApiFootballRateLimited(),
+          footballData: isFootballDataRateLimited(),
+        },
         autoSettlementEnabled: isAutoSettlementEnabled(process.env.AUTO_SETTLEMENT_ENABLED),
         cron: readCronStatus(),
       });
@@ -3643,6 +3732,10 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
 
     if (sportDbConfigured()) {
       console.log('[startup] SportDB (dashboard.sportdb.dev) is configured as QUATERNARY feed.');
+    }
+
+    if (apiFootballConfigured()) {
+      console.log('[startup] API-Football (v3.football.api-sports.io) is configured for schedule, H2H, and settlement.');
     }
     console.log('[startup] Scheduling daily ingestion (05:00) and settlement (every 3h).');
 

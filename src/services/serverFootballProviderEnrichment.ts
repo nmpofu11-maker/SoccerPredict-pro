@@ -4,6 +4,9 @@ import {
   apiFootballConfigured,
   sportmonksConfigured,
   apiFootballGet,
+  ApiFootballPlanRestrictionError,
+  isApiFootballSeasonAccessible,
+  isDateWithinApiFootballWindow,
   fetchApiFootballFixturesByDate,
   fetchApiFootballHeadToHead,
   fetchSportmonksFixturesByDate,
@@ -109,23 +112,35 @@ function parseApiFootballStandings(body: any): Map<string, { rank: number; point
 }
 
 async function getApiFootballStandings(leagueId: number, season: number): Promise<Map<string, { rank: number; points: number | null }>> {
+  if (!isApiFootballSeasonAccessible(season)) return new Map();
   const key = `${leagueId}:${season}`;
   const cached = standingsCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) return cached.value;
-  const body = await apiFootballGet('standings', { league: leagueId, season });
-  const result = parseApiFootballStandings(body);
-  standingsCache.set(key, { expiresAt: Date.now() + TEAM_STATS_TTL_MS, value: result });
-  return result;
+  if (cached && cached.expiresAt > Date.now() && (cached as any).fetchRef === globalThis.fetch) return cached.value;
+  try {
+    const body = await apiFootballGet('standings', { league: leagueId, season });
+    const result = parseApiFootballStandings(body);
+    standingsCache.set(key, { expiresAt: Date.now() + TEAM_STATS_TTL_MS, value: result, fetchRef: globalThis.fetch } as any);
+    return result;
+  } catch (err) {
+    if (err instanceof ApiFootballPlanRestrictionError) return new Map();
+    throw err;
+  }
 }
 
 async function getApiFootballTeamStats(teamId: number, leagueId: number, season: number): Promise<any> {
+  if (!isApiFootballSeasonAccessible(season)) return null;
   const key = `${teamId}:${leagueId}:${season}`;
   const cached = teamStatsCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) return cached.value;
-  const body = await apiFootballGet('teams/statistics', { team: teamId, league: leagueId, season });
-  const value = body?.response ?? null;
-  teamStatsCache.set(key, { expiresAt: Date.now() + TEAM_STATS_TTL_MS, value });
-  return value;
+  if (cached && cached.expiresAt > Date.now() && (cached as any).fetchRef === globalThis.fetch) return cached.value;
+  try {
+    const body = await apiFootballGet('teams/statistics', { team: teamId, league: leagueId, season });
+    const value = body?.response ?? null;
+    teamStatsCache.set(key, { expiresAt: Date.now() + TEAM_STATS_TTL_MS, value, fetchRef: globalThis.fetch } as any);
+    return value;
+  } catch (err) {
+    if (err instanceof ApiFootballPlanRestrictionError) return null;
+    throw err;
+  }
 }
 
 function isCompletedOrCancelledStatus(status: unknown): boolean {
@@ -346,8 +361,15 @@ function completedProviderMatch(raw: any, kickoffIso: string): boolean {
     raw.fixture?.date || raw.fixture?.kickoff_time || raw.fixture?.starting_at;
   const matchTime = dateValue ? Date.parse(String(dateValue)) : NaN;
   if (!Number.isFinite(matchTime) || matchTime >= Date.parse(kickoffIso)) return false;
-  const status = String(raw.status || raw.state?.short_name || raw.state?.name || raw.status_short || '').toUpperCase();
-  if (['LIVE', 'IN PLAY', 'SCHEDULED', 'NS', 'TBA', 'POSTPONED', 'PST', 'CANC', 'ABD', 'AWD', 'WO'].includes(status)) return false;
+  const status = String(
+    raw.status ||
+    raw.fixture?.status?.short ||
+    raw.state?.short_name ||
+    raw.state?.name ||
+    raw.status_short ||
+    ''
+  ).toUpperCase();
+  if (['LIVE', 'IN PLAY', '1H', '2H', 'HT', 'ET', 'BT', 'P', 'SCHEDULED', 'NS', 'TBD', 'TBA', 'POSTPONED', 'PST', 'CANC', 'ABD', 'AWD', 'WO'].includes(status)) return false;
   return extractScorePair(raw) !== null;
 }
 
@@ -840,10 +862,12 @@ export function canonicalizeProviderCompetitionName(value: unknown): string {
   if (!normalized) return '';
 
   const withoutPrefix = normalized
-    .replace(/^(south africa|rsa|south african)\s+(?:[•·|:/-]\s*)?/, '')
-    .replace(/^(south africa|rsa|south african)\s+/, '')
-    .replace(/^(usa|us|united states)\s+(?:[•·|:/-]\s*)?/, '')
-    .replace(/^(usa|us|united states)\s+/, '');
+    .replace(/^(south[ -]africa|rsa|south african)\s+(?:[•·|:/-]\s*)?/, '')
+    .replace(/^(south[ -]africa|rsa|south african)\s+/, '')
+    .replace(/^(scotland|scottish)\s+(?:[•·|:/-]\s*)?/, '')
+    .replace(/^(scotland|scottish)\s+/, '')
+    .replace(/^(usa|us|united[ -]states)\s+(?:[•·|:/-]\s*)?/, '')
+    .replace(/^(usa|us|united[ -]states)\s+/, '');
 
   const compact = withoutPrefix
     .replace(/\b(hollywoodbets|betway|dstv)\b/g, '')
@@ -851,16 +875,19 @@ export function canonicalizeProviderCompetitionName(value: unknown): string {
     .trim();
 
   // A bare "Premiership" is ambiguous internationally. Only map it to
-  // South Africa when the original label carries a South African or local
-  // sponsor marker; otherwise preserve the provider's competition identity.
+  // South Africa or Scotland when the original label carries that country or sponsor context.
   const hasSouthAfricanContext =
-    /^(south africa|rsa|south african)\b/.test(normalized) ||
+    /^(south[ -]africa|rsa|south african)\b/.test(normalized) ||
     /\b(hollywoodbets|betway|dstv)\b/.test(normalized);
+  const hasScottishContext = /^(scotland|scottish)\b/.test(normalized);
   if (
     /^(psl|premier soccer league|south african premiership)$/.test(compact) ||
     (compact === 'premiership' && hasSouthAfricanContext)
   ) {
     return 'south african premiership';
+  }
+  if (compact === 'premiership' && hasScottishContext) {
+    return 'scottish premiership';
   }
   if (/^(?:(?:usa|us)\s+)*(?:major league soccer|mls)$/.test(compact)) {
     return 'major league soccer';
@@ -901,9 +928,14 @@ export function areCompetitionsCompatible(
 ): boolean {
   const normSlate = canonicalizeProviderCompetitionName(slateCompetition || slateLeague);
   const normProvider = canonicalizeProviderCompetitionName(providerLeagueName);
-  
+  const normQualifiedProvider =
+    providerCountry && providerLeagueName
+      ? canonicalizeProviderCompetitionName(`${providerCountry} • ${providerLeagueName}`)
+      : '';
+
   if (!normSlate || !normProvider) return false;
   if (normSlate === normProvider) return true;
+  if (normQualifiedProvider && normSlate === normQualifiedProvider) return true;
 
   // Direct alias containment
   if (TARGET_COMPETITION_ALIASES.has(normSlate) && TARGET_COMPETITION_ALIASES.has(normProvider)) {
@@ -1152,24 +1184,26 @@ export function findUniqueMatchingCandidate(
 
 function isTargetCompetition(raw: any, mapped: MatchFixture): boolean {
   const rawName = raw?.league?.name || mapped.competition || mapped.league;
+  const country = typeof raw?.league?.country === 'string' ? raw.league.country.trim() : '';
+  const qualifiedName = country && rawName ? `${country} • ${rawName}` : (mapped.league || rawName);
   const leagueName = normalizeCompetitionName(rawName);
-  
-  if (TARGET_COMPETITION_ALIASES.has(leagueName)) return true;
-  
-  const match = Object.values(ALL_LEAGUES_DIRECTORY).some((entry) => {
+  const qualifiedCanon = canonicalizeProviderCompetitionName(qualifiedName);
+
+  if (TARGET_COMPETITION_ALIASES.has(leagueName) || TARGET_COMPETITION_ALIASES.has(qualifiedCanon)) {
+    return true;
+  }
+
+  return Object.values(ALL_LEAGUES_DIRECTORY).some((entry) => {
     const entryNorm = normalizeCompetitionName(entry.name);
     if (entryNorm === leagueName) return true;
-    
-    // Also check canonicalized forms if necessary
+
     const entryCanon = canonicalizeProviderCompetitionName(entry.name);
     const leagueCanon = canonicalizeProviderCompetitionName(rawName);
-    return entryCanon && leagueCanon && entryCanon === leagueCanon;
+    return Boolean(
+      entryCanon &&
+      ((leagueCanon && entryCanon === leagueCanon) || (qualifiedCanon && entryCanon === qualifiedCanon))
+    );
   });
-  
-  if (!match) {
-    console.warn(`[isTargetCompetition] No match for league: ${rawName} (normalized: ${leagueName})`);
-  }
-  return match;
 }
 
 function fixtureKey(f: MatchFixture): string {
@@ -1254,9 +1288,13 @@ export async function enrichFixturesWithFootballApis(
   if (apiFootballEnabled && apiFootballConfigured()) {
     for (const date of dates) {
       if (!apiFootballConfigured()) break;
+      if (!isDateWithinApiFootballWindow(date)) continue;
       try {
-        apiRaw.push(...await fetchApiFootballFixturesByDate(date));
-        apiFootballSuccessfulRequests++;
+        const rows = await fetchApiFootballFixturesByDate(date);
+        apiRaw.push(...rows);
+        if (isDateWithinApiFootballWindow(date)) {
+          apiFootballSuccessfulRequests++;
+        }
       } catch (err) {
         if (!apiFootballConfigured()) break;
         apiFootballFailedRequests++;
@@ -1586,6 +1624,8 @@ export async function enrichFixturesWithFootballApis(
   const sportmonksTeamBudget = { used: 0 };
   const sportmonksH2HBudget = { used: 0 };
   const sportmonksTeamSearchBudget = { used: 0 };
+  const apiFootballStatsBudget = { used: 0 };
+  const apiFootballH2HBudget = { used: 0 };
 
   type ProviderEnrichmentDiagnostic = { fixture: string; providerCandidates: number; teamIdsResolved: number; historyMatches: number; eligibleHistoryMatches: number; standingsFound: number; h2hFound: number; evidenceAfterMerge: boolean; };
   const diagnostics = new Map<string, ProviderEnrichmentDiagnostic>();
@@ -1950,32 +1990,51 @@ export async function enrichFixturesWithFootballApis(
     const needHomeStanding = !hasVerifiedStanding(fixture.homeTeam);
     const needAwayStanding = !hasVerifiedStanding(fixture.awayTeam);
 
-    if (needHomeForm || needAwayForm || needHomeStanding || needAwayStanding) {
+    if (
+      apiFootballEnabled &&
+      apiFootballConfigured() &&
+      isApiFootballSeasonAccessible(season) &&
+      (needHomeForm || needAwayForm || needHomeStanding || needAwayStanding) &&
+      apiFootballStatsBudget.used < providerLimit('API_FOOTBALL_MAX_STATS_LOOKUPS', 20)
+    ) {
+      apiFootballStatsBudget.used++;
       try {
         const standings = await getApiFootballStandings(leagueId, season);
-        const [homeStatsResult, awayStatsResult] = await Promise.allSettled([
-          needHomeForm ? getApiFootballTeamStats(homeId, leagueId, season) : Promise.resolve(null),
-          needAwayForm ? getApiFootballTeamStats(awayId, leagueId, season) : Promise.resolve(null),
-        ]);
+        const canQueryStats = apiFootballConfigured() && isApiFootballSeasonAccessible(season);
+        const [homeStatsResult, awayStatsResult] = canQueryStats
+          ? await Promise.allSettled([
+              needHomeForm ? getApiFootballTeamStats(homeId, leagueId, season) : Promise.resolve(null),
+              needAwayForm ? getApiFootballTeamStats(awayId, leagueId, season) : Promise.resolve(null),
+            ])
+          : [{ status: 'fulfilled' as const, value: null }, { status: 'fulfilled' as const, value: null }];
         const homeRank = standings.get(String(homeId));
         const awayRank = standings.get(String(awayId));
-        if (needHomeForm && homeStatsResult.status === 'fulfilled') Object.assign(fixture.homeTeam, teamStatsFromApiFootball(homeStatsResult.value, needHomeStanding ? homeRank : undefined));
+        if (needHomeForm && homeStatsResult.status === 'fulfilled' && homeStatsResult.value) Object.assign(fixture.homeTeam, teamStatsFromApiFootball(homeStatsResult.value, needHomeStanding ? homeRank : undefined));
         else if (needHomeStanding && homeRank) Object.assign(fixture.homeTeam, teamStatsFromApiFootball(null, homeRank));
-        if (needAwayForm && awayStatsResult.status === 'fulfilled') Object.assign(fixture.awayTeam, teamStatsFromApiFootball(awayStatsResult.value, needAwayStanding ? awayRank : undefined));
+        if (needAwayForm && awayStatsResult.status === 'fulfilled' && awayStatsResult.value) Object.assign(fixture.awayTeam, teamStatsFromApiFootball(awayStatsResult.value, needAwayStanding ? awayRank : undefined));
         else if (needAwayStanding && awayRank) Object.assign(fixture.awayTeam, teamStatsFromApiFootball(null, awayRank));
       } catch (err) {
         errors.push('API-Football fallback ' + leagueId + '/' + season + ': ' + (err instanceof Error ? err.message : String(err)));
       }
     }
 
-    if (!fixture.h2h?.source || !isPrimarySource(fixture.h2h.source)) {
+    if (
+      apiFootballEnabled &&
+      apiFootballConfigured() &&
+      !fixture.h2h?.source &&
+      apiFootballH2HBudget.used < providerLimit('API_FOOTBALL_MAX_H2H_LOOKUPS', 5)
+    ) {
+      apiFootballH2HBudget.used++;
       try {
         const rawH2H = await fetchApiFootballHeadToHead(homeId, awayId);
         const parsed = buildH2HFromProviderFixtures(
           String(homeId), String(awayId), fixture.homeTeam.name, fixture.awayTeam.name,
           rawH2H, fixture.kickoffTime, 'API_FOOTBALL'
         );
-        if (parsed && !fixture.h2h?.source) fixture.h2h = parsed;
+        if (parsed && !fixture.h2h?.source) {
+          fixture.h2h = parsed;
+          diagnosticFor(fixture).h2hFound++;
+        }
       } catch (err) {
         errors.push('API-Football H2H ' + fixture.homeTeam.name + ' / ' + fixture.awayTeam.name + ': ' + (err instanceof Error ? err.message : String(err)));
       }
@@ -1986,6 +2045,11 @@ export async function enrichFixturesWithFootballApis(
     const diagnostic = diagnosticFor(fixture);
     const key = normalizeProviderTeamName(fixture.homeTeam.name) + '|' + normalizeProviderTeamName(fixture.awayTeam.name) + '|' + fixture.kickoffTime.slice(0, 10);
     diagnostic.providerCandidates += (sportApiFixtureIdsByKey.get(key)?.length || 0);
+    diagnostic.providerCandidates += apiFootballCandidates.filter((cand) =>
+      normalizeProviderTeamName(cand.mapped.homeTeam.name) === normalizeProviderTeamName(fixture.homeTeam.name) &&
+      normalizeProviderTeamName(cand.mapped.awayTeam.name) === normalizeProviderTeamName(fixture.awayTeam.name) &&
+      String(cand.mapped.kickoffTime).slice(0, 10) === fixture.kickoffTime.slice(0, 10)
+    ).length;
     diagnostic.providerCandidates += sportmonksCandidates.filter((cand) => {
       const home = extractSportmonksParticipant(cand.raw, 'home'); const away = extractSportmonksParticipant(cand.raw, 'away');
       return normalizeProviderTeamName(home?.name) === normalizeProviderTeamName(fixture.homeTeam.name) && normalizeProviderTeamName(away?.name) === normalizeProviderTeamName(fixture.awayTeam.name) && String(cand.mapped.kickoffTime).slice(0, 10) === fixture.kickoffTime.slice(0, 10);

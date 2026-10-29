@@ -1,7 +1,23 @@
 const SOCCERPREDICT_PORT = 3001;
 
-/** Resolve the app port without ever routing SoccerPredict-pro to the separate app on 3000. */
-export function resolveListenPort(args: string[], configuredPort?: string): number {
+/** Resolve the app port without ever routing SoccerPredict-pro to the separate app on 3000 on local machines, while honoring AI Studio and standalone Cloud Run ports. */
+export function resolveListenPort(
+  args: string[],
+  configuredPort?: string,
+  env?: Record<string, string | undefined>
+): number {
+  const defaultAppPort = Number(env?.DEFAULT_APP_PORT);
+  if (Number.isInteger(defaultAppPort) && defaultAppPort > 0) {
+    return defaultAppPort;
+  }
+
+  if (env?.K_SERVICE && !env?.NGINX_PORT) {
+    const cloudRunPort = Number(configuredPort);
+    if (Number.isInteger(cloudRunPort) && cloudRunPort > 0) {
+      return cloudRunPort;
+    }
+  }
+
   const portArgIndex = args.indexOf('--port');
   if (portArgIndex !== -1 && args[portArgIndex + 1]) {
     const parsed = Number(args[portArgIndex + 1]);

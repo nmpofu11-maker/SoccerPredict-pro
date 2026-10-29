@@ -195,7 +195,9 @@ export const ScraperIngestionModal: React.FC<ScraperIngestionModalProps> = ({
     setIsAuditing(true);
     setAuditNotice(null);
     try {
-      const report = await fetchVerificationAudit(targetFixtures || fixtures);
+      const report = await fetchVerificationAudit(targetFixtures || fixtures, {
+        isCustomPayload: Boolean(targetFixtures),
+      });
       setAuditReport(report);
       onAuditUpdated?.(report);
       setAuditNotice(`Audit completed: ${report.totalFixturesAudited} fixtures verified at ${report.overallAuthenticityScore}% authenticity.`);

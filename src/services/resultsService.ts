@@ -154,6 +154,21 @@ export interface CronStatusResponse {
   apiFootballConfigured: boolean;
   sportmonksConfigured: boolean;
   footballDataConfigured: boolean;
+  providerKeys?: {
+    sportApiAi: boolean;
+    sportmonks: boolean;
+    apiFootball: boolean;
+    footballData: boolean;
+    theRundown: boolean;
+    pitchApi: boolean;
+    sportDb: boolean;
+  };
+  rateLimited?: {
+    sportApiAi: boolean;
+    sportmonks: boolean;
+    apiFootball: boolean;
+    footballData: boolean;
+  };
   cron: {
     ingest: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; fixturesIngested: number; sourceUsed?: string | null };
     settlement: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; resultsSettled: number };

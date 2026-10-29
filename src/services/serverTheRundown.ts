@@ -146,6 +146,72 @@ export class TheRundownRateLimitError extends Error {
   }
 }
 
+/** Thrown when TheRundown answers HTTP 403 because the requested date is older than the plan's history window. */
+export class TheRundownHistoryWindowError extends Error {
+  readonly requestedDate: string;
+  readonly earliestAvailableDate: string;
+  readonly historyDaysLimit: number | null;
+
+  constructor(requestedDate: string, earliestAvailableDate: string, historyDaysLimit: number | null = null) {
+    super(
+      `TheRundown history window exceeded for ${requestedDate} (earliest available: ${earliestAvailableDate})`
+    );
+    this.name = 'TheRundownHistoryWindowError';
+    this.requestedDate = requestedDate;
+    this.earliestAvailableDate = earliestAvailableDate;
+    this.historyDaysLimit = historyDaysLimit;
+  }
+}
+
+const DEFAULT_THERUNDOWN_HISTORY_DAYS = 7;
+let learnedEarliestAvailableDate: { observedOnUtcDay: string; earliestDate: string } | null = null;
+
+export function resetTheRundownHistoryWindowCache(): void {
+  learnedEarliestAvailableDate = null;
+}
+
+function getHistoryDaysLimit(): number {
+  const raw = Number(process.env.THERUNDOWN_HISTORY_DAYS);
+  return Number.isInteger(raw) && raw >= 0 ? raw : DEFAULT_THERUNDOWN_HISTORY_DAYS;
+}
+
+/**
+ * Returns true when `dateStr` (YYYY-MM-DD) is on or after TheRundown's allowed history cutoff.
+ * Uses the provider-reported `earliest_available_date` when observed today, otherwise `UTC today - 7 days`.
+ */
+export function isDateWithinTheRundownHistoryWindow(dateStr: string, nowMs = Date.now()): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+  const utcDay = new Date(nowMs).toISOString().slice(0, 10);
+  if (learnedEarliestAvailableDate && learnedEarliestAvailableDate.observedOnUtcDay === utcDay) {
+    return dateStr >= learnedEarliestAvailableDate.earliestDate;
+  }
+  const cutoffDate = new Date(nowMs - getHistoryDaysLimit() * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  return dateStr >= cutoffDate;
+}
+
+function parseHistoryWindowError(status: number, errorText: string, dateStr: string): TheRundownHistoryWindowError | null {
+  if (status !== 403 || !errorText) return null;
+  try {
+    const parsed = JSON.parse(errorText);
+    const earliest = typeof parsed?.earliest_available_date === 'string' ? parsed.earliest_available_date.trim() : '';
+    const limit = typeof parsed?.history_days_limit === 'number' && Number.isFinite(parsed.history_days_limit)
+      ? parsed.history_days_limit
+      : null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(earliest)) {
+      learnedEarliestAvailableDate = {
+        observedOnUtcDay: new Date().toISOString().slice(0, 10),
+        earliestDate: earliest,
+      };
+      return new TheRundownHistoryWindowError(dateStr, earliest, limit);
+    }
+  } catch {
+    // Non-JSON 403 body is handled as a standard HTTP error below.
+  }
+  return null;
+}
+
 /**
  * Fetch events for a given sport ID and calendar date (YYYY-MM-DD).
  */
@@ -180,6 +246,10 @@ export async function fetchTheRundownSportEvents(sportId: number, dateStr: strin
 
     if (!res.ok) {
       const errorText = await res.text().catch(() => '');
+      const historyWindowErr = parseHistoryWindowError(res.status, errorText, dateStr);
+      if (historyWindowErr) {
+        throw historyWindowErr;
+      }
       throw new Error(`TheRundown HTTP ${res.status}: ${errorText.slice(0, 300)}`);
     }
 
@@ -195,6 +265,15 @@ export async function fetchTheRundownSportEvents(sportId: number, dateStr: strin
  */
 export async function fetchAllTheRundownSoccerEvents(dateStr: string): Promise<Array<TheRundownEvent & { leagueName: string; country: string }>> {
   if (!theRundownConfigured()) return [];
+
+  const utcDay = new Date().toISOString().slice(0, 10);
+  if (
+    learnedEarliestAvailableDate &&
+    learnedEarliestAvailableDate.observedOnUtcDay === utcDay &&
+    dateStr < learnedEarliestAvailableDate.earliestDate
+  ) {
+    return [];
+  }
 
   const results: Array<TheRundownEvent & { leagueName: string; country: string }> = [];
   const sports = await getRundownSoccerSports();
@@ -215,6 +294,13 @@ export async function fetchAllTheRundownSoccerEvents(dateStr: string): Promise<A
         });
       }
     } catch (err: unknown) {
+      if (err instanceof TheRundownHistoryWindowError) {
+        // Plan history window applies across every sport for this date; stop immediately without spamming warnings.
+        console.info(
+          `[TheRundown] Skipping ${dateStr}: older than plan history cutoff (${err.earliestAvailableDate}).`
+        );
+        break;
+      }
       if (err instanceof TheRundownRateLimitError) {
         // Plan limit exhausted: stop this batch, but say so, because the remaining leagues are skipped.
         const skipped = sports.length - i;

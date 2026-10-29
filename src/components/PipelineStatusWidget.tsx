@@ -127,40 +127,53 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
       </div>
 
       <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-        {status && (
-          <div className="flex items-center gap-2">
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] text-slate-400 font-sans">SportAPI.ai</span>
-              <span title="Credential configured does not confirm a successful live API response." className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.sportApiAiConfigured ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
-                {status.sportApiAiConfigured ? 'CONFIGURED' : 'UNSET'}
-              </span>
+        {status && (() => {
+          const renderBadge = (
+            label: string,
+            active: boolean,
+            hasKey: boolean,
+            rateLimited: boolean,
+            activeClass: string
+          ) => {
+            const stateLabel = active
+              ? 'CONFIGURED'
+              : hasKey && rateLimited
+              ? 'COOLDOWN'
+              : hasKey
+              ? 'PAUSED'
+              : 'UNSET';
+            const badgeClass = active
+              ? activeClass
+              : hasKey && rateLimited
+              ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+              : hasKey
+              ? 'bg-rose-500/20 border-rose-500/40 text-rose-300'
+              : 'bg-slate-800 border-slate-700 text-slate-400';
+            return (
+              <div className="flex flex-col items-end" key={label}>
+                <span className="text-[10px] text-slate-400 font-sans">{label}</span>
+                <span
+                  title="Credential configured does not confirm a successful live API response; COOLDOWN indicates temporary HTTP 429 rate-limit protection."
+                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${badgeClass}`}
+                >
+                  {stateLabel}
+                </span>
+              </div>
+            );
+          };
+
+          return (
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              {renderBadge('SportAPI.ai', status.sportApiAiConfigured, status.providerKeys?.sportApiAi ?? status.sportApiAiConfigured, Boolean(status.rateLimited?.sportApiAi), 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300')}
+              {renderBadge('Sportmonks', status.sportmonksConfigured, status.providerKeys?.sportmonks ?? status.sportmonksConfigured, Boolean(status.rateLimited?.sportmonks), 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300')}
+              {renderBadge('API-Football', status.apiFootballConfigured, status.providerKeys?.apiFootball ?? status.apiFootballConfigured, Boolean(status.rateLimited?.apiFootball), 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300')}
+              {renderBadge('Football-Data', status.footballDataConfigured, status.providerKeys?.footballData ?? status.footballDataConfigured, Boolean(status.rateLimited?.footballData), 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300')}
+              {renderBadge('TheRundown', status.theRundownConfigured, status.providerKeys?.theRundown ?? status.theRundownConfigured, false, 'bg-blue-500/20 border-blue-500/40 text-blue-300')}
+              {renderBadge('PitchAPI', status.pitchApiConfigured, status.providerKeys?.pitchApi ?? status.pitchApiConfigured, false, 'bg-purple-500/20 border-purple-500/40 text-purple-300')}
+              {renderBadge('SportDB', status.sportDbConfigured, status.providerKeys?.sportDb ?? status.sportDbConfigured, false, 'bg-amber-500/20 border-amber-500/40 text-amber-300')}
             </div>
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] text-slate-400 font-sans">Football-Data</span>
-              <span title="Credential configured does not confirm a successful live API response." className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.footballDataConfigured ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
-                {status.footballDataConfigured ? 'CONFIGURED' : 'UNSET'}
-              </span>
-            </div>
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] text-slate-400 font-sans">TheRundown</span>
-              <span title="Credential configured does not confirm a successful live API response." className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.theRundownConfigured ? 'bg-blue-500/20 border-blue-500/40 text-blue-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
-                {status.theRundownConfigured ? 'CONFIGURED' : 'UNSET'}
-              </span>
-            </div>
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] text-slate-400 font-sans">PitchAPI</span>
-              <span title="Credential configured does not confirm a successful live API response." className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.pitchApiConfigured ? 'bg-purple-500/20 border-purple-500/40 text-purple-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
-                {status.pitchApiConfigured ? 'CONFIGURED' : 'UNSET'}
-              </span>
-            </div>
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] text-slate-400 font-sans">SportDB</span>
-              <span title="Credential configured does not confirm a successful live API response." className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.sportDbConfigured ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
-                {status.sportDbConfigured ? 'CONFIGURED' : 'UNSET'}
-              </span>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         <button
           onClick={handleSyncNow}

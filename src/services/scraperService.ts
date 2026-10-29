@@ -10,6 +10,7 @@ import {
 import { isFavouriteTeam } from '../constants/favourites';
 import { sortFixturesByKickoff } from './storage';
 import { verifyAndSanitizeFixtures } from './dataIntegrityValidator';
+import { getAdminApiHeaders, hasAdminApiKey } from './adminAuthService';
 
 export interface DroppedFixtureReport {
   index: number;
@@ -478,23 +479,36 @@ export async function performLiveApiSync(
 /**
  * Fetch or compute the automated data integrity audit report
  */
-export async function fetchVerificationAudit(fixtures?: MatchFixture[]): Promise<DataIntegrityAuditReport> {
+export async function fetchVerificationAudit(
+  fixtures?: MatchFixture[],
+  options?: { isCustomPayload?: boolean },
+): Promise<DataIntegrityAuditReport> {
   try {
-    if (fixtures && fixtures.length > 0) {
+    if (fixtures && fixtures.length > 0 && hasAdminApiKey()) {
       const res = await fetch('/api/fixtures/verify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminApiHeaders(),
+        },
         body: JSON.stringify({ fixtures }),
       });
       if (res.ok) {
         const data = await res.json();
         if (data.auditReport) return data.auditReport;
       }
-    } else {
+    } else if (!options?.isCustomPayload) {
       const res = await fetch('/api/fixtures/verify');
       if (res.ok) {
         const data = await res.json();
-        if (data.auditReport) return data.auditReport;
+        if (
+          data.auditReport &&
+          (!fixtures ||
+            fixtures.length === 0 ||
+            data.auditReport.totalFixturesAudited === fixtures.length)
+        ) {
+          return data.auditReport;
+        }
       }
     }
   } catch (e) {
@@ -511,8 +525,15 @@ export async function recalibrateOfficialStandings(): Promise<{
   updatedFixtures: MatchFixture[];
   auditReport: DataIntegrityAuditReport;
 }> {
+  let authStatus: number | null = null;
   try {
-    const res = await fetch('/api/fixtures/recalibrate', { method: 'POST' });
+    const res = await fetch('/api/fixtures/recalibrate', {
+      method: 'POST',
+      headers: {
+        ...getAdminApiHeaders(),
+      },
+    });
+    authStatus = res.status;
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.fixtures) && data.fixtures.length > 0) {
@@ -525,6 +546,9 @@ export async function recalibrateOfficialStandings(): Promise<{
     }
   } catch (err) {
     console.warn('Recalibrate server endpoint failed:', err);
+  }
+  if (authStatus === 401 || authStatus === 503) {
+    throw new Error('Admin API key is required for server standings recalibration.');
   }
   throw new Error('Unable to recalibrate with official standings table.');
 }

@@ -1,12 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchAllTheRundownSoccerEvents, THE_RUNDOWN_SOCCER_SPORTS, isTheRundownEventFinished, getTheRundownScores } from '../src/services/serverTheRundown';
+import {
+  fetchAllTheRundownSoccerEvents,
+  THE_RUNDOWN_SOCCER_SPORTS,
+  isDateWithinTheRundownHistoryWindow,
+  isTheRundownEventFinished,
+  getTheRundownScores,
+  resetTheRundownHistoryWindowCache,
+} from '../src/services/serverTheRundown';
 
 type FetchFn = typeof globalThis.fetch;
 const realFetch = globalThis.fetch;
 const realWarn = console.warn;
 
 function setup(handler: (url: string, call: number) => { status: number; body?: unknown }) {
+  resetTheRundownHistoryWindowCache();
   process.env.THERUNDOWN_KEY = 'test-key';
   process.env.THERUNDOWN_REQUEST_SPACING_MS = '0';
   const calls: string[] = [];
@@ -30,6 +38,7 @@ function setup(handler: (url: string, call: number) => { status: number; body?: 
 function teardown() {
   globalThis.fetch = realFetch;
   console.warn = realWarn;
+  resetTheRundownHistoryWindowCache();
   delete process.env.THERUNDOWN_REQUEST_SPACING_MS;
 }
 const event = (id: string) => ({ events: [{ event_id: id }] });
@@ -132,4 +141,38 @@ test('TheRundown score helper returns an outcome only when both scores are numer
       score: { event_status: 'STATUS_FULL_TIME', ...score },
     } as any), { home: null, away: null, outcome: null });
   }
+});
+
+test('HTTP 403 history-window response stops the batch immediately, emits zero warnings, and caches earliest_available_date', async () => {
+  const { calls, warnings } = setup(() => ({
+    status: 403,
+    body: {
+      earliest_available_date: '2026-10-22',
+      error: 'Your plan includes 7 days of history; 2026-10-15 is older than the earliest available date (2026-10-22)',
+      history_days_limit: 7,
+      upgrade_url: '/pricing/api',
+    },
+  }));
+  try {
+    const first = await fetchAllTheRundownSoccerEvents('2026-10-15');
+    assert.deepEqual(first, []);
+    assert.equal(calls.length, 1, 'stops immediately after the first sport reports history window exceeded');
+    assert.equal(warnings.length, 0, 'does not emit per-sport console.warn errors for history window limits');
+
+    // Subsequent call for another older date uses cached earliest_available_date with zero HTTP calls
+    const second = await fetchAllTheRundownSoccerEvents('2026-10-16');
+    assert.deepEqual(second, []);
+    assert.equal(calls.length, 1, 'skips older date before making any HTTP calls');
+  } finally {
+    teardown();
+  }
+});
+
+test('isDateWithinTheRundownHistoryWindow enforces 7-day rolling cutoff', () => {
+  resetTheRundownHistoryWindowCache();
+  const refMs = Date.parse('2026-10-29T12:00:00Z');
+  assert.equal(isDateWithinTheRundownHistoryWindow('2026-10-29', refMs), true);
+  assert.equal(isDateWithinTheRundownHistoryWindow('2026-10-22', refMs), true);
+  assert.equal(isDateWithinTheRundownHistoryWindow('2026-10-21', refMs), false);
+  assert.equal(isDateWithinTheRundownHistoryWindow('2026-10-15', refMs), false);
 });
