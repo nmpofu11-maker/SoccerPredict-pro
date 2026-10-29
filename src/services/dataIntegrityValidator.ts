@@ -239,8 +239,13 @@ export function verifyIndependentFixtureSchedule(
   fixture: MatchFixture,
   observations: FixtureScheduleObservation[] = fixture.scheduleObservations || [],
 ): { verified: boolean; providers: string[]; reason: string } {
+  // Providers often differ only in accents, punctuation, or conventional club suffixes
+  // (e.g. "São Paulo FC" vs "Sao Paulo"). Normalize those presentation differences,
+  // but do not fuzzy-match different team names or relax kickoff/competition checks.
   const normalize = (value: unknown) => String(value || '').toLowerCase().normalize('NFKD')
-    .replace(/\p{M}/gu, '').replace(/[^a-z0-9]/g, '');
+    .replace(/\p{M}/gu, '')
+    .replace(/\b(football club|soccer club|fc|cf|sc|afc|cfc)\b/g, ' ')
+    .replace(/[^a-z0-9]/g, '');
   const kickoff = new Date(fixture.kickoffTime).getTime();
   if (!Number.isFinite(kickoff)) {
     return { verified: false, providers: [], reason: 'Fixture kickoff is invalid.' };
