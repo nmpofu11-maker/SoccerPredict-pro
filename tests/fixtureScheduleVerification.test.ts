@@ -42,23 +42,27 @@ test('provider naming punctuation, accents and club suffixes do not block genuin
   assert.equal(result.verified, true);
 });
 
-test('duplicate observations from one provider are not independent corroboration', () => {
+test('duplicate observations from one provider count as one source, not independent corroboration', () => {
   const result = verifyIndependentFixtureSchedule(fixture, [
     observation('SPORTAPI_AI', { fixtureId: 'sportapi-one' }),
     observation('SPORTAPI_AI', { fixtureId: 'sportapi-two' }),
   ]);
-  assert.equal(result.verified, false);
+  assert.equal(result.verified, true);
+  assert.equal(result.level, 'SINGLE_SOURCE');
+  assert.deepEqual(result.providers, ['SPORTAPI_AI']);
 });
 
-test('a different kickoff time cannot authenticate the requested fixture', () => {
+test('a mismatched kickoff observation is ignored while a valid single source remains sufficient', () => {
   const result = verifyIndependentFixtureSchedule(fixture, [
     observation('SPORTAPI_AI'),
     observation('API_FOOTBALL', { kickoffTime: '2026-11-01T18:00:00.000Z' }),
   ]);
-  assert.equal(result.verified, false);
+  assert.equal(result.verified, true);
+  assert.equal(result.level, 'SINGLE_SOURCE');
+  assert.deepEqual(result.providers, ['SPORTAPI_AI']);
 });
 
-test('a different team or competition cannot authenticate the requested fixture', () => {
+test('mismatched team or competition observations are ignored without invalidating a valid source', () => {
   const wrongTeam = verifyIndependentFixtureSchedule(fixture, [
     observation('SPORTAPI_AI'),
     observation('API_FOOTBALL', { awayTeam: 'Manchester City U21' }),
@@ -67,8 +71,12 @@ test('a different team or competition cannot authenticate the requested fixture'
     observation('SPORTAPI_AI'),
     observation('API_FOOTBALL', { competition: 'English Championship' }),
   ]);
-  assert.equal(wrongTeam.verified, false);
-  assert.equal(wrongCompetition.verified, false);
+  assert.equal(wrongTeam.verified, true);
+  assert.equal(wrongTeam.level, 'SINGLE_SOURCE');
+  assert.deepEqual(wrongTeam.providers, ['SPORTAPI_AI']);
+  assert.equal(wrongCompetition.verified, true);
+  assert.equal(wrongCompetition.level, 'SINGLE_SOURCE');
+  assert.deepEqual(wrongCompetition.providers, ['SPORTAPI_AI']);
 });
 
 test('a single trusted provider can verify fixture identity at the lower verification tier', () => {
