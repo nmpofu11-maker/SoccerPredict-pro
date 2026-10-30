@@ -125,3 +125,16 @@ test('SportAPI.ai H2H provenance survives integrity sanitization', () => {
   assert.equal(sanitized.h2h?.source, 'SPORTAPI_AI');
   assert.equal(sanitized.h2h?.totalLast5, 5);
 });
+
+
+test('failed schedule authenticity blocks directional predictions even with strong team evidence and manual override', () => {
+  const unverified = fixture({
+    authenticity: { status: 'UNVERIFIED', authenticityScore: 80, isAuthentic: false, verifiedAt: '2026-10-28T00:00:00.000Z', source: 'STANDINGS_ONLY_NOT_FIXTURE_VERIFIED', checks: [] },
+    homeTeam: { id: 'home-1', name: 'Home United', shortName: 'HOM', leagueRank: 2, points: 20, standingsSource: 'SPORTAPI_AI', form: ['W','W','W','W','W'], formSource: 'SPORTAPI_AI', avgPossession: null, avgShotsOnTarget: null },
+    awayTeam: { id: 'away-1', name: 'Away United', shortName: 'AWA', leagueRank: 18, points: 4, standingsSource: 'SPORTAPI_AI', form: ['L','L','L','L','L'], formSource: 'SPORTAPI_AI', avgPossession: null, avgShotsOnTarget: null },
+  });
+  assert.equal(evaluateFixturePrediction(unverified, 'none').predictedWinner, 'none');
+  const overridden = evaluateFixturePrediction(unverified, 'force_home');
+  assert.equal(overridden.predictedWinner, 'none');
+  assert.equal(overridden.hasEvidence, false);
+});
