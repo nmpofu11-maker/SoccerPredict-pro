@@ -283,6 +283,7 @@ export type FixtureIdentityStatus = 'PROVIDER_IDENTIFIED' | 'UNVERIFIED';
 
 export type DataAuthenticityStatus =
   | 'VERIFIED_AUTHENTIC'
+  | 'SINGLE_SOURCE_VERIFIED'
   | 'AUTO_REPAIRED'
   | 'ANOMALIES_DETECTED'
   | 'UNVERIFIED'
