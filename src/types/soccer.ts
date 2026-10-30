@@ -51,6 +51,15 @@ export interface H2HRecord {
   source?: 'HISTORICAL_IMPORT' | 'FOOTBALL_DATA_ORG' | 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI';
 }
 
+export interface FixtureScheduleObservation {
+  provider: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'FOOTBALL_DATA_ORG' | 'ESPN' | 'PITCHAPI' | 'SPORTDB' | 'THERUNDOWN';
+  fixtureId: string;
+  kickoffTime: string;
+  homeTeam: string;
+  awayTeam: string;
+  competition: string;
+}
+
 export interface MatchFixture {
   id: string;
   kickoffTime: string; // ISO string e.g. "2026-09-04T16:30:00Z"
@@ -93,6 +102,8 @@ automationSource?: 'API_FOOTBALL' | 'SPORTMONKS' | 'SPORTAPI_AI' | 'PITCHAPI';
   isStandingsVerified?: boolean;
   /** Provider record identity is present; this is not independent proof of match authenticity. */
   fixtureIdentityStatus?: FixtureIdentityStatus;
+  /** Raw, source-attributed schedule observations for this exact fixture. */
+  scheduleObservations?: FixtureScheduleObservation[];
   impliedProbabilities?: {
     home: number;
     draw: number;
@@ -272,6 +283,7 @@ export type FixtureIdentityStatus = 'PROVIDER_IDENTIFIED' | 'UNVERIFIED';
 
 export type DataAuthenticityStatus =
   | 'VERIFIED_AUTHENTIC'
+  | 'SINGLE_SOURCE_VERIFIED'
   | 'AUTO_REPAIRED'
   | 'ANOMALIES_DETECTED'
   | 'UNVERIFIED'
