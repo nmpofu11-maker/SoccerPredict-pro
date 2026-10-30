@@ -71,10 +71,11 @@ test('a different team or competition cannot authenticate the requested fixture'
   assert.equal(wrongCompetition.verified, false);
 });
 
-test('standings or a single provider observation cannot independently verify schedule authenticity', () => {
+test('a single trusted provider can verify fixture identity at the lower verification tier', () => {
   const result = verifyIndependentFixtureSchedule(fixture, [observation('SPORTAPI_AI')]);
-  assert.equal(result.verified, false);
-  assert.match(result.reason, /two distinct providers/i);
+  assert.equal(result.verified, true);
+  assert.equal(result.level, 'SINGLE_SOURCE');
+  assert.match(result.reason, /one trusted schedule source/i);
 });
 
 test('matching official standings alone never marks a specific fixture authentic', () => {
@@ -124,4 +125,20 @@ test('fixture deduplication preserves schedule observations from both providers'
     new Set(result.fixtures[0].scheduleObservations?.map((item) => item.provider)),
     new Set(['SPORTAPI_AI', 'SPORTMONKS']),
   );
+});
+
+test('single-source schedule verification does not require standings coverage', () => {
+  const fixtureWithOneSource = {
+    ...fixture,
+    automationSource: 'SPORTAPI_AI',
+    sportApiAiFixtureId: 'sportapi-fixture-1',
+    scheduleObservations: [observation('SPORTAPI_AI')],
+    homeTeam: { id: 'home', name: 'São Paulo', shortName: 'SAO', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    awayTeam: { id: 'away', name: 'Manchester City', shortName: 'MCI', leagueRank: null, points: null, form: [], avgPossession: null, avgShotsOnTarget: null },
+    h2h: null,
+  } as unknown as MatchFixture;
+  const result = verifyAndSanitizeFixture(fixtureWithOneSource);
+  assert.equal(result.stamp.status, 'SINGLE_SOURCE_VERIFIED');
+  assert.equal(result.stamp.isAuthentic, true);
+  assert.equal(result.stamp.source, 'SINGLE_SOURCE_SCHEDULE:SPORTAPI_AI');
 });
