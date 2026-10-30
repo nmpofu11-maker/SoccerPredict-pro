@@ -238,20 +238,20 @@ function sanitizeTeamStats(
 export function verifyIndependentFixtureSchedule(
   fixture: MatchFixture,
   observations: FixtureScheduleObservation[] = fixture.scheduleObservations || [],
-): { verified: boolean; providers: string[]; reason: string } {
-  // Providers often differ only in accents, punctuation, or conventional club suffixes
-  // (e.g. "São Paulo FC" vs "Sao Paulo"). Normalize those presentation differences,
-  // but do not fuzzy-match different team names or relax kickoff/competition checks.
+): { verified: boolean; level: 'CORROBORATED' | 'SINGLE_SOURCE' | 'UNVERIFIED'; providers: string[]; reason: string } {
+  // Normalize presentation differences only; team, competition and kickoff identity
+  // remain exact (within the existing five-minute schedule tolerance).
   const normalize = (value: unknown) => String(value || '').toLowerCase().normalize('NFKD')
     .replace(/\p{M}/gu, '')
     .replace(/\b(football club|soccer club|fc|cf|sc|afc|cfc)\b/g, ' ')
     .replace(/[^a-z0-9]/g, '');
+  const trustedProviders = new Set(['API_FOOTBALL', 'SPORTMONKS', 'SPORTAPI_AI', 'FOOTBALL_DATA_ORG', 'ESPN', 'PITCHAPI', 'SPORTDB', 'THERUNDOWN']);
   const kickoff = new Date(fixture.kickoffTime).getTime();
   if (!Number.isFinite(kickoff)) {
-    return { verified: false, providers: [], reason: 'Fixture kickoff is invalid.' };
+    return { verified: false, level: 'UNVERIFIED', providers: [], reason: 'Fixture kickoff is invalid.' };
   }
   const valid = observations.filter((observation) => {
-    if (!observation?.provider || !observation.fixtureId?.trim()) return false;
+    if (!observation?.provider || !trustedProviders.has(observation.provider) || !observation.fixtureId?.trim()) return false;
     const observedKickoff = new Date(observation.kickoffTime).getTime();
     if (!Number.isFinite(observedKickoff) || Math.abs(observedKickoff - kickoff) > 5 * 60 * 1000) return false;
     return normalize(observation.homeTeam) === normalize(fixture.homeTeam?.name)
@@ -259,13 +259,16 @@ export function verifyIndependentFixtureSchedule(
       && normalize(observation.competition) === normalize(fixture.competition || fixture.league);
   });
   const providers = [...new Set(valid.map((observation) => observation.provider))];
-  const verified = providers.length >= 2;
+  const level = providers.length >= 2 ? 'CORROBORATED' : providers.length === 1 ? 'SINGLE_SOURCE' : 'UNVERIFIED';
   return {
-    verified,
+    verified: level !== 'UNVERIFIED',
+    level,
     providers,
-    reason: verified
-      ? `Exact fixture corroborated by independent schedule sources: ${providers.join(', ')}.`
-      : `Need two distinct providers to agree on teams, competition and kickoff; found ${providers.length} matching provider(s).`,
+    reason: level === 'CORROBORATED'
+      ? `Fixture corroborated by independent schedule sources: ${providers.join(', ')}.`
+      : level === 'SINGLE_SOURCE'
+      ? `Fixture identity verified by one trusted schedule source: ${providers[0]}; independent corroboration is unavailable.`
+      : 'No trusted provider observation matches the teams, competition and kickoff.',
   };
 }
 
@@ -467,18 +470,20 @@ export function verifyAndSanitizeFixture(
 
   // This status describes sanitization; authenticity remains independently represented by isAuthentic.
   const status =
-    repairs.length === 0 && bothTeamsCrossReferenced && scheduleVerification.verified
-      ? 'VERIFIED_AUTHENTIC'
-      : repairs.length > 0
+    repairs.length > 0
       ? 'AUTO_REPAIRED'
+      : scheduleVerification.level === 'CORROBORATED'
+      ? 'VERIFIED_AUTHENTIC'
+      : scheduleVerification.level === 'SINGLE_SOURCE'
+      ? 'SINGLE_SOURCE_VERIFIED'
       : 'UNVERIFIED';
 
   const stamp: MatchAuthenticityStamp = {
     status,
     authenticityScore,
-    isAuthentic: status === 'VERIFIED_AUTHENTIC',
+    isAuthentic: status === 'VERIFIED_AUTHENTIC' || status === 'SINGLE_SOURCE_VERIFIED',
     verifiedAt: new Date().toISOString(),
-    source: scheduleVerification.verified ? `INDEPENDENT_SCHEDULE:${scheduleVerification.providers.join('+')}` : bothTeamsCrossReferenced ? 'STANDINGS_ONLY_NOT_FIXTURE_VERIFIED' : 'UNVERIFIED_PROVIDER_INGESTION',
+    source: scheduleVerification.level === 'CORROBORATED' ? `INDEPENDENT_SCHEDULE:${scheduleVerification.providers.join('+')}` : scheduleVerification.level === 'SINGLE_SOURCE' ? `SINGLE_SOURCE_SCHEDULE:${scheduleVerification.providers[0]}` : bothTeamsCrossReferenced ? 'STANDINGS_ONLY_NOT_FIXTURE_VERIFIED' : 'UNVERIFIED_PROVIDER_INGESTION',
     checks,
     repairedFields: repairs.map((r) => r.field),
   };
