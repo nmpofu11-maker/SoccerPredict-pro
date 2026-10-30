@@ -578,6 +578,13 @@ export function verifyAndSanitizeFixtures(
       (hA === aB && aA === hB);
   };
 
+  const mergeScheduleObservations = (canonical: any, older: any) => {
+    const all = [...(Array.isArray(canonical.scheduleObservations) ? canonical.scheduleObservations : []), ...(Array.isArray(older.scheduleObservations) ? older.scheduleObservations : [])];
+    const unique = new Map<string, FixtureScheduleObservation>();
+    for (const item of all) if (item && item.provider && item.fixtureId) unique.set(`${item.provider}:${item.fixtureId}`, item);
+    canonical.scheduleObservations = [...unique.values()];
+  };
+
   const mergeRecords = (existing: any, incoming: any) => {
     const hasTeamEvidence = (team: any): boolean =>
       (Boolean(team?.standingsSource) &&
@@ -605,6 +612,7 @@ export function verifyAndSanitizeFixtures(
         canonical.pitchApiScore = older.pitchApiScore;
       }
 
+      mergeScheduleObservations(canonical, older);
       return { canonical, older };
     }
     const existingHasIds = Boolean(existing.sportApiAiHomeTeamId || existing.pitchApiMatchId || existing.theRundownEventId || existing.sportmonksFixtureId);
@@ -727,7 +735,7 @@ export function verifyAndSanitizeFixtures(
     const passedMono = stamp.checks.find((c) => c.checkName === 'Standings Monotonicity Check')?.passed;
     if (passedMono) passedMonotonicityTotal++;
 
-    if (stamp.status === 'VERIFIED_AUTHENTIC') {
+    if (stamp.status === 'VERIFIED_AUTHENTIC' || stamp.status === 'SINGLE_SOURCE_VERIFIED') {
       fullyAuthenticCount++;
     } else if (stamp.status === 'AUTO_REPAIRED') {
       autoRepairedCount++;
