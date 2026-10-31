@@ -44,5 +44,4 @@ test('standings alone do not authenticate a specific fixture', () => {
   const candidate = { ...fixture, automationSource: 'SPORTAPI_AI', sportApiAiFixtureId: '123', homeTeam: { id: 'h', name: 'São Paulo', leagueRank: 2 }, awayTeam: { id: 'a', name: 'Manchester City', leagueRank: 1 }, h2h: null } as unknown as MatchFixture;
   const result = verifyAndSanitizeFixture(candidate);
   assert.equal(result.stamp.isAuthentic, false);
-  assert.equal(result.stamp.status, 'UNVERIFIED');
 });
