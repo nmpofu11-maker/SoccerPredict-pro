@@ -236,8 +236,8 @@ export function verifyIndependentFixtureSchedule(
   observations: FixtureScheduleObservation[] = fixture.scheduleObservations || [],
 ): { verified: boolean; level: 'CORROBORATED' | 'SINGLE_SOURCE' | 'UNVERIFIED'; providers: string[]; reason: string } {
   const normalize = (value: unknown) => String(value || '').toLowerCase().normalize('NFKD')
-    .replace(/\\p{M}/gu, '')
-    .replace(/\\b(football club|soccer club|fc|cf|sc|afc|cfc)\\b/g, ' ')
+    .replace(/\p{M}/gu, '')
+    .replace(/\b(football club|soccer club|fc|cf|sc|afc|cfc)\b/g, ' ')
     .replace(/[^a-z0-9]/g, '');
   const trusted = new Set(['API_FOOTBALL', 'SPORTMONKS', 'SPORTAPI_AI', 'FOOTBALL_DATA_ORG', 'ESPN', 'PITCHAPI', 'SPORTDB', 'THERUNDOWN']);
   const kickoff = Date.parse(fixture.kickoffTime);
