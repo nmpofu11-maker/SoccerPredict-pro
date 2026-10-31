@@ -26,7 +26,9 @@ import {
 
 /** Attach only raw provider provenance; never infer a second source from a merged fixture. */
 function attachScheduleObservation(fixture: MatchFixture, provider: FixtureScheduleObservation['provider'], fixtureId: unknown, source: MatchFixture = fixture): void {
-  const id = String(fixtureId ?? '').trim();
+  if (fixtureId === null || fixtureId === undefined) return;
+  const id = String(fixtureId).trim();
+  if (!id || /^(undefined|null|nan)$/i.test(id)) return;
   const kickoffTime = String(source.kickoffTime || '');
   const homeTeam = String(source.homeTeam?.name || '').trim();
   const awayTeam = String(source.awayTeam?.name || '').trim();
