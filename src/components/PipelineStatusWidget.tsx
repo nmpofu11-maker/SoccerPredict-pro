@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Cpu, RefreshCw, CheckCircle2, AlertCircle, Clock, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { Cpu, RefreshCw, CheckCircle2, AlertCircle, Clock, ShieldCheck, Info } from 'lucide-react';
 import { fetchCronStatus, triggerIngestNow, fetchPersistedSlate, fetchEvidenceCoverage, fetchFixtureEligibilityAudit, CronStatusResponse, EvidenceCoverageResponse, FixtureEligibilityAuditResponse } from '../services/resultsService';
+import { formatIngestSourceLabel } from '../utils/ingestOutcome';
 import { MatchFixture } from '../types/soccer';
 
 interface PipelineStatusWidgetProps {
@@ -32,20 +33,20 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
     try {
       const ingest = await triggerIngestNow();
       if (!ingest.success) {
-        setSyncMessage(`Ingestion failed: ${ingest.message}. Existing fixtures were retained.`);
+        setSyncMessage(`Ingestion failed: ${ingest.message}`);
         refresh();
         return;
       }
 
       const persisted = await fetchPersistedSlate();
       if (!persisted.fixtures) {
-        setSyncMessage(`Ingestion finished, but the saved fixture list could not be read: ${persisted.message || 'unknown read error'}.`);
+        setSyncMessage(`Ingestion finished (${ingest.message}), but the saved fixture list could not be read: ${persisted.message || 'unknown read error'}.`);
         refresh();
         return;
       }
 
       if (onFixturesSynced) onFixturesSynced(persisted.fixtures);
-      setSyncMessage(`Ingestion finished: ${ingest.message || 'provider job completed'}. Loaded ${persisted.fixtures.length} saved fixtures.`);
+      setSyncMessage(`${ingest.message || 'Provider job completed.'} Loaded ${persisted.fixtures.length} saved fixtures.`);
       refresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -58,6 +59,30 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
   const ingest = status?.cron.ingest;
   const isHealthy = ingest?.lastSuccess === true;
   const hasRun = ingest?.lastRunAt != null;
+  const isOfflineMode =
+    ingest?.outcomeKind === 'unconfigured_offline' ||
+    (isHealthy &&
+      (ingest?.fixturesIngested ?? 0) === 0 &&
+      !ingest?.sourceUsed &&
+      /offline|no external football api/i.test(ingest?.lastMessage || ''));
+  const isEmptyCalendar =
+    !isOfflineMode &&
+    (ingest?.outcomeKind === 'empty_calendar' ||
+      (isHealthy && (ingest?.fixturesIngested ?? 0) === 0));
+  const isPersistedOnly =
+    isHealthy && ingest?.sourceUsed === 'PERSISTED_MANIFEST';
+  const isInformational = isHealthy && (isOfflineMode || isEmptyCalendar || isPersistedOnly);
+  const statusBadgeText = !isHealthy
+    ? 'FAILING'
+    : isOfflineMode
+    ? 'OFFLINE / NO KEYS'
+    : isEmptyCalendar
+    ? 'EMPTY CALENDAR'
+    : ingest?.sourceUsed
+    ? formatIngestSourceLabel(ingest.sourceUsed)
+    : 'IDLE';
+  const showDiagnosticReason =
+    hasRun && Boolean(ingest?.lastMessage) && (!isHealthy || isInformational);
 
   return (
     <div
@@ -74,13 +99,21 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
             {hasRun && (
               <span
                 className={`px-1.5 py-0.5 rounded border text-[10px] flex items-center gap-1 ${
-                  isHealthy
-                    ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                    : 'bg-rose-500/20 border-rose-500/40 text-rose-300'
+                  !isHealthy
+                    ? 'bg-rose-500/20 border-rose-500/40 text-rose-300'
+                    : isInformational
+                    ? 'bg-slate-800 border-slate-600 text-slate-300'
+                    : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
                 }`}
               >
-                {isHealthy ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
-                {isHealthy ? (ingest?.sourceUsed || 'OK') : 'FAILING'}
+                {!isHealthy ? (
+                  <AlertCircle className="w-3 h-3" />
+                ) : isInformational ? (
+                  <Info className="w-3 h-3 text-amber-300" />
+                ) : (
+                  <CheckCircle2 className="w-3 h-3" />
+                )}
+                {statusBadgeText}
               </span>
             )}
           </div>
@@ -118,8 +151,13 @@ export const PipelineStatusWidget: React.FC<PipelineStatusWidgetProps> = ({ onFi
               <span className="text-amber-300">Blocked: team evidence <strong>{eligibility.eligibilitySummary.blockedByTeamEvidence}</strong></span>
             </div>
           )}
-          {!isHealthy && hasRun && (
-            <div className="text-rose-400 text-[11px] mt-1 max-w-md truncate" title={ingest?.lastMessage}>
+          {showDiagnosticReason && (
+            <div
+              className={`text-[11px] mt-1 max-w-xl break-words ${
+                !isHealthy ? 'text-rose-400' : 'text-slate-300'
+              }`}
+              title={ingest?.lastMessage}
+            >
               {ingest?.lastMessage}
             </div>
           )}

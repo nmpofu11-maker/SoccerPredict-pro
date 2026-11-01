@@ -1,5 +1,6 @@
 import { HistoricalMatchResult, MatchFixture } from '../types/soccer';
 import { getAdminApiHeaders } from './adminAuthService';
+import type { IngestDiagnostics, IngestOutcomeKind, IngestSource } from './cronStatusService';
 import { AuditedPerformanceReport } from './performanceService';
 import { PredictionRecord, TrackRecord } from './predictionLogTypes';
 
@@ -170,7 +171,15 @@ export interface CronStatusResponse {
     footballData: boolean;
   };
   cron: {
-    ingest: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; fixturesIngested: number; sourceUsed?: string | null };
+    ingest: {
+      lastRunAt: string | null;
+      lastSuccess: boolean | null;
+      lastMessage: string;
+      fixturesIngested: number;
+      sourceUsed?: IngestSource | null;
+      outcomeKind?: IngestOutcomeKind;
+      diagnostics?: IngestDiagnostics;
+    };
     settlement: { lastRunAt: string | null; lastSuccess: boolean | null; lastMessage: string; resultsSettled: number };
   };
 }
@@ -247,8 +256,16 @@ export async function fetchEvidenceCoverage(): Promise<EvidenceCoverageResponse 
   }
 }
 
+export interface TriggerIngestResult {
+  success: boolean;
+  message: string;
+  count: number;
+  outcomeKind?: IngestOutcomeKind;
+  diagnostics?: IngestDiagnostics;
+}
+
 /** Manually triggers the ingestion job right now, for a 'Sync Now' button that does something real. */
-export async function triggerIngestNow(timeoutMs: number = 180_000): Promise<{ success: boolean; message: string; count: number }> {
+export async function triggerIngestNow(timeoutMs: number = 180_000): Promise<TriggerIngestResult> {
   const controller = new AbortController();
   const safeTimeoutMs = Number.isFinite(timeoutMs) ? Math.max(1, Math.min(240_000, Math.floor(timeoutMs))) : 180_000;
   const timeoutId = setTimeout(() => controller.abort(), safeTimeoutMs);
@@ -266,7 +283,13 @@ export async function triggerIngestNow(timeoutMs: number = 180_000): Promise<{ s
       return { success: false, message: 'Service unavailable (503): ADMIN_API_KEY is not configured on the server.', count: 0 };
     }
     if (!res.ok) {
-      return { success: false, message: data.message || data.error || `HTTP error ${res.status}`, count: 0 };
+      return {
+        success: false,
+        message: data.message || data.error || `HTTP error ${res.status}`,
+        count: 0,
+        outcomeKind: data.outcomeKind,
+        diagnostics: data.diagnostics,
+      };
     }
     return data;
   } catch (err) {

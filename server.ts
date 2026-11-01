@@ -76,7 +76,18 @@ import {
 import { evaluateAuditedPredictionPerformance, isAuditableSettledResult } from './src/services/performanceService';
 import { parseRawResults } from './src/services/resultParserService';
 import { readResultsLogFile } from './src/services/resultsLogStore';
-import { findSafeSettlementNameMatch } from './src/utils/settlementMatching';
+import { resolveVerifiedSettlementMatch } from './src/utils/settlementMatching';
+import { classifyEmptyIngestOutcome, resolveFinalIngestSource } from './src/utils/ingestOutcome';
+import { runStartupPipelinePass } from './src/utils/startupPipeline';
+import {
+  buildLiveScoreboardDisplaySlate,
+  filterManifestForDisplay,
+  getDisplayCutoffIso,
+  mergeIncomingFixturesIntoManifest,
+  readDisplayManifestFile,
+  readRawManifestFile,
+  selectSettlementCandidatesFromManifest,
+} from './src/services/manifestMerge';
 import { createSingleFlight } from './src/utils/singleFlight';
 import { summarizeSettlementRun } from './src/utils/settlementRunStatus';
 import { parseSportApiAiKickoff } from './src/utils/sportApiAiKickoff';
@@ -88,7 +99,9 @@ import { sanitizeRuntimeManifest } from './src/services/manifestSanitizer';
 import {
   type CronStatus,
   type IngestDiagnostics,
+  type IngestOutcomeKind,
   type IngestProviderDiagnostics,
+  type IngestSource,
   readCronStatus as readCronStatusFromFile,
   writeCronStatusAtomic,
   updateIngestCronStatus,
@@ -293,9 +306,8 @@ const MANIFEST_PATH = path.join(process.cwd(), 'data', 'fixtures-manifest.json')
 const SRC_FIXTURES_PATH = path.join(process.cwd(), 'src', 'data', 'upcoming_fixtures.json');
 
 function getDynamicCutoffIso(): string {
-  // Retain matches from 48 hours ago through future dates to allow yesterday analysis
-  const d = new Date(Date.now() - 48 * 60 * 60 * 1000);
-  return d.toISOString().slice(0, 10);
+  // Retain matches from 48 hours ago through future dates to allow yesterday analysis in the UI
+  return getDisplayCutoffIso();
 }
 
 function ensureDataDirectory(): void {
@@ -307,63 +319,12 @@ function ensureDataDirectory(): void {
 
 function readRawDiskManifest(): any[] {
   ensureDataDirectory();
-  let list: any[] = [];
-
-  if (fs.existsSync(MANIFEST_PATH)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf-8'));
-      if (Array.isArray(data)) list = data;
-    } catch (e) {
-      console.warn('Error reading raw fixtures-manifest.json:', e);
-    }
-  }
-
-  if (list.length === 0 && fs.existsSync(SRC_FIXTURES_PATH)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(SRC_FIXTURES_PATH, 'utf-8'));
-      if (Array.isArray(data)) list = data;
-    } catch (e) {
-      console.warn('Error reading source fixture manifest:', e);
-    }
-  }
-
-  return list;
+  return readRawManifestFile(MANIFEST_PATH, SRC_FIXTURES_PATH);
 }
 
 export function readDiskManifest(): any[] {
   ensureDataDirectory();
-  const minCutoff = getDynamicCutoffIso();
-  let list: any[] = [];
-
-  if (fs.existsSync(MANIFEST_PATH)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf-8'));
-      if (Array.isArray(data)) {
-        list = data;
-      }
-    } catch (e) {
-      console.warn('Error reading fixtures-manifest.json:', e);
-    }
-  }
-
-  if (list.length === 0 && fs.existsSync(SRC_FIXTURES_PATH)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(SRC_FIXTURES_PATH, 'utf-8'));
-      if (Array.isArray(data)) {
-        list = data;
-        // Sync to primary data manifest
-        try {
-          fs.writeFileSync(MANIFEST_PATH, JSON.stringify(list, null, 2), 'utf-8');
-        } catch {}
-      }
-    } catch (e) {
-      console.warn('Error reading upcoming_fixtures.json:', e);
-    }
-  }
-
-  return list.filter(
-    (f: any) => f && f.id && f.homeTeam && f.awayTeam && (!f.kickoffTime || f.kickoffTime.slice(0, 10) >= minCutoff)
-  );
+  return readDisplayManifestFile(MANIFEST_PATH, SRC_FIXTURES_PATH);
 }
 
 export function writeDiskManifest(fixtures: any[]): void {
@@ -500,11 +461,12 @@ async function refreshPrimaryEvidenceForDailySlate(force = false): Promise<void>
 
         const verified = verifyAndSanitizeFixtures(Array.from(currentByKey.values()));
         writeDiskManifest(verified.fixtures);
+        const displayValidated = verifyAndSanitizeFixtures(filterManifestForDisplay(verified.fixtures, now));
         fixturesCache = {
-          fixtures: verified.fixtures,
+          fixtures: displayValidated.fixtures,
           syncedAt: new Date().toISOString(),
           provider: 'SportAPI.ai + Sportmonks primary evidence (Football-Data fallback)',
-          auditReport: verified.auditReport,
+          auditReport: displayValidated.auditReport,
         };
       }
     } catch (err) {
@@ -682,9 +644,17 @@ async function ensureAllHollywoodbetsStandingsCached(): Promise<Map<string, { ra
   return aggregateStandingsFromCache();
 }
 
-async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixturesCache> {
+async function getLiveScoreboardFixtures(
+  forceRefresh = false,
+  options: { persistToDisk?: boolean } = {}
+): Promise<LiveFixturesCache> {
   const now = Date.now();
-  if (!forceRefresh && fixturesCache && now - new Date(fixturesCache.syncedAt).getTime() < CACHE_TTL_MS) {
+  if (
+    !forceRefresh &&
+    !options.persistToDisk &&
+    fixturesCache &&
+    now - new Date(fixturesCache.syncedAt).getTime() < CACHE_TTL_MS
+  ) {
     return fixturesCache;
   }
 
@@ -805,47 +775,13 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
     }
 
     if (allFixtures.length > 0) {
-      // Read disk dataset to preserve cup tournaments & regional divisions whose rounds fall outside current 14d window
-      const diskFixtures = readDiskManifest();
-
-      const normalizeKey = (f: any) => {
-        const home = (f.homeTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const away = (f.awayTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const date = (f.kickoffTime || '').slice(0, 10);
-        return `${home}_vs_${away}_${date}`;
-      };
-
+      // Scoreboard retrieval is read-only with respect to data/fixtures-manifest.json by default.
+      // Never prune >48h-old fixtures from disk, because settlement processes past fixtures up to 30 days old.
       const minCutoffDate = getDynamicCutoffIso();
-      const mergedMap = new Map<string, any>();
-      // 1. First populate disk fixtures (filter out past ghost fixtures older than 48 hours)
-      for (const df of diskFixtures) {
-        if (!df || !df.id || !df.homeTeam || !df.awayTeam) continue;
-        if (df.kickoffTime && df.kickoffTime.slice(0, 10) < minCutoffDate) continue;
-        const key = normalizeKey(df);
-        mergedMap.set(key, df);
-      }
-
-      // 2. Overwrite / append freshly ingested authentic live fixtures, protecting bookmaker-protected fixtures
-      for (const lf of allFixtures) {
-        if (!lf || !lf.id || !lf.homeTeam || !lf.awayTeam) continue;
-        if (lf.kickoffTime && lf.kickoffTime.slice(0, 10) < minCutoffDate) continue;
-        const key = normalizeKey(lf);
-        const existing = mergedMap.get(key);
-        // Preserve bookmaker-protected fixtures.
-        if (existing && (existing.isBookmakerProtected || (existing.id && existing.id.startsWith('hollywoodbets_')))) {
-          continue;
-        }
-
-        // A weaker scoreboard response must not discard verified team evidence.
-        if (existing && fixtureHasEvidence(existing) && !fixtureHasEvidence(lf)) {
-          continue;
-        }
-
-        mergedMap.set(key, lf);
-      }
-      const combinedFixtures = Array.from(mergedMap.values())
-        .filter(f => !f.kickoffTime || f.kickoffTime.slice(0, 10) >= minCutoffDate);
-      combinedFixtures.sort((a, b) => new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime());
+      const rawDiskFixtures = readRawDiskManifest();
+      const liveWithinCutoff = allFixtures.filter(
+        (lf: any) => !lf?.kickoffTime || String(lf.kickoffTime).slice(0, 10) >= minCutoffDate
+      );
 
       // Aggregate all standings maps across cached leagues
       const aggregatedStandings = new Map<string, { rank: number; points: number | null }>();
@@ -855,10 +791,14 @@ async function getLiveScoreboardFixtures(forceRefresh = false): Promise<LiveFixt
         }
       }
 
-      // Automatically verify and sanitize all fixtures before persisting or returning to AI
-      const { fixtures: validatedFixtures, auditReport } = verifyAndSanitizeFixtures(combinedFixtures, aggregatedStandings);
+      if (options.persistToDisk) {
+        const { merged: fullMerged } = mergeIncomingFixturesIntoManifest(rawDiskFixtures, liveWithinCutoff);
+        const { fixtures: persistedValidated } = verifyAndSanitizeFixtures(fullMerged, aggregatedStandings);
+        writeDiskManifest(persistedValidated);
+      }
 
-      writeDiskManifest(validatedFixtures);
+      const displaySlate = buildLiveScoreboardDisplaySlate(rawDiskFixtures, liveWithinCutoff, minCutoffDate);
+      const { fixtures: validatedFixtures, auditReport } = verifyAndSanitizeFixtures(displaySlate, aggregatedStandings);
 
       fixturesCache = {
         fixtures: validatedFixtures,
@@ -1355,7 +1295,13 @@ function mapSportDbToInternalFixture(match: any, fallbackDateStr: string): any {
  * or TheRundown (secondary) and merges them into the disk manifest, without
  * overwriting any existing Hollywoodbets slate entries.
  */
-async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message: string; count: number; diagnostics: IngestDiagnostics }> {
+async function runDailyIngestJobUnlocked(): Promise<{
+  success: boolean;
+  outcomeKind: IngestOutcomeKind;
+  message: string;
+  count: number;
+  diagnostics: IngestDiagnostics;
+}> {
   const startedAt = new Date().toISOString();
   const baseDate = new Date();
   const dateFormatter = new Intl.DateTimeFormat('en-CA', {
@@ -1368,8 +1314,10 @@ async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message:
   const nextDate = new Date(baseDate.getTime() + 24 * 60 * 60 * 1000);
   const nextDateStr = dateFormatter.format(nextDate);
   const ingestDates = [dateStr, nextDateStr];
-  const makeProviderDiagnostics = (configured: boolean): IngestProviderDiagnostics => ({
+  const makeProviderDiagnostics = (configured: boolean, hasKey: boolean): IngestProviderDiagnostics => ({
     configured,
+    hasKey,
+    suspended: hasKey && !configured,
     requestedDates: [...ingestDates],
     requestCount: 0,
     successfulRequests: 0,
@@ -1382,18 +1330,19 @@ async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message:
     notes: [],
   });
 
+  const initialManifestLength = readRawDiskManifest().length;
   const diagnostics: IngestDiagnostics = {
     startedAt,
     timezone: 'Africa/Johannesburg',
     requestedDates: ingestDates,
-    sportApiAi: makeProviderDiagnostics(sportApiAiConfigured()),
-    theRundown: makeProviderDiagnostics(theRundownConfigured()),
-    pitchApi: makeProviderDiagnostics(pitchApiConfigured()),
-    sportDb: makeProviderDiagnostics(sportDbConfigured()),
-    apiFootball: makeProviderDiagnostics(apiFootballConfigured()),
-    sportmonks: makeProviderDiagnostics(sportmonksConfigured()),
-    manifestBefore: readRawDiskManifest().length,
-    manifestAfter: readRawDiskManifest().length,
+    sportApiAi: makeProviderDiagnostics(sportApiAiConfigured(), hasSportApiAiKey()),
+    theRundown: makeProviderDiagnostics(theRundownConfigured(), theRundownConfigured()),
+    pitchApi: makeProviderDiagnostics(pitchApiConfigured(), pitchApiConfigured()),
+    sportDb: makeProviderDiagnostics(sportDbConfigured(), sportDbConfigured()),
+    apiFootball: makeProviderDiagnostics(apiFootballConfigured(), hasApiFootballKey()),
+    sportmonks: makeProviderDiagnostics(sportmonksConfigured(), hasSportmonksKey()),
+    manifestBefore: initialManifestLength,
+    manifestAfter: initialManifestLength,
     added: 0,
     sourceUsed: null,
   };
@@ -1404,17 +1353,30 @@ async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message:
   };
 
   let mapped: any[] = [];
-  let sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | 'API_FOOTBALL' | 'SPORTMONKS' | null = null;
+  let primarySource: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | null = null;
+  let seededFromPersistedCount = 0;
+  let apiFootballMappedFixtures = 0;
+  let sportmonksMappedFixtures = 0;
+  let enrichedTeamsCount = 0;
+  let footballDataEnrichedCount = 0;
+  let liveScoreboardCount = 0;
+  let sourceUsed: IngestSource | null = null;
 
   if (diagnostics.sportApiAi.configured) {
     for (const candidateDate of ingestDates) {
       if (!sportApiAiConfigured()) {
+        diagnostics.sportApiAi.suspended = true;
         diagnostics.sportApiAi.notes.push('SportAPI.ai is rate-limited; skipping further dates.');
         break;
       }
       diagnostics.sportApiAi.requestCount++;
       try {
         const rawFixtures = await fetchSportApiAiFixturesByDate(candidateDate);
+        if (isSportApiAiRateLimited()) {
+          diagnostics.sportApiAi.suspended = true;
+          diagnostics.sportApiAi.notes.push(`SportAPI.ai hit daily rate limit on ${candidateDate}.`);
+          break;
+        }
         diagnostics.sportApiAi.successfulRequests++;
         diagnostics.sportApiAi.rawRecords += rawFixtures.length;
 
@@ -1428,7 +1390,7 @@ async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message:
 
         if (mappedForDate.length > 0) {
           mapped.push(...mappedForDate);
-          sourceUsed = 'SPORTAPI_AI';
+          primarySource = 'SPORTAPI_AI';
         } else if (rawFixtures.length > 0) {
           diagnostics.sportApiAi.notes.push(
             `Returned ${rawFixtures.length} record(s) for ${candidateDate}, but none mapped to the internal fixture schema.`
@@ -1470,7 +1432,7 @@ async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message:
 
         if (mappedForDate.length > 0) {
           mapped.push(...mappedForDate);
-          sourceUsed = 'THERUNDOWN';
+          primarySource = 'THERUNDOWN';
         } else {
           diagnostics.theRundown.notes.push(
             `Request succeeded for ${candidateDate}, but ${rundownEvents.length} event(s) were returned by the provider client and none mapped.`
@@ -1509,7 +1471,7 @@ async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message:
         diagnostics.pitchApi.mappedRecords += mappedForDate.length;
         if (mappedForDate.length > 0) {
           mapped.push(...mappedForDate);
-          sourceUsed = 'PITCHAPI';
+          primarySource = 'PITCHAPI';
         } else {
           diagnostics.pitchApi.notes.push('Request succeeded for ' + candidateDate + ', but ' + pitchMatches.length + ' match(es) returned and none mapped.');
         }
@@ -1542,7 +1504,7 @@ async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message:
         diagnostics.sportDb.mappedRecords += mappedForDate.length;
         if (mappedForDate.length > 0) {
           mapped.push(...mappedForDate);
-          sourceUsed = 'SPORTDB';
+          primarySource = 'SPORTDB';
         } else {
           diagnostics.sportDb.notes.push('Request succeeded for ' + candidateDate + ', but ' + sportDbMatches.length + ' match(es) returned and none mapped.');
         }
@@ -1559,11 +1521,14 @@ async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message:
 
   if (mapped.length === 0) {
     try {
-      const diskFixtures = readDiskManifest();
+      const diskFixtures = readRawDiskManifest();
       const dateSet = new Set(ingestDates);
-      const candidates = diskFixtures.filter((f: any) => dateSet.has((f.kickoffTime || '').slice(0, 10)));
+      const candidates = diskFixtures.filter(
+        (f: any) => f && f.id && f.homeTeam && f.awayTeam && dateSet.has((f.kickoffTime || '').slice(0, 10))
+      );
       if (candidates.length > 0) {
         mapped = candidates;
+        seededFromPersistedCount = candidates.length;
       }
     } catch {
       // ignore
@@ -1577,9 +1542,12 @@ async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message:
   diagnostics.apiFootball.requestCount = diagnostics.apiFootball.configured ? ingestDates.length : 0;
   diagnostics.sportmonks.requestCount = diagnostics.sportmonks.configured ? ingestDates.length : 0;
   try {
-    const beforeProviderEnrichment = mapped.length;
     const providerResult = await enrichFixturesWithFootballApis(mapped as any, ingestDates);
     mapped = providerResult.fixtures as any[];
+    apiFootballMappedFixtures = providerResult.apiFootballMappedFixtures;
+    sportmonksMappedFixtures = providerResult.sportmonksMappedFixtures;
+    enrichedTeamsCount = providerResult.enrichedTeams;
+
     if (diagnostics.apiFootball.configured) {
       diagnostics.apiFootball.requestCount =
         providerResult.apiFootballSuccessfulRequests + providerResult.apiFootballFailedRequests;
@@ -1587,31 +1555,53 @@ async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message:
       diagnostics.apiFootball.mappedRecords = providerResult.apiFootballMappedFixtures;
       diagnostics.apiFootball.successfulRequests = providerResult.apiFootballSuccessfulRequests;
       diagnostics.apiFootball.failedRequests = providerResult.apiFootballFailedRequests;
+      diagnostics.apiFootball.rejectedRecords = Math.max(
+        0,
+        providerResult.apiFootballFixtures - providerResult.apiFootballMappedFixtures
+      );
+      if (isApiFootballRateLimited()) diagnostics.apiFootball.suspended = true;
       if (providerResult.apiFootballFixtures === 0) diagnostics.apiFootball.notes.push('No API-Football fixtures returned for requested dates.');
       diagnostics.apiFootball.notes.push(`Schedule/H2H/standings enrichment updated ${providerResult.enrichedTeams} fixture(s).`);
     } else if (hasApiFootballKey()) {
-      diagnostics.apiFootball.notes.push('API-Football is temporarily suspended due to daily rate limits.');
+      diagnostics.apiFootball.suspended = true;
+      diagnostics.apiFootball.notes.push('API-Football is temporarily suspended due to daily rate limits or authentication pause.');
     }
     if (diagnostics.sportmonks.configured) {
+      diagnostics.sportmonks.requestCount =
+        providerResult.sportmonksSuccessfulRequests + providerResult.sportmonksFailedRequests;
       diagnostics.sportmonks.rawRecords = providerResult.sportmonksFixtures;
       diagnostics.sportmonks.mappedRecords = providerResult.sportmonksMappedFixtures;
       diagnostics.sportmonks.successfulRequests = providerResult.sportmonksSuccessfulRequests;
       diagnostics.sportmonks.failedRequests = providerResult.sportmonksFailedRequests;
+      diagnostics.sportmonks.rejectedRecords = Math.max(
+        0,
+        providerResult.sportmonksFixtures - providerResult.sportmonksMappedFixtures
+      );
+      if (isSportmonksRateLimited()) diagnostics.sportmonks.suspended = true;
       if (providerResult.sportmonksFixtures === 0) diagnostics.sportmonks.notes.push('No Sportmonks fixtures returned for requested dates.');
     } else if (hasSportmonksKey()) {
-      diagnostics.sportmonks.notes.push('Sportmonks is temporarily suspended due to daily rate limits.');
+      diagnostics.sportmonks.suspended = true;
+      diagnostics.sportmonks.notes.push('Sportmonks is temporarily suspended due to daily rate limits or authentication pause.');
     }
-    diagnostics.apiFootball.notes.push(...providerResult.errors.filter((e) => e.startsWith('API-Football')));
-    diagnostics.sportmonks.notes.push(...providerResult.errors.filter((e) => e.startsWith('Sportmonks')));
-    if (beforeProviderEnrichment === 0 && providerResult.apiFootballFixtures > 0) sourceUsed = 'API_FOOTBALL';
-    if (beforeProviderEnrichment === 0 && providerResult.apiFootballFixtures === 0 && providerResult.sportmonksFixtures > 0) sourceUsed = 'SPORTMONKS';
+    const apiFootballErrors = providerResult.errors.filter((e) => e.startsWith('API-Football'));
+    const sportmonksErrors = providerResult.errors.filter((e) => e.startsWith('Sportmonks'));
+    diagnostics.apiFootball.httpErrors.push(...apiFootballErrors);
+    diagnostics.sportmonks.httpErrors.push(...sportmonksErrors);
+    diagnostics.apiFootball.notes.push(...apiFootballErrors);
+    diagnostics.sportmonks.notes.push(...sportmonksErrors);
   } catch (err) {
-    diagnostics.apiFootball.failedRequests++;
-    diagnostics.sportmonks.failedRequests++;
     const message = err instanceof Error ? err.message : String(err);
-    diagnostics.apiFootball.httpErrors.push(message);
-    diagnostics.sportmonks.httpErrors.push(message);
+    if (diagnostics.apiFootball.configured) {
+      diagnostics.apiFootball.failedRequests++;
+      diagnostics.apiFootball.httpErrors.push(message);
+    }
+    if (diagnostics.sportmonks.configured) {
+      diagnostics.sportmonks.failedRequests++;
+      diagnostics.sportmonks.httpErrors.push(message);
+    }
   }
+
+  const afterProviderEnrichmentCount = mapped.length;
 
   // Secondary Football-Data.org fallback: fill only fields still missing after
   // SportAPI.ai + Sportmonks enrichment. It must never overwrite primary evidence.
@@ -1619,6 +1609,7 @@ async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message:
     try {
       const enrichment = await enrichFixturesWithFootballData(mapped);
       mapped = enrichment.fixtures;
+      footballDataEnrichedCount = enrichment.enrichedCount;
       diagnostics.sportApiAi.notes.push(
         'Football-Data fallback enrichment: ' + enrichment.enrichedCount + ' fixture(s) updated; ' + enrichment.errors.length + ' competition error(s).'
       );
@@ -1632,19 +1623,16 @@ async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message:
     diagnostics.sportApiAi.notes.push('Football-Data fallback unavailable: FOOTBALL_DATA_KEY is not configured.');
   }
 
-  diagnostics.sourceUsed = sourceUsed;
-  diagnostics.completedAt = new Date().toISOString();
-
   if (mapped.length === 0) {
-    // Check if live scoreboard (ESPN) provides fixtures for the requested dates
+    // Check if live scoreboard (ESPN) provides fixtures for the requested dates (read-only)
     try {
-      const liveData = await getLiveScoreboardFixtures();
+      const liveData = await getLiveScoreboardFixtures(false, { persistToDisk: false });
       if (liveData?.fixtures?.length > 0) {
         const dateSet = new Set(ingestDates);
         const liveForDates = liveData.fixtures.filter((f: any) => dateSet.has((f.kickoffTime || '').slice(0, 10)));
         if (liveForDates.length > 0) {
           mapped = liveForDates;
-          sourceUsed = 'LIVE_SCOREBOARD' as any;
+          liveScoreboardCount = liveForDates.length;
         }
       }
     } catch {
@@ -1652,88 +1640,62 @@ async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message:
     }
   }
 
+  const resolvedSource = resolveFinalIngestSource({
+    primarySource,
+    seededFromPersistedCount,
+    afterProviderEnrichmentCount,
+    apiFootballMappedFixtures,
+    sportmonksMappedFixtures,
+    enrichedTeamsCount,
+    footballDataEnrichedCount,
+    liveScoreboardCount,
+  });
+  sourceUsed = mapped.length > 0 ? resolvedSource.sourceUsed : null;
+  diagnostics.sourceUsed = sourceUsed;
+  diagnostics.completedAt = new Date().toISOString();
+
   if (mapped.length === 0) {
-    const anyConfigured = diagnostics.sportApiAi.configured || diagnostics.theRundown.configured || diagnostics.pitchApi.configured || diagnostics.sportDb.configured || diagnostics.apiFootball.configured || diagnostics.sportmonks.configured;
-    const msg = anyConfigured
-      ? `No automated fixtures ingested for ${ingestDates.join(' or ')} from configured providers.`
-      : `No external football API keys configured; serving existing fixtures and live scoreboards.`;
+    const emptyOutcome = classifyEmptyIngestOutcome(diagnostics);
+    diagnostics.sourceUsed = null;
     updateIngestCronStatus({
       lastRunAt: new Date().toISOString(),
-      lastSuccess: true,
-      lastMessage: msg,
+      lastSuccess: emptyOutcome.success,
+      lastMessage: emptyOutcome.message,
       fixturesIngested: 0,
       sourceUsed: null,
+      outcomeKind: emptyOutcome.kind,
       diagnostics,
     }, CRON_STATUS_PATH);
-    console.log(`[cron:ingest] ${msg}`);
-    return { success: true, message: msg, count: 0, diagnostics };
+    if (emptyOutcome.success) {
+      console.log(`[cron:ingest] ${emptyOutcome.message}`);
+    } else {
+      console.warn(`[cron:ingest] ${emptyOutcome.message}`);
+    }
+    return {
+      success: emptyOutcome.success,
+      outcomeKind: emptyOutcome.kind,
+      message: emptyOutcome.message,
+      count: 0,
+      diagnostics,
+    };
   }
 
   try {
-    const diskFixtures = readDiskManifest();
-    diagnostics.manifestBefore = diskFixtures.length;
-    const normalizeKey = (f: any) => {
-      const home = normalizeTeamName(f.homeTeam?.name);
-      const away = normalizeTeamName(f.awayTeam?.name);
-      const date = (f.kickoffTime || '').slice(0, 10);
-      return `${home}_vs_${away}_${date}`;
-    };
-
-    const mergedMap = new Map<string, any>();
-    const idToKeyMap = new Map<string, string>();
-    for (const df of diskFixtures) {
-      const key = normalizeKey(df);
-      mergedMap.set(key, df);
-      if (df.id) idToKeyMap.set(df.id, key);
-    }
-
-    let newCount = 0;
-    for (const mf of mapped) {
-      const key = normalizeKey(mf);
-      const oldKey = mf.id && idToKeyMap.has(mf.id)
-        ? idToKeyMap.get(mf.id)!
-        : undefined;
-      const previous = oldKey && oldKey !== key ? mergedMap.get(oldKey) : undefined;
-      const existing = mergedMap.get(key);
-
-      // Preserve a protected fixture at the destination.
-      if (existing && (existing.isBookmakerProtected || (existing.id && existing.id.startsWith('hollywoodbets_')))) {
-        if (!existing.sportApiAiFixtureId && mf.sportApiAiFixtureId) existing.sportApiAiFixtureId = mf.sportApiAiFixtureId;
-        if (!existing.theRundownEventId && mf.theRundownEventId) existing.theRundownEventId = mf.theRundownEventId;
-        continue;
-      }
-
-      // Never let a weaker response remove or replace verified evidence.
-      if (previous && (previous.isBookmakerProtected || (previous.id && previous.id.startsWith('hollywoodbets_')))) {
-        if (!previous.sportApiAiFixtureId && mf.sportApiAiFixtureId) previous.sportApiAiFixtureId = mf.sportApiAiFixtureId;
-        if (!previous.theRundownEventId && mf.theRundownEventId) previous.theRundownEventId = mf.theRundownEventId;
-        continue;
-      }
-      if (previous && fixtureHasEvidence(previous) && !fixtureHasEvidence(mf)) {
-        continue;
-      }
-      if (existing && fixtureHasEvidence(existing) && !fixtureHasEvidence(mf)) {
-        continue;
-      }
-
-      // Only remove the old date entry after all preservation checks pass.
-      if (oldKey && oldKey !== key) {
-        mergedMap.delete(oldKey);
-      }
-
-      if (!existing) newCount++;
-      mergedMap.set(key, mf);
-      if (mf.id) idToKeyMap.set(mf.id, key);
-    }
-    const { fixtures: combined } = verifyAndSanitizeFixtures(Array.from(mergedMap.values()));
+    // Merge into the FULL raw disk manifest so historical fixtures (>48h old, up to 30d)
+    // awaiting settlement are never pruned by daily ingestion.
+    const rawDiskFixtures = readRawDiskManifest();
+    diagnostics.manifestBefore = rawDiskFixtures.length;
+    const { merged, addedCount: newCount } = mergeIncomingFixturesIntoManifest(rawDiskFixtures, mapped);
+    const { fixtures: combined } = verifyAndSanitizeFixtures(merged);
     writeDiskManifest(combined);
     fixturesCache = null;
 
     diagnostics.added = newCount;
     diagnostics.manifestAfter = combined.length;
+    diagnostics.sourceUsed = sourceUsed;
     diagnostics.completedAt = new Date().toISOString();
 
-    const sourceLabel = sourceUsed === 'SPORTAPI_AI' ? 'SportAPI.ai' : sourceUsed === 'THERUNDOWN' ? 'TheRundown.io' : sourceUsed === 'PITCHAPI' ? 'PitchAPI' : sourceUsed === 'SPORTDB' ? 'SportDB' : sourceUsed === 'API_FOOTBALL' ? 'API-Football' : 'Sportmonks';
+    const sourceLabel = resolvedSource.sourceDisplayLabel;
     const msg = `Ingested ${mapped.length} fixtures from ${sourceLabel} for ${dateStr} (${newCount} new). Raw records: SportAPI.ai ${diagnostics.sportApiAi.rawRecords}; TheRundown ${diagnostics.theRundown.rawRecords}; PitchAPI ${diagnostics.pitchApi.rawRecords}; SportDB ${diagnostics.sportDb.rawRecords}; API-Football ${diagnostics.apiFootball.rawRecords}; Sportmonks ${diagnostics.sportmonks.rawRecords}. Mapped: SportAPI.ai ${diagnostics.sportApiAi.mappedRecords}; TheRundown ${diagnostics.theRundown.mappedRecords}; PitchAPI ${diagnostics.pitchApi.mappedRecords}; SportDB ${diagnostics.sportDb.mappedRecords}; API-Football ${diagnostics.apiFootball.mappedRecords}; Sportmonks ${diagnostics.sportmonks.mappedRecords}.`;
 
     const withEvidenceCount = combined.filter((f: any) => fixtureHasEvidence(f)).length;
@@ -1748,23 +1710,27 @@ async function runDailyIngestJobUnlocked(): Promise<{ success: boolean; message:
       lastMessage: msg,
       fixturesIngested: mapped.length,
       sourceUsed,
+      outcomeKind: 'ingested',
       diagnostics,
     }, CRON_STATUS_PATH);
     console.log(`[cron:ingest] ${msg}`);
-    return { success: true, message: msg, count: mapped.length, diagnostics };
+    return { success: true, outcomeKind: 'ingested', message: msg, count: mapped.length, diagnostics };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown ingestion error';
+    sourceUsed = null;
+    diagnostics.sourceUsed = null;
     diagnostics.completedAt = new Date().toISOString();
     updateIngestCronStatus({
       lastRunAt: new Date().toISOString(),
       lastSuccess: false,
       lastMessage: msg,
       fixturesIngested: 0,
-      sourceUsed,
+      sourceUsed: null,
+      outcomeKind: 'provider_failure',
       diagnostics,
     }, CRON_STATUS_PATH);
     console.error(`[cron:ingest] FAILED: ${msg}`, JSON.stringify(diagnostics));
-    return { success: false, message: msg, count: 0, diagnostics };
+    return { success: false, outcomeKind: 'provider_failure', message: msg, count: 0, diagnostics };
   }
 }
 /**
@@ -1797,15 +1763,21 @@ function runDailyIngestJob() {
 async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: string; count: number }> {
   try {
     const now = Date.now();
-    const manifest = readRawDiskManifest();
+    ensureDataDirectory();
     const existingLog = readResultsLog();
     const settledIds = new Set(existingLog.map((e) => e.id));
+    const settlementLookbackDays = Math.max(7, Number(process.env.SETTLEMENT_LOOKBACK_DAYS || 30));
 
-    // Candidates: kickoff already passed, not already settled.
-    const pastFixtures = manifest.filter((f: any) => {
-      if (!f.kickoffTime) return false;
-      if (settledIds.has(f.id)) return false;
-      return new Date(f.kickoffTime).getTime() < now;
+    const {
+      pastFixtures,
+      dateGroups,
+      allowedDates,
+    } = selectSettlementCandidatesFromManifest({
+      manifestPath: MANIFEST_PATH,
+      fallbackSrcPath: SRC_FIXTURES_PATH,
+      settledIds,
+      nowMs: now,
+      lookbackDays: settlementLookbackDays,
     });
 
     if (pastFixtures.length === 0) {
@@ -1819,32 +1791,14 @@ async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: 
       }, CRON_STATUS_PATH);
       return { success: true, message: msg, count: 0 };
     }
-
-    const settlementLookbackDays = Math.max(7, Number(process.env.SETTLEMENT_LOOKBACK_DAYS || 30));
-    const cutoffMs = now - settlementLookbackDays * 24 * 60 * 60 * 1000;
-    const eligiblePastFixtures = pastFixtures.filter((f: any) => {
-      const kickoffMs = new Date(f.kickoffTime).getTime();
-      return Number.isFinite(kickoffMs) && kickoffMs >= cutoffMs;
-    });
-
-    // Group eligible past fixtures by kickoff date.
-    const dateGroups = new Map<string, any[]>();
-    for (const f of eligiblePastFixtures) {
-      const d = (f.kickoffTime || '').slice(0, 10);
-      if (!d) continue;
-      if (!dateGroups.has(d)) dateGroups.set(d, []);
-      dateGroups.get(d)!.push(f);
-    }
-
-    const allowedDates = new Set(
-      Array.from({ length: settlementLookbackDays + 1 }, (_, i) =>
-        new Date(now - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-      )
-    );
     let settledCount = 0;
     const newEntries: SettledResultEntry[] = [];
-  let providerFailureCount = 0;
-  let providerQueryCount = 0;
+    let providerFailureCount = 0;
+    let providerRateLimitCount = 0;
+    let successfulProviderQueries = 0;
+    let providerQueryCount = 0;
+    const footballDataMatchesByCode = new Map<string, Awaited<ReturnType<typeof fetchFinishedMatches>>>();
+    const footballDataAttemptedCodes = new Set<string>();
 
     for (const [dateStr, fixturesForDate] of dateGroups.entries()) {
       if (!allowedDates.has(dateStr)) continue;
@@ -1854,27 +1808,50 @@ async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: 
         try {
           providerQueryCount++;
           const apiFixtures = await fetchSportApiAiFixturesByDate(dateStr);
-          if (isSportApiAiRateLimited()) providerFailureCount++;
+          if (isSportApiAiRateLimited()) {
+            providerRateLimitCount++;
+          } else {
+            successfulProviderQueries++;
+          }
           const byIdMap = new Map<string, any>();
           const byNameMap = new Map<string, any[]>();
+          const extractSportApiTeams = (af: any) => ({
+            home: af?.home_team?.name || af?.homeTeam?.name || af?.home_team || af?.homeTeam,
+            away: af?.away_team?.name || af?.awayTeam?.name || af?.away_team || af?.awayTeam,
+          });
 
           for (const af of apiFixtures) {
             if (af.id) byIdMap.set(String(af.id), af);
-            const home = af.home_team?.name || af.homeTeam?.name || '';
-            const away = af.away_team?.name || af.awayTeam?.name || '';
+            const { home, away } = extractSportApiTeams(af);
             if (home && away) {
-              const key = `${normalizeTeamName(home)}_vs_${normalizeTeamName(away)}`;
+              const key = `${normalizeTeamName(String(home))}_vs_${normalizeTeamName(String(away))}`;
               byNameMap.set(key, [...(byNameMap.get(key) || []), af]);
             }
           }
 
           for (const f of fixturesForDate) {
-            let match = f.sportApiAiFixtureId ? byIdMap.get(String(f.sportApiAiFixtureId)) : undefined;
-            if (!match && f.sportApiAiFixtureId && sportApiAiConfigured()) {
+            const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
+            let idCandidate = f.sportApiAiFixtureId ? byIdMap.get(String(f.sportApiAiFixtureId)) : undefined;
+            if (
+              idCandidate &&
+              !isSportApiAiFixtureIdentityMatch(
+                idCandidate,
+                f.sportApiAiFixtureId,
+                f.homeTeam?.name,
+                f.awayTeam?.name,
+              )
+            ) {
+              idCandidate = undefined;
+            }
+            if (!idCandidate && f.sportApiAiFixtureId && sportApiAiConfigured()) {
               try {
                 providerQueryCount++;
                 const detail = await fetchSportApiAiFixtureById(f.sportApiAiFixtureId);
-                if (isSportApiAiRateLimited()) providerFailureCount++;
+                if (isSportApiAiRateLimited()) {
+                  providerRateLimitCount++;
+                } else {
+                  successfulProviderQueries++;
+                }
                 if (
                   isSportApiAiFixtureIdentityMatch(
                     detail,
@@ -1883,17 +1860,19 @@ async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: 
                     f.awayTeam?.name,
                   )
                 ) {
-                  match = detail;
+                  idCandidate = detail;
                 }
               } catch (err) {
                 providerFailureCount++;
                 console.warn(`[cron:settlement] SportAPI.ai fixture lookup failed for ${f.id}:`, err);
               }
             }
-            if (!match) {
-              const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
-              match = findSafeSettlementNameMatch(byNameMap.get(key), f);
-            }
+            const match = resolveVerifiedSettlementMatch({
+              idMatch: idCandidate,
+              nameCandidates: byNameMap.get(key),
+              fixture: f,
+              extractTeams: extractSportApiTeams,
+            });
 
             if (!match || !isSportApiAiFixtureFinished(match)) continue;
             const scoreInfo = getSportApiAiScores(match);
@@ -1927,27 +1906,34 @@ async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: 
         try {
           providerQueryCount++;
           const rundownEvents = await fetchAllTheRundownSoccerEvents(dateStr);
+          successfulProviderQueries++;
           const byIdMap = new Map<string, any>();
           const byNameMap = new Map<string, any[]>();
+          const extractRundownTeams = (ev: any) => {
+            const teams = ev?.teams_normalized || ev?.teams || [];
+            const home = teams.find((t: any) => t?.is_home) || teams[0];
+            const away = teams.find((t: any) => t?.is_away) || teams[1];
+            return { home: home?.name, away: away?.name };
+          };
 
           for (const ev of rundownEvents) {
             if (ev.event_id) byIdMap.set(String(ev.event_id), ev);
-            const teams = ev.teams_normalized || ev.teams || [];
-            const home = teams.find((t: any) => t.is_home) || teams[0];
-            const away = teams.find((t: any) => t.is_away) || teams[1];
-            if (home?.name && away?.name) {
-              const key = `${normalizeTeamName(home.name)}_vs_${normalizeTeamName(away.name)}`;
+            const { home, away } = extractRundownTeams(ev);
+            if (home && away) {
+              const key = `${normalizeTeamName(home)}_vs_${normalizeTeamName(away)}`;
               byNameMap.set(key, [...(byNameMap.get(key) || []), ev]);
             }
           }
 
           for (const f of fixturesForDate) {
             if (newEntries.some((e) => e.id === f.id)) continue;
-            let match = f.theRundownEventId ? byIdMap.get(String(f.theRundownEventId)) : undefined;
-            if (!match) {
-              const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
-              match = findSafeSettlementNameMatch(byNameMap.get(key), f);
-            }
+            const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
+            const match = resolveVerifiedSettlementMatch({
+              idMatch: f.theRundownEventId ? byIdMap.get(String(f.theRundownEventId)) : undefined,
+              nameCandidates: byNameMap.get(key),
+              fixture: f,
+              extractTeams: extractRundownTeams,
+            });
 
             if (!match || !isTheRundownEventFinished(match)) continue;
             const scoreInfo = getTheRundownScores(match);
@@ -1977,23 +1963,34 @@ async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: 
         try {
           providerQueryCount++;
           const smFixtures = await fetchSportmonksFixturesByDate(dateStr);
+          successfulProviderQueries++;
           const byIdMap = new Map<string, any>();
-          const byNameMap = new Map<string, any>();
-          for (const smf of smFixtures) {
-            if (smf.id) byIdMap.set(String(smf.id), smf);
-            const participants = Array.isArray(smf.participants?.data ?? smf.participants) ? (smf.participants?.data ?? smf.participants) : [];
+          const byNameMap = new Map<string, any[]>();
+          const extractSportmonksTeams = (smf: any) => {
+            const participants = Array.isArray(smf?.participants?.data ?? smf?.participants)
+              ? (smf.participants?.data ?? smf.participants)
+              : [];
             const homeP = participants.find((p: any) => String(p?.meta?.location || p?.pivot?.location || '').toLowerCase() === 'home');
             const awayP = participants.find((p: any) => String(p?.meta?.location || p?.pivot?.location || '').toLowerCase() === 'away');
-            if (homeP?.name && awayP?.name) {
-              byNameMap.set(`${normalizeTeamName(homeP.name)}_vs_${normalizeTeamName(awayP.name)}`, smf);
+            return { home: homeP?.name, away: awayP?.name };
+          };
+
+          for (const smf of smFixtures) {
+            if (smf.id) byIdMap.set(String(smf.id), smf);
+            const { home, away } = extractSportmonksTeams(smf);
+            if (home && away) {
+              const key = `${normalizeTeamName(home)}_vs_${normalizeTeamName(away)}`;
+              byNameMap.set(key, [...(byNameMap.get(key) || []), smf]);
             }
           }
           for (const f of unsettledForSportmonks) {
-            let match = f.sportmonksFixtureId ? byIdMap.get(String(f.sportmonksFixtureId)) : undefined;
-            if (!match) {
-              const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
-              match = byNameMap.get(key);
-            }
+            const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
+            const match = resolveVerifiedSettlementMatch({
+              idMatch: f.sportmonksFixtureId ? byIdMap.get(String(f.sportmonksFixtureId)) : undefined,
+              nameCandidates: byNameMap.get(key),
+              fixture: f,
+              extractTeams: extractSportmonksTeams,
+            });
             if (!match) continue;
             const statusStr = String(match.state?.short_name || match.state?.name || match.status || '').toUpperCase();
             if (!['FT', 'AET', 'PEN', 'FINISHED', 'ENDED', 'FINAL'].includes(statusStr)) continue;
@@ -2044,14 +2041,21 @@ async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: 
         try {
           providerQueryCount++;
           const afFixtures = await fetchApiFootballFixturesByDate(dateStr);
-          if (isApiFootballRateLimited()) providerFailureCount++;
+          if (isApiFootballRateLimited()) {
+            providerRateLimitCount++;
+          } else {
+            successfulProviderQueries++;
+          }
           const byIdMap = new Map<string, any>();
           const byNameMap = new Map<string, any[]>();
+          const extractApiFootballTeams = (aff: any) => ({
+            home: aff?.teams?.home?.name || aff?.home_team?.name,
+            away: aff?.teams?.away?.name || aff?.away_team?.name,
+          });
           for (const aff of afFixtures) {
             const fixId = aff?.fixture?.id;
             if (fixId) byIdMap.set(String(fixId), aff);
-            const homeName = aff?.teams?.home?.name || '';
-            const awayName = aff?.teams?.away?.name || '';
+            const { home: homeName, away: awayName } = extractApiFootballTeams(aff);
             if (homeName && awayName) {
               const key = `${normalizeTeamName(homeName)}_vs_${normalizeTeamName(awayName)}`;
               byNameMap.set(key, [...(byNameMap.get(key) || []), {
@@ -2066,11 +2070,13 @@ async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: 
           for (const f of unsettledForApiFootball) {
             if (newEntries.some((e) => e.id === f.id)) continue;
             const afId = f.apiFootballFixtureId || (typeof f.id === 'string' && f.id.startsWith('api_football_') ? f.id.replace('api_football_', '') : null);
-            let match = afId ? byIdMap.get(String(afId)) : undefined;
-            if (!match) {
-              const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
-              match = findSafeSettlementNameMatch(byNameMap.get(key), f);
-            }
+            const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
+            const match = resolveVerifiedSettlementMatch({
+              idMatch: afId ? byIdMap.get(String(afId)) : undefined,
+              nameCandidates: byNameMap.get(key),
+              fixture: f,
+              extractTeams: extractApiFootballTeams,
+            });
             if (!match || !isApiFootballFixtureFinished(match)) continue;
             const scoreInfo = getApiFootballScores(match);
             if (!scoreInfo.outcome || scoreInfo.home === null || scoreInfo.away === null) continue;
@@ -2094,9 +2100,9 @@ async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: 
         }
       }
 
-      // 4. Try Football-Data.org settlement for remaining unsettled
+      // 4. Try Football-Data.org settlement for remaining unsettled (deduplicated across dates)
       const unsettledForFootballData = fixturesForDate.filter((f) => !newEntries.some((e) => e.id === f.id));
-      if (unsettledForFootballData.length > 0 && footballDataConfigured() && !isFootballDataRateLimited()) {
+      if (unsettledForFootballData.length > 0 && footballDataConfigured()) {
         const codesNeeded = new Set<string>();
         for (const f of unsettledForFootballData) {
           const code = resolveCompetitionCode(f.league || '');
@@ -2105,49 +2111,63 @@ async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: 
         const codesList = Array.from(codesNeeded);
         for (let i = 0; i < codesList.length; i++) {
           const code = codesList[i];
-          if (isFootballDataRateLimited()) {
-            console.log(`[cron:settlement] Football-Data cooldown active; pausing remaining ${codesList.length - i} leagues in settlement batch.`);
-            break;
-          }
-          try {
-            if (i > 0) await delay(requestSpacingMs());
-            providerQueryCount++;
-            const finishedMatches = await fetchFinishedMatches(code);
-            for (const f of unsettledForFootballData) {
-              if (newEntries.some((e) => e.id === f.id)) continue;
-              if (resolveCompetitionCode(f.league || '') !== code) continue;
-              const hNorm = normalizeTeamName(f.homeTeam?.name);
-              const aNorm = normalizeTeamName(f.awayTeam?.name);
-              const match = finishedMatches.find((m) => {
-                const mDate = (m.utcDate || '').slice(0, 10);
-                if (mDate !== dateStr) return false;
-                const mH = normalizeTeamName(m.homeTeam?.name || m.homeTeam?.shortName);
-                const mA = normalizeTeamName(m.awayTeam?.name || m.awayTeam?.shortName);
-                return mH === hNorm && mA === aNorm;
-              });
-              if (!match || !isValidFootballScore(match.score?.fullTime?.home) || !isValidFootballScore(match.score?.fullTime?.away)) continue;
-              const homeScore = match.score.fullTime.home;
-              const awayScore = match.score.fullTime.away;
-              const outcome = homeScore > awayScore ? 'home' : awayScore > homeScore ? 'away' : 'draw';
-              newEntries.push({
-                id: f.id,
-                fixture: f,
-                homeScore,
-                awayScore,
-                actualOutcome: outcome,
-                date: dateStr,
-                notes: 'Settled via Football-Data.org',
-                settledAt: new Date().toISOString(),
-              });
-              settledCount++;
-            }
-          } catch (err) {
-            providerFailureCount++;
-            if (err instanceof FootballDataRateLimitError) {
-              console.log(`[cron:settlement] Football-Data rate limit reached on ${code}; pausing remaining ${codesList.length - i} leagues in settlement batch.`);
+          let finishedMatches = footballDataMatchesByCode.get(code);
+          if (!finishedMatches && !footballDataAttemptedCodes.has(code)) {
+            if (isFootballDataRateLimited()) {
+              console.info(`[cron:settlement] Football-Data cooldown active; pausing remaining ${codesList.length - i} leagues in settlement batch.`);
               break;
             }
-            console.warn(`[cron:settlement] Football-Data settlement query for ${code} skipped:`, err instanceof Error ? err.message : err);
+            footballDataAttemptedCodes.add(code);
+            try {
+              providerQueryCount++;
+              finishedMatches = await fetchFinishedMatches(code);
+              footballDataMatchesByCode.set(code, finishedMatches);
+              successfulProviderQueries++;
+            } catch (err) {
+              if (err instanceof FootballDataRateLimitError) {
+                providerRateLimitCount++;
+                console.info(`[cron:settlement] Football-Data rate limit reached on ${code}; pausing remaining ${codesList.length - i} leagues in settlement batch.`);
+                break;
+              }
+              providerFailureCount++;
+              console.warn(`[cron:settlement] Football-Data settlement query for ${code} skipped:`, err instanceof Error ? err.message : err);
+              continue;
+            }
+          }
+          if (!finishedMatches) continue;
+
+          const dateFinishedMatches = finishedMatches.filter(
+            (m: any) => (m?.utcDate || '').slice(0, 10) === dateStr
+          );
+          const extractFootballDataTeams = (m: any) => ({
+            home: [m?.homeTeam?.name, m?.homeTeam?.shortName],
+            away: [m?.awayTeam?.name, m?.awayTeam?.shortName],
+          });
+
+          for (const f of unsettledForFootballData) {
+            if (newEntries.some((e) => e.id === f.id)) continue;
+            if (resolveCompetitionCode(f.league || '') !== code) continue;
+            const match = resolveVerifiedSettlementMatch({
+              nameCandidates: dateFinishedMatches,
+              fixture: f,
+              expectedDate: dateStr,
+              extractTeams: extractFootballDataTeams,
+            });
+            if (!match || !isValidFootballScore(match.score?.fullTime?.home) || !isValidFootballScore(match.score?.fullTime?.away)) continue;
+            const homeScore = match.score.fullTime.home;
+            const awayScore = match.score.fullTime.away;
+            const outcome = homeScore > awayScore ? 'home' : awayScore > homeScore ? 'away' : 'draw';
+            newEntries.push({
+              id: f.id,
+              fixture: f,
+              homeScore,
+              awayScore,
+              actualOutcome: outcome,
+              date: dateStr,
+              notes: 'Settled via Football-Data.org',
+              settledAt: new Date().toISOString(),
+            });
+            settledCount++;
           }
         }
       }
@@ -2158,17 +2178,30 @@ async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: 
         try {
           providerQueryCount++;
           const finishedMatches = await fetchPitchApiFinishedMatchesByDate(dateStr);
+          successfulProviderQueries++;
+          const byIdMap = new Map<string, any>();
+          const byNameMap = new Map<string, any[]>();
+          const extractPitchTeams = (m: any) => ({
+            home: m?.home_team?.name,
+            away: m?.away_team?.name,
+          });
+          for (const m of finishedMatches) {
+            if (m?.id !== undefined && m?.id !== null) byIdMap.set(String(m.id), m);
+            const { home, away } = extractPitchTeams(m);
+            if (home && away) {
+              const key = `${normalizeTeamName(home)}_vs_${normalizeTeamName(away)}`;
+              byNameMap.set(key, [...(byNameMap.get(key) || []), m]);
+            }
+          }
           for (const f of unsettledForPitchApi) {
             if (newEntries.some((e) => e.id === f.id)) continue;
-            const pitchMatchId = f.pitchApiMatchId || (f.id.startsWith('pitchapi_') ? f.id.replace('pitchapi_', '') : null);
-            const match = finishedMatches.find((m: any) => {
-              if (pitchMatchId && String(m.id) === String(pitchMatchId)) return true;
-              if (f.id === 'pitchapi_' + m.id) return true;
-              const hNorm = normalizeTeamName(f.homeTeam?.name);
-              const aNorm = normalizeTeamName(f.awayTeam?.name);
-              const mH = normalizeTeamName(m.home_team?.name);
-              const mA = normalizeTeamName(m.away_team?.name);
-              return Boolean(hNorm && aNorm && hNorm === mH && aNorm === mA);
+            const pitchMatchId = f.pitchApiMatchId || (typeof f.id === 'string' && f.id.startsWith('pitchapi_') ? f.id.replace('pitchapi_', '') : null);
+            const key = `${normalizeTeamName(f.homeTeam?.name)}_vs_${normalizeTeamName(f.awayTeam?.name)}`;
+            const match = resolveVerifiedSettlementMatch({
+              idMatch: pitchMatchId ? byIdMap.get(String(pitchMatchId)) : undefined,
+              nameCandidates: byNameMap.get(key),
+              fixture: f,
+              extractTeams: extractPitchTeams,
             });
 
             if (!match) continue;
@@ -2202,10 +2235,15 @@ async function runSettlementJobUnlocked(): Promise<{ success: boolean; message: 
     }
     reconcilePredictionOutcomes();
 
+    const effectiveFailureCount =
+      successfulProviderQueries === 0
+        ? providerFailureCount + providerRateLimitCount
+        : providerFailureCount;
+
     const runStatus = summarizeSettlementRun(
       settledCount,
       pastFixtures.length,
-      providerFailureCount,
+      effectiveFailureCount,
       providerQueryCount,
     );
     updateSettlementCronStatus({
@@ -2739,7 +2777,7 @@ async function startServer() {
   // PDF upload, URL fetch) goes through the exact same real, working pipeline —
   // rather than each having its own parallel, partially-broken implementation.
   const ingestFixturesIntoManifest = async (incomingFixtures: any[], sourceIsVerifiedBookmaker = false) => {
-    const diskFixtures = readDiskManifest();
+    const rawDiskFixtures = readRawDiskManifest();
 
     // Enrich manual bookmaker fixtures immediately through the same primary
     // provider pipeline used by the daily slate. Persisting first and waiting
@@ -2775,35 +2813,23 @@ async function startServer() {
       }
     }
 
-    const normalizeKey = (f: any) => {
-      const home = (f.homeTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const away = (f.awayTeam?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const date = (f.kickoffTime || '').slice(0, 10);
-      return `${home}_vs_${away}_${date}`;
-    };
-
-    const mergedMap = new Map<string, any>();
-    for (const df of diskFixtures) {
-      if (!df || !df.id || !df.homeTeam || !df.awayTeam) continue;
-      mergedMap.set(normalizeKey(df), df);
-    }
-    for (const hf of enrichedIncoming) {
-      if (!hf || !hf.id || !hf.homeTeam || !hf.awayTeam) continue;
-      const protectedFixture = { ...hf, isBookmakerProtected: sourceIsVerifiedBookmaker };
-      mergedMap.set(normalizeKey(hf), protectedFixture);
-    }
-
-    const minDate = getDynamicCutoffIso();
-    const combined = Array.from(mergedMap.values()).filter(
-      (f: any) => !f.kickoffTime || f.kickoffTime.slice(0, 10) >= minDate
+    const { merged: combinedAll } = mergeIncomingFixturesIntoManifest(
+      rawDiskFixtures,
+      enrichedIncoming,
+      { incomingAreBookmakerProtected: sourceIsVerifiedBookmaker }
     );
-    combined.sort((a, b) => new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime());
 
     // Proactively populate and merge authentic standings from ESPN cache
     const aggregatedStandings = await ensureAllHollywoodbetsStandingsCached();
 
-    const { fixtures: validatedFixtures, auditReport } = verifyAndSanitizeFixtures(combined, aggregatedStandings);
-    writeDiskManifest(validatedFixtures);
+    const { fixtures: validatedAll } = verifyAndSanitizeFixtures(combinedAll, aggregatedStandings);
+    writeDiskManifest(validatedAll);
+
+    const minDate = getDynamicCutoffIso();
+    const activeDisplayFixtures = validatedAll.filter(
+      (f: any) => !f.kickoffTime || f.kickoffTime.slice(0, 10) >= minDate
+    );
+    const { fixtures: validatedFixtures, auditReport } = verifyAndSanitizeFixtures(activeDisplayFixtures, aggregatedStandings);
     fixturesCache = {
       fixtures: validatedFixtures,
       syncedAt: new Date().toISOString(),
@@ -2904,11 +2930,16 @@ async function startServer() {
         return res.status(400).json({ status: 'error', message: 'matchId is required' });
       }
 
-      const current = readDiskManifest();
-      const updated = current.filter((f: any) => f && f.id !== matchId);
+      const currentRaw = readRawDiskManifest();
+      const updatedAll = currentRaw.filter((f: any) => f && f.id !== matchId);
+      const { fixtures: validatedAll } = verifyAndSanitizeFixtures(updatedAll);
+      writeDiskManifest(validatedAll);
 
-      const { fixtures: validated, auditReport } = verifyAndSanitizeFixtures(updated);
-      writeDiskManifest(validated);
+      const minCutoff = getDynamicCutoffIso();
+      const activeUpdated = validatedAll.filter(
+        (f: any) => !f.kickoffTime || f.kickoffTime.slice(0, 10) >= minCutoff
+      );
+      const { fixtures: validated, auditReport } = verifyAndSanitizeFixtures(activeUpdated);
 
       if (fixturesCache) {
         fixturesCache.fixtures = validated;
@@ -2933,7 +2964,7 @@ async function startServer() {
   app.post('/api/fixtures/recalibrate', requireAdmin, async (_req, res) => {
     try {
       standingsMemoryCache.clear();
-      const liveData = await getLiveScoreboardFixtures(true);
+      const liveData = await getLiveScoreboardFixtures(true, { persistToDisk: true });
       return res.json({
         status: 'recalibrated',
         count: liveData.fixtures.length,
@@ -3760,13 +3791,15 @@ Provide a concise, highly analytical tactical synthesis formatted strictly in JS
       try { runPredictionFreezeJob(); } catch (e) { console.error('[cron:prediction-log] unhandled error', e); }
     });
 
-    // Run both once, shortly after boot, so the pipeline doesn't sit idle
-    // until the next scheduled slot (e.g. after a redeploy).
+    // Run ingestion first on startup so shared provider caches warm cleanly without
+    // competing for upstream rate-limit windows, then run settlement independently
+    // against already-persisted fixtures regardless of ingestion outcome.
     setTimeout(() => {
-      runDailyIngestJob().catch((e) => console.error('[cron:ingest] startup run failed', e));
-      if (autoSettlementEnabled) {
-        runSettlementJob().catch((e) => console.error('[cron:settlement] startup run failed', e));
-      }
+      void runStartupPipelinePass({
+        runIngest: runDailyIngestJob,
+        runSettlement: runSettlementJob,
+        autoSettlementEnabled,
+      });
     }, 10_000);
     setTimeout(() => { try { runPredictionFreezeJob(); } catch (e) { console.error('[prediction-log] startup freeze failed', e); } }, 25_000);
   });

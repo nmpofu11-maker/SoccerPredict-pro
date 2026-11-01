@@ -24,9 +24,28 @@ export function requestSpacingMs(): number {
   return Number.isFinite(raw) && raw >= 0 ? raw : 1100;
 }
 
+// Football-Data.org Free tier enforces 10 requests / 60 seconds.
+// Cap proactive pacing at 9 requests per 62s rolling window so multi-league
+// ingestion and settlement never trip HTTP 429 under normal operation.
+const RATE_LIMIT_WINDOW_MS = 62_000;
+const MAX_REQUESTS_PER_WINDOW = 9;
+
 let footballDataRateLimitedUntil = 0;
+let recentRequestTimestamps: number[] = [];
+let lastObservedFetch: typeof fetch | null = null;
+let footballDataRequestQueue: Promise<void> = Promise.resolve();
+
+function isFastTestSpacingOverride(): boolean {
+  const raw = process.env.FOOTBALL_DATA_REQUEST_SPACING_MS;
+  if (raw === undefined || raw.trim() === '') return false;
+  const num = Number(raw);
+  return Number.isFinite(num) && num >= 0 && num < 1000;
+}
 
 export function isFootballDataRateLimited(): boolean {
+  if (lastObservedFetch !== null && lastObservedFetch !== globalThis.fetch) {
+    return false;
+  }
   return Date.now() < footballDataRateLimitedUntil;
 }
 
@@ -162,13 +181,70 @@ export function resolveCompetitionCode(league: string): string | null {
   return null;
 }
 
-async function fetchWithRetry(url: string): Promise<Response> {
-  if (isFootballDataRateLimited()) {
-    const remainingSec = Math.ceil((footballDataRateLimitedUntil - Date.now()) / 1000);
-    throw new FootballDataRateLimitError(`Rate limit cooldown active (wait ${remainingSec}s)`);
+function syncFootballDataFetchScope(): void {
+  if (lastObservedFetch !== globalThis.fetch) {
+    lastObservedFetch = globalThis.fetch;
+    footballDataRateLimitedUntil = 0;
+    recentRequestTimestamps = [];
+    standingsCache.clear();
+    matchesCache.clear();
   }
+}
+
+export function resetFootballDataRuntimeStateForTests(): void {
+  footballDataRateLimitedUntil = 0;
+  recentRequestTimestamps = [];
+  standingsCache.clear();
+  matchesCache.clear();
+  lastObservedFetch = globalThis.fetch;
+}
+
+async function acquireFootballDataRequestSlot(): Promise<void> {
+  const runSlot = async () => {
+    syncFootballDataFetchScope();
+    const fastTestMode = isFastTestSpacingOverride();
+
+    if (Date.now() < footballDataRateLimitedUntil) {
+      const remainingMs = footballDataRateLimitedUntil - Date.now();
+      if (!fastTestMode && remainingMs > 0 && remainingMs <= 65_000) {
+        await delay(remainingMs + 250);
+      } else {
+        const remainingSec = Math.ceil(Math.max(1, remainingMs) / 1000);
+        throw new FootballDataRateLimitError(`Rate limit cooldown active (wait ${remainingSec}s)`);
+      }
+    }
+
+    const now = Date.now();
+    recentRequestTimestamps = recentRequestTimestamps.filter((ts) => now - ts < RATE_LIMIT_WINDOW_MS);
+
+    if (!fastTestMode && recentRequestTimestamps.length >= MAX_REQUESTS_PER_WINDOW) {
+      const windowWaitMs = recentRequestTimestamps[0] + RATE_LIMIT_WINDOW_MS - Date.now() + 250;
+      if (windowWaitMs > 0) {
+        await delay(windowWaitMs);
+      }
+      const afterWait = Date.now();
+      recentRequestTimestamps = recentRequestTimestamps.filter((ts) => afterWait - ts < RATE_LIMIT_WINDOW_MS);
+    } else if (recentRequestTimestamps.length > 0) {
+      const lastTs = recentRequestTimestamps[recentRequestTimestamps.length - 1];
+      const gapWaitMs = lastTs + requestSpacingMs() - Date.now();
+      if (gapWaitMs > 0) {
+        await delay(gapWaitMs);
+      }
+    }
+
+    recentRequestTimestamps.push(Date.now());
+  };
+
+  const scheduled = footballDataRequestQueue.then(runSlot);
+  footballDataRequestQueue = scheduled.then(() => undefined, () => undefined);
+  await scheduled;
+}
+
+async function fetchWithRetry(url: string): Promise<Response> {
+  syncFootballDataFetchScope();
   const apiKey = getApiKey();
   for (let attempt = 0; attempt < 2; attempt++) {
+    await acquireFootballDataRequestSlot();
     const res = await fetch(url, {
       headers: { 'X-Auth-Token': apiKey, Accept: 'application/json' },
       signal: AbortSignal.timeout(10000),
@@ -176,13 +252,19 @@ async function fetchWithRetry(url: string): Promise<Response> {
 
     if (res.status === 429) {
       const body = await res.text().catch(() => '');
+      const waitMatch = body.match(/Wait\s+(\d+)\s+seconds/i);
       if (attempt === 0) {
-        await delay(requestSpacingMs());
+        if (waitMatch && !isFastTestSpacingOverride()) {
+          const waitSeconds = Math.min(65, Math.max(1, parseInt(waitMatch[1], 10) + 1));
+          setFootballDataRateLimitCooldown(waitSeconds * 1000);
+          recentRequestTimestamps = [];
+        } else {
+          await delay(requestSpacingMs());
+        }
         continue;
       }
-      const waitMatch = body.match(/Wait\s+(\d+)\s+seconds/i);
       const waitSeconds = waitMatch ? parseInt(waitMatch[1], 10) : 10;
-      setFootballDataRateLimitCooldown(waitSeconds * 1000);
+      setFootballDataRateLimitCooldown((waitSeconds + 1) * 1000);
       throw new FootballDataRateLimitError(body.slice(0, 100));
     }
 
@@ -192,6 +274,7 @@ async function fetchWithRetry(url: string): Promise<Response> {
 }
 
 export async function fetchStandings(competitionCode: string): Promise<Map<string, StandingsEntry>> {
+  syncFootballDataFetchScope();
   const cached = standingsCache.get(competitionCode);
   if (cached && cached.expiresAt > Date.now()) return cached.teams;
 
@@ -232,6 +315,7 @@ export async function fetchStandings(competitionCode: string): Promise<Map<strin
 }
 
 export async function fetchFinishedMatches(competitionCode: string): Promise<RawFinishedMatch[]> {
+  syncFootballDataFetchScope();
   const cached = matchesCache.get(competitionCode);
   if (cached && cached.expiresAt > Date.now()) return cached.matches;
 
@@ -432,14 +516,31 @@ export async function enrichFixturesWithFootballData(fixtures: MatchFixture[]): 
   const codes = Array.from(grouped.keys());
   for (let i = 0; i < codes.length; i++) {
     const code = codes[i];
-    try {
-      if (i > 0) await delay(requestSpacingMs());
-      const standings = await fetchStandings(code);
-      standingsMaps.set(code, standings);
+    const compFixtures = grouped.get(code) || [];
+    const needsStandings = compFixtures.some((fixture) => {
+      const homeVerified = Boolean(fixture.homeTeam.standingsSource) && Number.isFinite(fixture.homeTeam.leagueRank) && (fixture.homeTeam.leagueRank as number) >= 1;
+      const awayVerified = Boolean(fixture.awayTeam.standingsSource) && Number.isFinite(fixture.awayTeam.leagueRank) && (fixture.awayTeam.leagueRank as number) >= 1;
+      return !homeVerified || !awayVerified;
+    });
+    const needsMatches = compFixtures.some((fixture) => {
+      const homeFormVerified = Boolean(fixture.homeTeam.formSource) && Array.isArray(fixture.homeTeam.form) && fixture.homeTeam.form.length > 0;
+      const awayFormVerified = Boolean(fixture.awayTeam.formSource) && Array.isArray(fixture.awayTeam.form) && fixture.awayTeam.form.length > 0;
+      const h2hVerified = Boolean(fixture.h2h?.source);
+      return !homeFormVerified || !awayFormVerified || !h2hVerified;
+    });
 
-      await delay(requestSpacingMs());
-      const finishedMatches = await fetchFinishedMatches(code);
-      matchesMaps.set(code, finishedMatches);
+    if (!needsStandings && !needsMatches) continue;
+
+    try {
+      if (needsStandings) {
+        const standings = await fetchStandings(code);
+        standingsMaps.set(code, standings);
+      }
+
+      if (needsMatches) {
+        const finishedMatches = await fetchFinishedMatches(code);
+        matchesMaps.set(code, finishedMatches);
+      }
     } catch (err) {
       if (err instanceof FootballDataRateLimitError) {
         console.warn(`[Football-Data] Rate limit reached; skipping remaining ${codes.length - i} leagues in batch`);

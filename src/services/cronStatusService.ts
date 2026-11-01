@@ -1,8 +1,28 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+export type IngestSource =
+  | 'SPORTAPI_AI'
+  | 'THERUNDOWN'
+  | 'PITCHAPI'
+  | 'SPORTDB'
+  | 'API_FOOTBALL'
+  | 'SPORTMONKS'
+  | 'LIVE_SCOREBOARD'
+  | 'PERSISTED_MANIFEST';
+
+export type IngestOutcomeKind =
+  | 'ingested'
+  | 'empty_calendar'
+  | 'unconfigured_offline'
+  | 'provider_failure'
+  | 'all_suspended'
+  | 'mapping_rejected';
+
 export interface IngestProviderDiagnostics {
   configured: boolean;
+  hasKey?: boolean;
+  suspended?: boolean;
   requestedDates: string[];
   requestCount: number;
   successfulRequests: number;
@@ -29,7 +49,7 @@ export interface IngestDiagnostics {
   manifestBefore: number;
   manifestAfter: number;
   added: number;
-  sourceUsed: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | 'API_FOOTBALL' | 'SPORTMONKS' | null;
+  sourceUsed: IngestSource | null;
 }
 
 export interface IngestStatus {
@@ -37,7 +57,8 @@ export interface IngestStatus {
   lastSuccess: boolean | null;
   lastMessage: string;
   fixturesIngested: number;
-  sourceUsed?: 'SPORTAPI_AI' | 'THERUNDOWN' | 'PITCHAPI' | 'SPORTDB' | 'API_FOOTBALL' | 'SPORTMONKS' | null;
+  sourceUsed?: IngestSource | null;
+  outcomeKind?: IngestOutcomeKind;
   diagnostics?: IngestDiagnostics;
 }
 
