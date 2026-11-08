@@ -34,7 +34,7 @@ test('country-qualified SportAPI.ai fixture labels match their exact demonym-bas
   );
 });
 
-test('country-prefix canonicalization does not accept another country's or a generic competition name', () => {
+test("country-prefix canonicalization does not accept another country's or a generic competition name", () => {
   assert.equal(
     areCompetitionsCompatible('Argentina • Argentine Liga Profesional', 'Argentina • Argentine Liga Profesional', 'Colombian Primera A'),
     false
