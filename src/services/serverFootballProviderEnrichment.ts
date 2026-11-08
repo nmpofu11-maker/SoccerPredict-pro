@@ -858,7 +858,28 @@ function normalizeCompetitionName(value: unknown): string {
  * strict provider identity checks remain intact for every other competition.
  */
 export function canonicalizeProviderCompetitionName(value: unknown): string {
-  const normalized = normalizeCompetitionName(value);
+  const rawValue = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!rawValue) return '';
+
+  // SportAPI.ai's fixture slate can include a country prefix while its
+  // historical team-match records expose the demonym-based competition name:
+  // "Argentina • Argentine Liga Profesional", for example. Strip only a
+  // verified country/demonym pair with an explicit separator. This avoids
+  // making generic league names interchangeable across countries.
+  const countryCompetitionPrefixes: Record<string, string[]> = {
+    argentina: ['argentine', 'argentinian'],
+    colombia: ['colombian'],
+    guatemala: ['guatemalan'],
+  };
+  const separatedLabel = rawValue.match(/^([^•·|:/-]+?)\\s*[•·|:/-]\\s*(.+)$/);
+  const countryLabel = separatedLabel?.[1]?.trim() ?? '';
+  const competitionLabel = separatedLabel?.[2]?.trim() ?? '';
+  const expectedDemonyms = countryCompetitionPrefixes[countryLabel];
+  const normalized = expectedDemonyms?.some((demonym) =>
+    competitionLabel.startsWith(`${demonym} `)
+  )
+    ? normalizeCompetitionName(competitionLabel)
+    : normalizeCompetitionName(value);
   if (!normalized) return '';
 
   const withoutPrefix = normalized
