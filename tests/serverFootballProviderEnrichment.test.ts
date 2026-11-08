@@ -15,6 +15,41 @@ test('competition aliases never map an unqualified Premiership to South Africa',
   assert.equal(areCompetitionsCompatible('South African Premiership', 'South African Premiership', 'Scottish Premiership'), false);
 });
 
+test('country-qualified SportAPI.ai fixture labels match their exact demonym-based historical competition names', () => {
+  assert.equal(canonicalizeProviderCompetitionName('Argentina • Argentine Liga Profesional'), 'argentine liga profesional');
+  assert.equal(canonicalizeProviderCompetitionName('Colombia • Colombian Primera A'), 'colombian primera a');
+  assert.equal(canonicalizeProviderCompetitionName('Guatemala • Guatemalan Liga Nacional'), 'guatemalan liga nacional');
+
+  assert.equal(
+    areCompetitionsCompatible('Argentina • Argentine Liga Profesional', 'Argentina • Argentine Liga Profesional', 'Argentine Liga Profesional'),
+    true
+  );
+  assert.equal(
+    areCompetitionsCompatible('Colombia • Colombian Primera A', 'Colombia • Colombian Primera A', 'Colombian Primera A'),
+    true
+  );
+  assert.equal(
+    areCompetitionsCompatible('Guatemala • Guatemalan Liga Nacional', 'Guatemala • Guatemalan Liga Nacional', 'Guatemalan Liga Nacional'),
+    true
+  );
+});
+
+test("country-prefix canonicalization does not accept another country's or a generic competition name", () => {
+  assert.equal(
+    areCompetitionsCompatible('Argentina • Argentine Liga Profesional', 'Argentina • Argentine Liga Profesional', 'Colombian Primera A'),
+    false
+  );
+  assert.equal(
+    areCompetitionsCompatible('Argentina • Argentine Liga Profesional', 'Argentina • Argentine Liga Profesional', 'Premier League'),
+    false
+  );
+  assert.equal(
+    canonicalizeProviderCompetitionName('Argentina Argentine Liga Profesional'),
+    'argentina argentine liga profesional'
+  );
+});
+
+
 import type { MatchFixture } from '../src/types/soccer';
 
 const originalFetch = globalThis.fetch;
@@ -131,7 +166,7 @@ test('API-Football fixture, standings, team form and South African H2H are norma
 });
 
 
-test('SportAPI.ai supplies verified standings, form, match stats and H2H without API-Football', async () => {
+test('SportAPI.ai restores historical form for a country-prefixed Argentine competition', async () => {
   delete process.env.API_FOOTBALL_USE_RAPIDAPI;
   delete process.env.API_FOOTBALL_KEY;
   delete process.env.SPORTMONKS_API_KEY;
@@ -155,7 +190,7 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
           datetime: '2026-10-10T15:00:00Z',
           home_team: { id: 101, name: 'Home FC' },
           away_team: { id: 202, name: 'Away FC' },
-          league: { id: 77, name: 'Premier League' },
+          league: { id: 77, name: 'Argentina • Argentine Liga Profesional' },
         }],
       }), { status: 200 });
     }
@@ -174,9 +209,9 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
       return new Response(JSON.stringify({
         team: { id: 101, name: 'Home FC' },
         matches: [
-          { id: 1001, datetime: '2026-10-02T15:00:00Z', status: 'FT', league_name: 'Premier League', home_team: { id: 101, name: 'Home FC' }, away_team: { id: 301, name: 'Rivals A' }, home_score: 2, away_score: 0 },
-          { id: 1002, datetime: '2026-09-26T15:00:00Z', status: 'FT', league_name: 'Premier League', home_team: { id: 302, name: 'Rivals B' }, away_team: { id: 101, name: 'Home FC' }, home_score: 1, away_score: 1 },
-          { id: 1003, datetime: '2026-09-19T15:00:00Z', status: 'FT', league_name: 'Premier League', home_team: { id: 101, name: 'Home FC' }, away_team: { id: 303, name: 'Rivals C' }, home_score: 3, away_score: 1 },
+          { id: 1001, datetime: '2026-10-02T15:00:00Z', status: 'FT', league_name: 'Argentine Liga Profesional', home_team: { id: 101, name: 'Home FC' }, away_team: { id: 301, name: 'Rivals A' }, home_score: 2, away_score: 0 },
+          { id: 1002, datetime: '2026-09-26T15:00:00Z', status: 'FT', league_name: 'Argentine Liga Profesional', home_team: { id: 302, name: 'Rivals B' }, away_team: { id: 101, name: 'Home FC' }, home_score: 1, away_score: 1 },
+          { id: 1003, datetime: '2026-09-19T15:00:00Z', status: 'FT', league_name: 'Argentine Liga Profesional', home_team: { id: 101, name: 'Home FC' }, away_team: { id: 303, name: 'Rivals C' }, home_score: 3, away_score: 1 },
         ],
       }), { status: 200 });
     }
@@ -184,9 +219,9 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
       return new Response(JSON.stringify({
         team: { id: 202, name: 'Away FC' },
         matches: [
-          { id: 2001, datetime: '2026-10-01T15:00:00Z', status: 'FT', league_name: 'Premier League', home_team: { id: 401, name: 'Rivals D' }, away_team: { id: 202, name: 'Away FC' }, home_score: 1, away_score: 2 },
-          { id: 2002, datetime: '2026-09-24T15:00:00Z', status: 'FT', league_name: 'Premier League', home_team: { id: 202, name: 'Away FC' }, away_team: { id: 402, name: 'Rivals E' }, home_score: 0, away_score: 2 },
-          { id: 2003, datetime: '2026-09-17T15:00:00Z', status: 'FT', league_name: 'Premier League', home_team: { id: 403, name: 'Rivals F' }, away_team: { id: 202, name: 'Away FC' }, home_score: 0, away_score: 0 },
+          { id: 2001, datetime: '2026-10-01T15:00:00Z', status: 'FT', league_name: 'Argentine Liga Profesional', home_team: { id: 401, name: 'Rivals D' }, away_team: { id: 202, name: 'Away FC' }, home_score: 1, away_score: 2 },
+          { id: 2002, datetime: '2026-09-24T15:00:00Z', status: 'FT', league_name: 'Argentine Liga Profesional', home_team: { id: 202, name: 'Away FC' }, away_team: { id: 402, name: 'Rivals E' }, home_score: 0, away_score: 2 },
+          { id: 2003, datetime: '2026-09-17T15:00:00Z', status: 'FT', league_name: 'Argentine Liga Profesional', home_team: { id: 403, name: 'Rivals F' }, away_team: { id: 202, name: 'Away FC' }, home_score: 0, away_score: 0 },
         ],
       }), { status: 200 });
     }
@@ -224,7 +259,7 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
   const fixture: MatchFixture = {
     id: 'sportapi_fixture_1',
     kickoffTime: '2026-10-10T15:00:00Z',
-    league: 'Premier League',
+    league: 'Argentina • Argentine Liga Profesional',
     venue: 'Test Ground',
     isHighStakes: false,
     motivation: 'regular',
@@ -266,7 +301,7 @@ test('SportAPI.ai supplies verified standings, form, match stats and H2H without
       kickoffTime: '2026-10-10T15:00:00.000Z',
       homeTeam: 'Home FC',
       awayTeam: 'Away FC',
-      competition: 'Premier League',
+      competition: 'Argentina • Argentine Liga Profesional',
     }]);
   } finally {
     restoreEnvironment();
