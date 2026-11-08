@@ -871,7 +871,7 @@ export function canonicalizeProviderCompetitionName(value: unknown): string {
     colombia: ['colombian'],
     guatemala: ['guatemalan'],
   };
-  const separatedLabel = rawValue.match(/^([^•·|:/-]+?)\\s*[•·|:/-]\\s*(.+)$/);
+  const separatedLabel = rawValue.match(/^([^•·|:/-]+?)\s*[•·|:/-]\s*(.+)$/);
   const countryLabel = separatedLabel?.[1]?.trim() ?? '';
   const competitionLabel = separatedLabel?.[2]?.trim() ?? '';
   const expectedDemonyms = countryCompetitionPrefixes[countryLabel];
