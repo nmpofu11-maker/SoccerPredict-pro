@@ -15,6 +15,41 @@ test('competition aliases never map an unqualified Premiership to South Africa',
   assert.equal(areCompetitionsCompatible('South African Premiership', 'South African Premiership', 'Scottish Premiership'), false);
 });
 
+test('country-qualified SportAPI.ai fixture labels match their exact demonym-based historical competition names', () => {
+  assert.equal(canonicalizeProviderCompetitionName('Argentina • Argentine Liga Profesional'), 'argentine liga profesional');
+  assert.equal(canonicalizeProviderCompetitionName('Colombia • Colombian Primera A'), 'colombian primera a');
+  assert.equal(canonicalizeProviderCompetitionName('Guatemala • Guatemalan Liga Nacional'), 'guatemalan liga nacional');
+
+  assert.equal(
+    areCompetitionsCompatible('Argentina • Argentine Liga Profesional', 'Argentina • Argentine Liga Profesional', 'Argentine Liga Profesional'),
+    true
+  );
+  assert.equal(
+    areCompetitionsCompatible('Colombia • Colombian Primera A', 'Colombia • Colombian Primera A', 'Colombian Primera A'),
+    true
+  );
+  assert.equal(
+    areCompetitionsCompatible('Guatemala • Guatemalan Liga Nacional', 'Guatemala • Guatemalan Liga Nacional', 'Guatemalan Liga Nacional'),
+    true
+  );
+});
+
+test('country-prefix canonicalization does not accept another country's or a generic competition name', () => {
+  assert.equal(
+    areCompetitionsCompatible('Argentina • Argentine Liga Profesional', 'Argentina • Argentine Liga Profesional', 'Colombian Primera A'),
+    false
+  );
+  assert.equal(
+    areCompetitionsCompatible('Argentina • Argentine Liga Profesional', 'Argentina • Argentine Liga Profesional', 'Premier League'),
+    false
+  );
+  assert.equal(
+    canonicalizeProviderCompetitionName('Argentina Argentine Liga Profesional'),
+    'argentina argentine liga profesional'
+  );
+});
+
+
 import type { MatchFixture } from '../src/types/soccer';
 
 const originalFetch = globalThis.fetch;
